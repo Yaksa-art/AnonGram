@@ -1,0 +1,83 @@
+package org.telegram.margelet;
+
+import android.content.Context;
+import android.content.SharedPreferences;
+
+import org.telegram.messenger.ApplicationLoader;
+
+/**
+ * Настройки форка. Держим их в отдельном файле и в своём разделе настроек,
+ * чтобы правки не растекались по коду оригинала: чем меньше тронуто чужих
+ * строк, тем проще будет подтягивать новые версии телеграма.
+ */
+public class MargeletConfig {
+
+    private static final String PREFS = "margelet";
+
+    public static final int INPUT_LINES_DEFAULT = 6;
+    public static final float INPUT_TEXT_SIZE_DEFAULT = 18f;
+
+    public static final String APP_NAME = "Margelet";
+
+    public static final String CHANNEL_URL = "https://t.me/margeletter";
+    public static final String FORUM_URL = "https://t.me/margeletforum";
+
+    private static SharedPreferences prefs() {
+        return ApplicationLoader.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+    }
+
+    /**
+     * До скольких строк растёт поле ввода, прежде чем начать прокручиваться.
+     * Ноль означает «расти, пока есть место на экране»: сам EditText выше
+     * своего контейнера не станет, так что бесконечности тут не будет — будет
+     * ровно высота экрана, о которой и просили.
+     */
+    public static int inputMaxLines() {
+        int v = inputMaxLinesRaw();
+        return v <= 0 ? Integer.MAX_VALUE : v;
+    }
+
+    /**
+     * То же значение, но как оно записано: ноль остаётся нулём. Экрану
+     * настроек нужно именно это — иначе «без предела» пришлось бы угадывать
+     * по двум миллиардам строк.
+     */
+    public static int inputMaxLinesRaw() {
+        return prefs().getInt("input_max_lines", INPUT_LINES_DEFAULT);
+    }
+
+    public static void setInputMaxLines(int lines) {
+        prefs().edit().putInt("input_max_lines", lines).apply();
+    }
+
+    /** Размер текста в поле ввода, в тех же единицах, что и в оригинале. */
+    public static float inputTextSize() {
+        return prefs().getFloat("input_text_size", INPUT_TEXT_SIZE_DEFAULT);
+    }
+
+    public static void setInputTextSize(float sp) {
+        prefs().edit().putFloat("input_text_size", sp).apply();
+    }
+
+    /** Поле ввода сверху экрана, а не снизу. */
+    public static boolean inputOnTop() {
+        return prefs().getBoolean("input_on_top", false);
+    }
+
+    public static void setInputOnTop(boolean top) {
+        prefs().edit().putBoolean("input_on_top", top).apply();
+    }
+
+    /**
+     * Первый запуск. Нужен, чтобы один раз включить тёмно-зелёную тему и
+     * больше в выбор темы не лезть: если человек потом поставит другую, наше
+     * дело в это не вмешиваться.
+     */
+    public static boolean claimFirstLaunch() {
+        if (prefs().getBoolean("first_launch_done", false)) {
+            return false;
+        }
+        prefs().edit().putBoolean("first_launch_done", true).apply();
+        return true;
+    }
+}
