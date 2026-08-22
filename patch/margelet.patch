@@ -59,10 +59,19 @@ index df646cf4..b25e5001 100644
  
      public static String getServerString(String key) {
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
-index 6b8cddfe..2c63ff87 100644
+index 6b8cddfe..b7addf56 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
-@@ -12018,13 +12018,19 @@ public class ChatActivity extends BaseFragment implements
+@@ -1199,6 +1199,8 @@ public class ChatActivity extends BaseFragment implements
+     public final static int OPTION_DELETE = 1;
+     public final static int OPTION_FORWARD = 2;
+     public final static int OPTION_COPY = 3;
++    /** Свой пункт меню. Номер с запасом от чужих: они нумеруются подряд. */
++    public final static int OPTION_MARGELET_TAGS = 1001;
+     public final static int OPTION_SAVE_TO_GALLERY = 4;
+     public final static int OPTION_APPLY_LOCALIZATION_OR_THEME = 5;
+     public final static int OPTION_SHARE = 6;
+@@ -12018,13 +12020,19 @@ public class ChatActivity extends BaseFragment implements
          if (isInsideContainer && parentChatActivity == null) {
              paddingBottom = AndroidUtilities.navigationBarHeight;
          } else {
@@ -84,6 +93,42 @@ index 6b8cddfe..2c63ff87 100644
          if (topicsTabs != null) {
              topicsTabs.setSideMenuBackgroundMarginTop(0);//Math.max(0, paddingTop - blurredViewTopOffset - dp(5)));
          }
+@@ -20285,6 +20293,10 @@ public class ChatActivity extends BaseFragment implements
+ 
+     @Override
+     public void onActivityResultFragment(int requestCode, int resultCode, Intent data) {
++        if (resultCode == Activity.RESULT_OK && requestCode == MargeletTagsAlert.PICK_COVER) {
++            MargeletTagsAlert.onCoverPicked(data);
++            return;
++        }
+         if (resultCode == Activity.RESULT_OK) {
+             if (requestCode == 0 || requestCode == 2) {
+                 createChatAttachView();
+@@ -33379,6 +33391,10 @@ public class ChatActivity extends BaseFragment implements
+                 undoView.showWithAction(0, UndoView.ACTION_MESSAGE_COPIED, null);
+                 break;
+             }
++            case OPTION_MARGELET_TAGS: {
++                MargeletTagsAlert.show(this, selectedObject);
++                break;
++            }
+             case OPTION_SAVE_TO_GALLERY: {
+                 if (Build.VERSION.SDK_INT >= 23 && (Build.VERSION.SDK_INT <= 28 || BuildVars.NO_SCOPED_STORAGE) && getParentActivity().checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+                     getParentActivity().requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 4);
+@@ -46015,6 +46031,13 @@ public class ChatActivity extends BaseFragment implements
+                         options.add(OPTION_SHARE);
+                         icons.add(R.drawable.msg_shareout);
+                     }
++                    // Правка тегов у музыки: в телеграме это делают через ботов,
++                    // то есть отдают свой файл чужому серверу ради трёх строк.
++                    if (selectedObject.isMusic()) {
++                        items.add("Теги трека");
++                        options.add(OPTION_MARGELET_TAGS);
++                        icons.add(R.drawable.msg_edit);
++                    }
+                 } else if (type == 10) {
+                     items.add(LocaleController.getString(R.string.ApplyThemeFile));
+                     options.add(OPTION_APPLY_LOCALIZATION_OR_THEME);
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/Components/ChatActivityEnterView.java b/TMessagesProj/src/main/java/org/telegram/ui/Components/ChatActivityEnterView.java
 index ac402db5..2ab3931f 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/Components/ChatActivityEnterView.java
@@ -185,10 +230,10 @@ index 78c3b9e1..fa2a4399 100644
          tmpRect.set(
              Math.round(inputBubbleOffsetLeft),
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/DialogsActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/DialogsActivity.java
-index b04f149f..8882eae4 100644
+index b04f149f..c2d63df5 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/DialogsActivity.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/DialogsActivity.java
-@@ -3517,12 +3517,12 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
+@@ -3517,12 +3517,11 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
              } else {
                  statusDrawable = new AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable(null, dp(26));
                  statusDrawable.center = true;
@@ -203,10 +248,20 @@ index b04f149f..8882eae4 100644
 +                // называется иначе, чужой знак ему не подходит, поэтому здесь
 +                // просто слово.
 +                actionBar.setTitle(getString(R.string.AppName), statusDrawable);
-+                org.telegram.margelet.MargeletMeow.attach(actionBar.getTitleTextView());
                  updateStatus(UserConfig.getInstance(currentAccount).getCurrentUser(), false);
              }
              if (folderId == 0) {
+@@ -3535,6 +3534,10 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
+             actionBar.setClipContent(true);
+         //}
+         actionBar.setTitleActionRunnable(() -> {
++            // Нажатие по названию: мяу и прогиб надписи. Штатное действие —
++            // прокрутка к началу — остаётся, привычный жест ломать незачем.
++            org.telegram.margelet.MargeletMeow.squish(actionBar.getTitleTextView());
++            org.telegram.margelet.MargeletMeow.play(getContext());
+             if (initialDialogsType != DIALOGS_TYPE_WIDGET) {
+                 hideFloatingButton(false);
+             }
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/LaunchActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/LaunchActivity.java
 index 470be57c..c54ac8fb 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/LaunchActivity.java
@@ -2835,6 +2890,132 @@ z1vj6IYZ=$B+Z+_Z%n{-mCF`vlkg4?PLrLJi#2Sw)Y7jb#7aSant3X0dOc{t9il1Dx
 z9l7z+?Xhp@aWcFEAD@-!Ay_J6OiC+U<COR>4|ec{ikI$hX%rU2>N=g3OpaS1bAPWH
 OpsJ|xvRd9O`2PT=s<Pq$
 
+diff --git a/TMessagesProj/src/main/res/values-ar/strings.xml b/TMessagesProj/src/main/res/values-ar/strings.xml
+index 8b870043..1a774895 100644
+--- a/TMessagesProj/src/main/res/values-ar/strings.xml
++++ b/TMessagesProj/src/main/res/values-ar/strings.xml
+@@ -1,7 +1,7 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <resources>
+-    <string name="AppName">تيليجرام</string>
+-    <string name="AppNameBeta">(Beta) تيليجرام</string>
++    <string name="AppName">Margelet</string>
++    <string name="AppNameBeta">Margelet</string>
+     <string name="LanguageName">العربية</string>
+     <string name="English">الإنجليزية</string>
+     <string name="LanguageNameInEnglish">Arabic</string>
+diff --git a/TMessagesProj/src/main/res/values-de/strings.xml b/TMessagesProj/src/main/res/values-de/strings.xml
+index 9054784a..7deb4784 100644
+--- a/TMessagesProj/src/main/res/values-de/strings.xml
++++ b/TMessagesProj/src/main/res/values-de/strings.xml
+@@ -1,7 +1,7 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <resources>
+-    <string name="AppName">Telegram</string>
+-    <string name="AppNameBeta">Telegram Beta</string>
++    <string name="AppName">Margelet</string>
++    <string name="AppNameBeta">Margelet</string>
+     <string name="LanguageName">Deutsch</string>
+     <string name="English">Englisch</string>
+     <string name="LanguageNameInEnglish">German</string>
+diff --git a/TMessagesProj/src/main/res/values-es/strings.xml b/TMessagesProj/src/main/res/values-es/strings.xml
+index 4779808e..59886589 100644
+--- a/TMessagesProj/src/main/res/values-es/strings.xml
++++ b/TMessagesProj/src/main/res/values-es/strings.xml
+@@ -1,7 +1,7 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <resources>
+-    <string name="AppName">Telegram</string>
+-    <string name="AppNameBeta">Telegram Beta</string>
++    <string name="AppName">Margelet</string>
++    <string name="AppNameBeta">Margelet</string>
+     <string name="LanguageName">Español</string>
+     <string name="English">Inglés</string>
+     <string name="LanguageNameInEnglish">Spanish</string>
+diff --git a/TMessagesProj/src/main/res/values-it/strings.xml b/TMessagesProj/src/main/res/values-it/strings.xml
+index 3e7688d9..29817508 100644
+--- a/TMessagesProj/src/main/res/values-it/strings.xml
++++ b/TMessagesProj/src/main/res/values-it/strings.xml
+@@ -1,7 +1,7 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <resources>
+-    <string name="AppName">Telegram</string>
+-    <string name="AppNameBeta">Telegram Beta</string>
++    <string name="AppName">Margelet</string>
++    <string name="AppNameBeta">Margelet</string>
+     <string name="LanguageName">Italiano</string>
+     <string name="English">Inglese</string>
+     <string name="LanguageNameInEnglish">Italian</string>
+diff --git a/TMessagesProj/src/main/res/values-ko/strings.xml b/TMessagesProj/src/main/res/values-ko/strings.xml
+index 6f75e2ef..154f648b 100644
+--- a/TMessagesProj/src/main/res/values-ko/strings.xml
++++ b/TMessagesProj/src/main/res/values-ko/strings.xml
+@@ -1,7 +1,7 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <resources>
+-    <string name="AppName">텔레그램</string>
+-    <string name="AppNameBeta">텔레그램</string>
++    <string name="AppName">Margelet</string>
++    <string name="AppNameBeta">Margelet</string>
+     <string name="LanguageName">한국어</string>
+     <string name="English">영어</string>
+     <string name="LanguageNameInEnglish">한국어</string>
+diff --git a/TMessagesProj/src/main/res/values-nl/strings.xml b/TMessagesProj/src/main/res/values-nl/strings.xml
+index f3df87e8..e666ab3f 100644
+--- a/TMessagesProj/src/main/res/values-nl/strings.xml
++++ b/TMessagesProj/src/main/res/values-nl/strings.xml
+@@ -1,7 +1,7 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <resources>
+-    <string name="AppName">Telegram</string>
+-    <string name="AppNameBeta">Telegram-bèta</string>
++    <string name="AppName">Margelet</string>
++    <string name="AppNameBeta">Margelet</string>
+     <string name="LanguageName">Nederlands</string>
+     <string name="English">Engels</string>
+     <string name="LanguageNameInEnglish">Dutch</string>
+diff --git a/TMessagesProj/src/main/res/values-pt-rBR/strings.xml b/TMessagesProj/src/main/res/values-pt-rBR/strings.xml
+index 03d0ba33..17f98fa6 100644
+--- a/TMessagesProj/src/main/res/values-pt-rBR/strings.xml
++++ b/TMessagesProj/src/main/res/values-pt-rBR/strings.xml
+@@ -1,7 +1,7 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <resources>
+-    <string name="AppName">Telegram</string>
+-    <string name="AppNameBeta">Telegram Beta</string>
++    <string name="AppName">Margelet</string>
++    <string name="AppNameBeta">Margelet</string>
+     <string name="LanguageName">Português (Brasil)</string>
+     <string name="English">Inglês</string>
+     <string name="LanguageNameInEnglish">Portuguese (Brazil)</string>
+diff --git a/TMessagesProj/src/main/res/values-ru/strings.xml b/TMessagesProj/src/main/res/values-ru/strings.xml
+index 24c56292..a8863cdd 100644
+--- a/TMessagesProj/src/main/res/values-ru/strings.xml
++++ b/TMessagesProj/src/main/res/values-ru/strings.xml
+@@ -1,7 +1,7 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <resources>
+-    <string name="AppName">Telegram</string>
+-    <string name="AppNameBeta">Telegram Beta</string>
++    <string name="AppName">Margelet</string>
++    <string name="AppNameBeta">Margelet</string>
+     <string name="LanguageName">Русский</string>
+     <string name="English">Английский</string>
+     <string name="LanguageNameInEnglish">Russian</string>
+diff --git a/TMessagesProj/src/main/res/values-uk/strings.xml b/TMessagesProj/src/main/res/values-uk/strings.xml
+index d4683443..57d10109 100644
+--- a/TMessagesProj/src/main/res/values-uk/strings.xml
++++ b/TMessagesProj/src/main/res/values-uk/strings.xml
+@@ -1,7 +1,7 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <resources>
+-    <string name="AppName">Telegram</string>
+-    <string name="AppNameBeta">Telegram Beta</string>
++    <string name="AppName">Margelet</string>
++    <string name="AppNameBeta">Margelet</string>
+     <string name="LanguageName">Українська</string>
+     <string name="English">Англійська</string>
+     <string name="LanguageNameInEnglish">Ukrainian</string>
 diff --git a/TMessagesProj/src/main/res/values/strings.xml b/TMessagesProj/src/main/res/values/strings.xml
 index ffa4d566..7d896a25 100644
 --- a/TMessagesProj/src/main/res/values/strings.xml

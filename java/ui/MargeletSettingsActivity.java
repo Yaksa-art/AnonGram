@@ -38,9 +38,12 @@ public class MargeletSettingsActivity extends UniversalFragment {
         items.add(SettingsActivity.SettingCell.Factory.of(ID_INPUT,
                 IconBackgroundColors.GREEN.top, IconBackgroundColors.GREEN.bottom,
                 R.drawable.settings_chat, "Поле ввода", "Строки, размер текста, положение"));
-        items.add(SettingsActivity.SettingCell.Factory.of(ID_SOUND,
-                IconBackgroundColors.ORANGE_DEEP.top, IconBackgroundColors.ORANGE_DEEP.bottom,
-                R.drawable.settings_sounds, "Звук", "Мяуканье на главном экране"));
+        // Раздел «Звук» появляется, только когда мяуканье уже услышали.
+        if (MargeletConfig.meowHeard()) {
+            items.add(SettingsActivity.SettingCell.Factory.of(ID_SOUND,
+                    IconBackgroundColors.ORANGE_DEEP.top, IconBackgroundColors.ORANGE_DEEP.bottom,
+                    R.drawable.settings_sounds, "Звук", "Мяуканье на главном экране"));
+        }
         items.add(UItem.asShadow(null));
         items.add(SettingsActivity.SettingCell.Factory.of(ID_CHANNEL,
                 IconBackgroundColors.BLUE.top, IconBackgroundColors.BLUE.bottom,

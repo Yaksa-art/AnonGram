@@ -68,7 +68,20 @@ public class MargeletConfig {
         prefs().edit().putBoolean("input_on_top", top).apply();
     }
 
-    /** Мяуканье на долгое нажатие по названию — можно выключить совсем. */
+    /**
+     * Слышал ли человек мяуканье хоть раз. До этого раздела «Звук» в
+     * настройках нет: настраивать то, о существовании чего не знаешь, незачем,
+     * а найденная случайно шутка тем и хороша, что найдена.
+     */
+    public static boolean meowHeard() {
+        return prefs().getBoolean("meow_heard", false);
+    }
+
+    public static void setMeowHeard() {
+        prefs().edit().putBoolean("meow_heard", true).apply();
+    }
+
+    /** Мяуканье по нажатию на название — можно выключить совсем. */
     public static boolean meowEnabled() {
         return prefs().getBoolean("meow_enabled", true);
     }
