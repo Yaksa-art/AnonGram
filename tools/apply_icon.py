@@ -53,6 +53,48 @@ ADAPTIVE = """<?xml version="1.0" encoding="utf-8"?>
 """
 
 
+# Какому набору иконок телеграма соответствует наш цвет. Имена чужие, потому
+# что на них завязаны манифест и список выбора; меняем только содержимое.
+SLOTS = [
+    ("icon_background_sa", "ic_launcher_sa", "default"),
+    ("icon_2_background_sa", "icon_2_launcher_sa", "night"),
+    ("icon_3_background_sa", "icon_3_launcher_sa", "lavender"),
+    ("icon_4_background_sa", "icon_4_launcher_sa", "sand"),
+    ("icon_5_background_sa", "icon_5_launcher_sa", "sea"),
+    ("icon_6_background_sa", "icon_6_launcher_sa", "rose"),
+]
+
+
+def variants():
+    """Шесть цветов для списка «иконка приложения» в настройках.
+
+    Фон каждого набора переписываем своим сплошным цветом, самолётик у всех
+    один и тот же. Часть этих фонов лежит в drawable, часть — картинками в
+    mipmap: телеграм смешал и то и другое, поэтому пишем в оба места.
+    """
+    for bg, launcher, key in SLOTS:
+        color = icon.PALETTE[key][0]
+        shape = ("""<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#%02X%02X%02X" />
+</shape>
+""" % color)
+        # Фоны кладём в БИБЛИОТЕКУ, а не в модуль сборки: на них ссылается
+        # LauncherIconController, который живёт там же, и ресурсов модуля
+        # приложения он не видит — компилятор об этом и сказал.
+        open(f"{RES}/drawable/{bg}.xml", "w").write(shape)
+        # Одноимённые png в mipmap НЕ трогаем: на них ссылаются слоёные
+        # drawable вроде icon_2_background.xml, и удаление ломает сборку
+        # ресурсов. Ресурсы разных типов спокойно живут с одним именем.
+        adaptive = ADAPTIVE.replace("@drawable/margelet_background", f"@drawable/{bg}")
+        open(f"{RES_SA}/mipmap-anydpi-v26/{launcher}.xml", "w").write(adaptive)
+        for dpi, px in DPI.items():
+            legacy = f"{RES_SA}/mipmap-{dpi}/{launcher}.png"
+            if os.path.exists(legacy):
+                icon.draw(px, shape="rounded", color=color).save(legacy)
+
+
 def main():
     open(f"{RES}/drawable/margelet_background.xml", "w").write(BG)
     open(f"{RES}/drawable/margelet_plane.xml", "w").write(PLANE)
@@ -78,7 +120,8 @@ def main():
         icon.foreground(int(round(px * 108 / 48))).save(f"{d}/margelet_foreground.png")
         icon.draw(px, shape="rounded").save(f"{d}/ic_launcher.png")
         icon.draw(px, shape="round").save(f"{d}/ic_launcher_round.png")
-    print("иконка на месте:", icon.GREEN)
+    variants()
+    print("иконка на месте:", icon.GREEN, "и ещё", len(SLOTS) - 1, "цвета")
 
 
 if __name__ == "__main__":

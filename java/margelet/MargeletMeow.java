@@ -55,9 +55,18 @@ public class MargeletMeow {
         });
     }
 
-    private static void play(View view) {
+    /** Проиграть звук — тот, что выбран: свой файл или лежащий в сборке. */
+    public static void play(android.content.Context context) {
         try {
-            MediaPlayer player = MediaPlayer.create(view.getContext(), R.raw.margelet_meow);
+            MediaPlayer player = null;
+            final String own = MargeletConfig.meowPath();
+            if (own != null && new java.io.File(own).exists()) {
+                player = new MediaPlayer();
+                player.setDataSource(own);
+                player.prepare();
+            } else {
+                player = MediaPlayer.create(context, R.raw.margelet_meow);
+            }
             if (player == null) {
                 return;
             }
@@ -66,5 +75,12 @@ public class MargeletMeow {
         } catch (Exception ignored) {
             // Звук — украшение. Если система его не дала, экран должен жить дальше.
         }
+    }
+
+    private static void play(View view) {
+        if (!MargeletConfig.meowEnabled()) {
+            return;
+        }
+        play(view.getContext());
     }
 }

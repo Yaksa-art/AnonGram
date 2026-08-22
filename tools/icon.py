@@ -29,6 +29,18 @@ from PIL import Image, ImageDraw
 
 S = 512
 GREEN = (141, 209, 176)      # пастельный салатовый с уводом в синь
+
+# Набор для списка «иконка приложения». Форма и самолётик у всех одни, меняется
+# только цвет поля: пять разных рисунков там были бы пятью разными знаками, а
+# знак у форка один.
+PALETTE = {
+    "default": (GREEN, "Зелёная"),
+    "night":   ((29, 43, 36), "Ночная"),
+    "lavender": ((183, 168, 224), "Лавандовая"),
+    "sand":    ((231, 200, 140), "Песочная"),
+    "sea":     ((127, 196, 214), "Морская"),
+    "rose":    ((224, 154, 154), "Розовая"),
+}
 LIFT = 0.03                  # оптическая поправка: доля высоты вверх
 
 
@@ -47,7 +59,7 @@ def plane(d, cx, cy, k=1.0):
               fill=(204, 213, 233, 255))
 
 
-def draw(size=S, shape="square", radius=0.22, k=0.74):
+def draw(size=S, shape="square", radius=0.22, k=0.74, color=None):
     """shape: square | round | rounded. k — размер самолёта относительно поля:
     под круглой маской углы срезаются, и самолёт в полную ширину терял концы
     крыльев. Три четверти влезают под любую маску."""
@@ -60,7 +72,7 @@ def draw(size=S, shape="square", radius=0.22, k=0.74):
         m.rounded_rectangle([0, 0, S - 1, S - 1], int(S * radius), fill=255)
     else:
         m.rectangle([0, 0, S - 1, S - 1], fill=255)
-    im.paste(Image.new("RGB", (S, S), GREEN), (0, 0), mask)
+    im.paste(Image.new("RGB", (S, S), color or GREEN), (0, 0), mask)
     d = ImageDraw.Draw(im)
     plane(d, S / 2, S / 2 - S * LIFT, k=k)
     return im.resize((size, size), Image.LANCZOS) if size != S else im

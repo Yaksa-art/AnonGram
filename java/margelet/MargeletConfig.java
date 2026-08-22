@@ -68,6 +68,32 @@ public class MargeletConfig {
         prefs().edit().putBoolean("input_on_top", top).apply();
     }
 
+    /** Мяуканье на долгое нажатие по названию — можно выключить совсем. */
+    public static boolean meowEnabled() {
+        return prefs().getBoolean("meow_enabled", true);
+    }
+
+    public static void setMeowEnabled(boolean enabled) {
+        prefs().edit().putBoolean("meow_enabled", enabled).apply();
+    }
+
+    /**
+     * Путь к своему звуку. Пусто — играет тот, что лежит в сборке. Файл
+     * копируется к нам при выборе: ссылка на чужой файл живёт до первой
+     * уборки в галерее, а копия — сколько нужно.
+     */
+    public static String meowPath() {
+        return prefs().getString("meow_path", null);
+    }
+
+    public static void setMeowPath(String path) {
+        if (path == null) {
+            prefs().edit().remove("meow_path").apply();
+        } else {
+            prefs().edit().putString("meow_path", path).apply();
+        }
+    }
+
     /**
      * Первый запуск. Нужен, чтобы один раз включить тёмно-зелёную тему и
      * больше в выбор темы не лезть: если человек потом поставит другую, наше
