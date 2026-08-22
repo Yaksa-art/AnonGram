@@ -1,53 +1,80 @@
 # Margelet
 
-Форк телеграма для андроида. Основан на [DrKLO/Telegram](https://github.com/DrKLO/Telegram),
-собирается из его исходников с наложением патча из этого репозитория.
+A Telegram fork for Android, built from [DrKLO/Telegram](https://github.com/DrKLO/Telegram)
+with the patch in this repository.
 
-Пакет: `cat.narezany.margelet`. Ставится рядом с обычным телеграмом, не поверх.
+- Channel: [t.me/margeletter](https://t.me/margeletter)
+- Forum: [t.me/margeletforum](https://t.me/margeletforum)
 
-## Что здесь лежит
+Package: `cat.narezany.margelet` — it installs next to the official Telegram,
+not over it. arm64 only.
 
-- `patch/margelet.patch` — все правки к исходникам телеграма одним файлом.
-- `patch/UPSTREAM` — коммит телеграма, к которому патч приложен и на котором проверен.
-- `java/` — файлы, которые патч добавляет целиком (их же можно просто скопировать).
-- `res/` — своя иконка и звук.
-- `tools/` — скрипты: рисование иконки, подстановка её в ресурсы, синтез звука.
-- `FEATURES.md` — **главный файл**. Полный список того, что форк меняет, и где
-  именно. По нему форк переносится на новую версию телеграма, когда патч
-  перестанет накладываться.
+## What it adds
 
-## Чего здесь нет и не будет
+**A message field that grows as far as you want.** Stock Telegram stops the
+input box at six lines and starts scrolling. Here you pick: 2 to 15 lines, or
+"max" — grow while there is room on the screen. The text size in the box is
+adjustable too. (The 4096-character limit per message stays: that one is the
+server's, not the app's.)
 
-- **api_id и api_hash.** Это личные ключи владельца сборки, выданные на
-  my.telegram.org. Свои получаешь там же и вписываешь в `BuildVars.java`
-  локально. В репозиторий они не кладутся никогда.
-- **google-services.json.** Тот, что лежит в исходниках телеграма, описывает их
-  firebase-проект, и нашего пакета в нём нет. Пока у форка нет своего файла,
-  плагин `com.google.gms.google-services` отключён, а пуши в фоне не работают.
+**The message field can move to the top of the chat**, under the header, with
+the room for it moving to the top of the message list as well. The keyboard and
+the panels stay at the bottom — they belong to the screen, not to the field.
 
-## Сборка
+**A dark green theme out of the box.** On first launch Margelet turns on
+Telegram's own Night theme with its green accent. Once. Pick another one and the
+fork stays out of it.
 
-Нужны SDK 35 с build-tools 35.0.0, NDK 27.2.12479018, JDK 21.
+**Its own icon, in six colours** — green, night, lavender, sand, sea, rose —
+all of them in the app-icon picker, none of them behind Premium.
+
+**A cat.** Somewhere.
+
+Everything the fork adds lives in one place: Settings → Margelet, the first row.
+
+## Building it yourself
+
+You need SDK 35 with build-tools 35.0.0, NDK 27.2.12479018 and JDK 21.
 
 ```
 git clone https://github.com/DrKLO/Telegram
 cd Telegram
-git checkout <коммит из patch/UPSTREAM>
+git checkout $(cat ../margelet/patch/UPSTREAM)
 git submodule update --init --recursive
 git apply ../margelet/patch/margelet.patch
-# вписать свои api_id и api_hash в
+# put your own api_id / api_hash from https://my.telegram.org into
 # TMessagesProj/src/main/java/org/telegram/messenger/BuildVars.java
 gradle :TMessagesProj_AppStandalone:assembleAfatStandalone
 ```
 
-Готовый apk окажется в
-`TMessagesProj_AppStandalone/build/outputs/apk/afat/standalone/`.
+The apk lands in `TMessagesProj_AppStandalone/build/outputs/apk/afat/standalone/`.
 
-## Лицензия
+## What this repository does not contain
 
-Исходники телеграма распространяются под GPL v2 или новее. Форк наследует эту
-лицензию: если раздаёшь собранный apk — обязан дать и исходники, из которых он
-собран. Этот репозиторий вместе с коммитом из `patch/UPSTREAM` как раз ими и
-является.
+- **api_id / api_hash.** Those are the build owner's personal keys. Get your own
+  at my.telegram.org. They are never committed here.
+- **google-services.json.** The one shipped in Telegram's sources describes
+  Telegram's own Firebase project, which does not list our package. Until the
+  fork has a project of its own the plugin stays disabled — which means **push
+  notifications do not arrive while the app is not running.**
 
-Звук мяуканья — не наш, но и не ничей: см. `ATTRIBUTION.md`.
+## Files here
+
+| | |
+|---|---|
+| `patch/margelet.patch` | every change to Telegram's sources, in one file |
+| `patch/UPSTREAM` | the Telegram commit the patch applies to |
+| `FEATURES.md` | **every change, where it lives and why** — the porting document |
+| `java/`, `res/` | files the fork adds whole |
+| `tools/` | scripts: draw the icon, install it, synthesise a sound |
+| `ATTRIBUTION.md` | the one thing in here that someone else made |
+
+`FEATURES.md` is the file to read before moving the fork to a newer Telegram.
+Telegram rewrites its screens often; the patch will stop applying. Each entry
+says what was done, where, and — the part that survives a rewrite — why.
+
+## Licence
+
+Telegram's sources are GPL v2 or later, and the fork inherits that. If you hand
+someone the apk, you owe them the source it was built from: this repository plus
+the commit named in `patch/UPSTREAM` is exactly that.
