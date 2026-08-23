@@ -101,6 +101,17 @@ none of them behind Premium.
 </details>
 
 <details>
+<summary><b>Badges</b></summary>
+
+The person who made the fork, and their best friend, get a badge next to their
+name. Tapping it opens a window with the icon spinning in 3D — green and
+lavender respectively.
+
+The badge certifies nothing and asks no server: whoever builds their own fork
+puts their own people in. The window says so.
+</details>
+
+<details>
 <summary><b>Seizure</b></summary>
 
 Every piece of text in the app keeps changing colour. It is good for nothing.

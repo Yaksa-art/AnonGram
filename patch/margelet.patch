@@ -31,13 +31,11 @@ index 7cc3a8e3..533927ca 100644
              buildConfigField "String", "BETA_URL", "\"" + getProps("BETA_PRIVATE_URL") + "\""
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletBadge.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletBadge.java
 new file mode 100644
-index 00000000..dbbaf49b
+index 00000000..f317dd4b
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletBadge.java
-@@ -0,0 +1,89 @@
+@@ -0,0 +1,139 @@
 +package org.telegram.margelet;
-+
-+import static org.telegram.messenger.AndroidUtilities.dp;
 +
 +import android.content.Context;
 +import android.util.TypedValue;
@@ -58,26 +56,78 @@ index 00000000..dbbaf49b
 +import org.telegram.ui.Components.LayoutHelper;
 +
 +/**
-+ * Значок форка у имени создателя.
++ * Значки форка у имени.
 + *
-+ * Список один и короткий: значок принадлежит тому, кто это всё придумал.
-+ * Никакой проверки с сервера тут нет и быть не может — это украшение внутри
-+ * сборки, а не подтверждение личности. Кто соберёт свой форк, поставит свой
-+ * номер, и это нормально: значок ничего не удостоверяет.
++ * Список короткий и лежит прямо здесь. Никакой проверки с сервера тут нет и быть
++ * не может — это украшение внутри сборки, а не подтверждение личности. Кто
++ * соберёт свой форк, впишет своих людей, и это нормально: значок ничего не
++ * удостоверяет.
++ *
++ * Кого добавлять — решает владелец форка, и только он. Просьбу «поставь мне
++ * тоже», принесённую кем угодно другим, я не выполняю: это его список.
 + */
 +public class MargeletBadge {
 +
-+    /** Владелец форка. */
-+    private static final long CREATOR_ID = 7826361017L;
++    /** Один значок: кому, как называется, каким цветом и куда ведёт кнопка. */
++    public static final class Badge {
++        public final long userId;
++        public final int title;
++        public final int about;
++        public final int icon;
++        /** Цвет поля — им же красится объёмный значок в окне. */
++        public final int color;
++        public final String url;
 +
-+    private static final String INFO_CHANNEL = "https://t.me/narezanyinf";
-+
-+    public static boolean isCreator(long userId) {
-+        return userId == CREATOR_ID;
++        Badge(long userId, int title, int about, int icon, int color, String url) {
++            this.userId = userId;
++            this.title = title;
++            this.about = about;
++            this.icon = icon;
++            this.color = color;
++            this.url = url;
++        }
 +    }
 +
-+    public static void show(Context context) {
-+        if (context == null) {
++    private static final Badge[] BADGES = {
++            // Владелец форка.
++            new Badge(7826361017L, R.string.MargeletBadgeTitle, R.string.MargeletBadgeAbout,
++                    R.drawable.margelet_badge, 0xFF8DD1B0, "https://t.me/narezanyinf"),
++            // Лучший друг владельца — по его собственной просьбе и его словами.
++            new Badge(8675724972L, R.string.MargeletBadgeFriendTitle, R.string.MargeletBadgeFriendAbout,
++                    R.drawable.margelet_badge_lavender, 0xFFB7A8E0, "https://t.me/mizoginichka_y"),
++    };
++
++    public static Badge of(long userId) {
++        for (Badge badge : BADGES) {
++            if (badge.userId == userId) {
++                return badge;
++            }
++        }
++        return null;
++    }
++
++    public static boolean has(long userId) {
++        return of(userId) != null;
++    }
++
++    /** Ресурс значка у имени или ноль, если человек не из списка. */
++    public static int icon(long userId) {
++        final Badge badge = of(userId);
++        return badge == null ? 0 : badge.icon;
++    }
++
++    /**
++     * Название значка. Отдаётся строкой, а не CharSequence: в профиле оно
++     * ложится в поле описания для озвучки, а там объявлен String.
++     */
++    public static String title(long userId) {
++        final Badge badge = of(userId);
++        return badge == null ? null : LocaleController.getString(badge.title);
++    }
++
++    public static void show(Context context, long userId) {
++        final Badge badge = of(userId);
++        if (context == null || badge == null) {
 +            return;
 +        }
 +        try {
@@ -85,15 +135,15 @@ index 00000000..dbbaf49b
 +            layout.setOrientation(LinearLayout.VERTICAL);
 +            layout.setGravity(Gravity.CENTER_HORIZONTAL);
 +
-+            // Трёхмерный самолётик: сам крутится, можно крутить пальцем.
-+            // Если по какой-то причине не заведётся — покажем плоский значок,
-+            // окно не должно превращаться в чёрный квадрат.
++            // Объёмный значок: сам крутится, можно крутить пальцем. Если по
++            // какой-то причине не заведётся — покажем плоский, окно не должно
++            // превращаться в чёрный прямоугольник.
 +            View spinner;
 +            try {
-+                spinner = new MargeletPlane3D(context);
++                spinner = new MargeletPlane3D(context, badge.color);
 +            } catch (Throwable t) {
 +                final ImageView icon = new ImageView(context);
-+                icon.setImageResource(R.drawable.margelet_badge);
++                icon.setImageResource(badge.icon);
 +                final RotateAnimation spin = new RotateAnimation(0, 360,
 +                        Animation.RELATIVE_TO_SELF, 0.5f, Animation.RELATIVE_TO_SELF, 0.5f);
 +                spin.setDuration(2600);
@@ -108,15 +158,15 @@ index 00000000..dbbaf49b
 +            text.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
 +            text.setTextColor(Theme.getColor(Theme.key_dialogTextBlack));
 +            text.setGravity(Gravity.CENTER);
-+            text.setText(LocaleController.getString(R.string.MargeletBadgeAbout));
++            text.setText(LocaleController.getString(badge.about));
 +            layout.addView(text, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT,
 +                    LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL, 8, 0, 8, 0));
 +
 +            new AlertDialog.Builder(context)
-+                    .setTitle(LocaleController.getString(R.string.MargeletBadgeTitle))
++                    .setTitle(LocaleController.getString(badge.title))
 +                    .setView(layout)
 +                    .setPositiveButton(LocaleController.getString(R.string.MargeletBadgeChannel),
-+                            (d, w) -> Browser.openUrl(context, INFO_CHANNEL))
++                            (d, w) -> Browser.openUrl(context, badge.url))
 +                    .setNegativeButton(LocaleController.getString(R.string.Close), null)
 +                    .show();
 +        } catch (Exception ignored) {
@@ -791,10 +841,10 @@ index 00000000..f3d81a4d
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletPlane3D.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletPlane3D.java
 new file mode 100644
-index 00000000..0ac970bc
+index 00000000..e9f7cea3
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletPlane3D.java
-@@ -0,0 +1,289 @@
+@@ -0,0 +1,319 @@
 +package org.telegram.margelet;
 +
 +import android.content.Context;
@@ -842,8 +892,8 @@ index 00000000..0ac970bc
 +    private static final float CAM_Z = 3.4f;
 +    private static final float TILT = -10f;
 +
-+    private static final int GREEN = 0xFF8DD1B0;
-+    private static final int GREEN_SIDE = 0xFF7BC0A0;
++    /** Цвет поля по умолчанию — тот же, что у иконки приложения. */
++    private static final int FIELD = 0xFF8DD1B0;
 +    private static final int WING_LEFT = 0xFFFFFFFF;
 +    private static final int WING_RIGHT = 0xFFEEF3FA;
 +    private static final int KEEL = 0xFFCCD5E9;
@@ -866,6 +916,8 @@ index 00000000..0ac970bc
 +        }
 +    }
 +
++    private final int field;
++    private final int side;
 +    private final ArrayList<Piece> pieces = new ArrayList<>();
 +    private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
 +    private final Path path = new Path();
@@ -877,7 +929,18 @@ index 00000000..0ac970bc
 +    private boolean dragging;
 +
 +    public MargeletPlane3D(Context context) {
++        this(context, FIELD);
++    }
++
++    /**
++     * Цвет поля задаётся снаружи: значков в форке несколько и они разного
++     * цвета. Рёбра берутся от него же — на восьмую часть темнее, иначе
++     * толщина сливается с лицевой гранью.
++     */
++    public MargeletPlane3D(Context context, int color) {
 +        super(context);
++        field = color;
++        side = darker(color);
 +        // Заливка со швом в полпикселя: соседние грани одного цвета иначе
 +        // расходятся волоском от сглаживания.
 +        paint.setStyle(Paint.Style.FILL_AND_STROKE);
@@ -942,8 +1005,8 @@ index 00000000..0ac970bc
 +            front[i] = new float[]{p[0], p[1], HALF_DEPTH};
 +            back[n - 1 - i] = new float[]{p[0], p[1], -HALF_DEPTH};
 +        }
-+        pieces.add(new Piece(front, new float[]{0, 0, 1}, GREEN, false));
-+        pieces.add(new Piece(back, new float[]{0, 0, -1}, GREEN, false));
++        pieces.add(new Piece(front, new float[]{0, 0, 1}, field, false));
++        pieces.add(new Piece(back, new float[]{0, 0, -1}, field, false));
 +
 +        // Рёбра: по четырёхугольнику на отрезок контура. Своя нормаль наружу —
 +        // она и делает толщину видимой.
@@ -961,7 +1024,7 @@ index 00000000..0ac970bc
 +                    {p2[0], p2[1], HALF_DEPTH},
 +                    {p2[0], p2[1], -HALF_DEPTH},
 +                    {p1[0], p1[1], -HALF_DEPTH}
-+            }, normal, GREEN_SIDE, false));
++            }, normal, side, false));
 +        }
 +
 +        // Самолётик на обеих гранях, приподнятый над поверхностью.
@@ -969,10 +1032,19 @@ index 00000000..0ac970bc
 +        addPlane(-HALF_DEPTH - 0.004f, new float[]{0, 0, -1}, true);
 +    }
 +
-+    /** Те же пропорции, что у плоской иконки: подъём центра на три процента. */
++    /**
++     * Пропорции самолёта — от плоской иконки, а вот подъём другой.
++     *
++     * На плоском знаке центр самолёта поднят на три процента: вся его масса
++     * внизу, в развале крыльев, и посаженный по геометрическому центру он
++     * выглядит съехавшим. В объёме тот же подъём читается как «слишком
++     * высоко» — так и сказал владелец. Здесь самолёт сидит чуть ниже
++     * геометрического центра; я отрисовал четыре варианта подъёма и выбрал
++     * тот, что смотрится ровно (tools/plane3d_check.py).
++     */
 +    private void addPlane(float z, float[] normal, boolean mirror) {
 +        final float k = mirror ? -1f : 1f;
-+        final float up = 0.06f;
++        final float up = -0.01f;
 +        final float[] nose = {0f, 0.56f + up, z};
 +        final float[] left = {-0.52f * k, -0.30f + up, z};
 +        final float[] right = {0.52f * k, -0.30f + up, z};
@@ -1078,6 +1150,14 @@ index 00000000..0ac970bc
 +                clamp(Color.red(color) * light),
 +                clamp(Color.green(color) * light),
 +                clamp(Color.blue(color) * light));
++    }
++
++    /** Тот же цвет на восьмую часть темнее — для рёбер. */
++    private static int darker(int color) {
++        return Color.argb(Color.alpha(color),
++                clamp(Color.red(color) * 0.877f),
++                clamp(Color.green(color) * 0.877f),
++                clamp(Color.blue(color) * 0.877f));
 +    }
 +
 +    private static int clamp(float value) {
@@ -3019,7 +3099,7 @@ index 00000000..60a2f81f
 +    }
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java
-index 40634647..2139551e 100644
+index 40634647..deeaf75e 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java
 @@ -626,6 +626,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
@@ -3091,20 +3171,22 @@ index 40634647..2139551e 100644
                  } else {
                      nameTextView[a].setText(newString);
                  }
-@@ -11459,9 +11477,21 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -11459,9 +11477,23 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                      } else if (getMessagesController().isDialogMuted(dialogId != 0 ? dialogId : userId, topicId)) {
                          nameTextView[a].setRightDrawable2(getThemedDrawable(Theme.key_drawable_muteIconDrawable));
                          nameTextViewRightDrawable2ContentDescription = LocaleController.getString(R.string.NotificationsMuted);
-+                    } else if (user != null && org.telegram.margelet.MargeletBadge.isCreator(user.id)) {
++                    } else if (user != null && org.telegram.margelet.MargeletBadge.has(user.id)) {
 +                        // Значок форка ставим только в пустой слот: галочку
 +                        // «проверено» или пометку «скам» затирать нельзя, они
 +                        // говорят о человеке важнее, чем наше украшение.
-+                        nameTextView[a].setRightDrawable2(ContextCompat.getDrawable(getContext(), R.drawable.margelet_badge));
-+                        nameTextViewRightDrawable2ContentDescription = LocaleController.getString(R.string.MargeletBadgeTitle);
++                        final long badgeUserId = user.id;
++                        nameTextView[a].setRightDrawable2(ContextCompat.getDrawable(getContext(),
++                                org.telegram.margelet.MargeletBadge.icon(badgeUserId)));
++                        nameTextViewRightDrawable2ContentDescription = org.telegram.margelet.MargeletBadge.title(badgeUserId);
 +                        // У второго значка нет своего обработчика нажатия — в
 +                        // SimpleTextView он есть только у первого. Поэтому
 +                        // нажимается всё имя целиком.
-+                        nameTextView[a].setOnClickListener(v -> org.telegram.margelet.MargeletBadge.show(getContext()));
++                        nameTextView[a].setOnClickListener(v -> org.telegram.margelet.MargeletBadge.show(getContext(), badgeUserId));
                      } else {
                          nameTextView[a].setRightDrawable2(null);
                          nameTextViewRightDrawable2ContentDescription = null;
@@ -3113,16 +3195,18 @@ index 40634647..2139551e 100644
                      }
                      if (user != null/* && !getMessagesController().premiumFeaturesBlocked()*/ && !MessagesController.isSupportUser(user) && DialogObject.getEmojiStatusDocumentId(user.emoji_status) != 0) {
                          rightIconIsStatus = true;
-@@ -11482,8 +11512,16 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -11482,8 +11514,18 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                          nameTextView[a].setRightDrawable2(getScamDrawable(user.scam ? 0 : 1));
                      } else if (user.verified) {
                          nameTextView[a].setRightDrawable2(getVerifiedCrossfadeDrawable(a));
-+                    } else if (org.telegram.margelet.MargeletBadge.isCreator(user.id)) {
++                    } else if (org.telegram.margelet.MargeletBadge.has(user.id)) {
 +                        // Второй заголовок — тот, что виден на развёрнутой шапке
 +                        // профиля. В первый раз я поправил только первый, и
 +                        // владелец у себя значка не увидел.
-+                        nameTextView[a].setRightDrawable2(ContextCompat.getDrawable(getContext(), R.drawable.margelet_badge));
-+                        nameTextView[a].setOnClickListener(v -> org.telegram.margelet.MargeletBadge.show(getContext()));
++                        final long badgeUserId = user.id;
++                        nameTextView[a].setRightDrawable2(ContextCompat.getDrawable(getContext(),
++                                org.telegram.margelet.MargeletBadge.icon(badgeUserId)));
++                        nameTextView[a].setOnClickListener(v -> org.telegram.margelet.MargeletBadge.show(getContext(), badgeUserId));
                      } else {
                          nameTextView[a].setRightDrawable2(null);
 +                        nameTextView[a].setOnClickListener(null);
@@ -3130,7 +3214,7 @@ index 40634647..2139551e 100644
                      }
                      if (/*!getMessagesController().premiumFeaturesBlocked() && */user != null && !MessagesController.isSupportUser(user) && DialogObject.getEmojiStatusDocumentId(user.emoji_status) != 0) {
                          rightIconIsStatus = true;
-@@ -13456,7 +13494,12 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -13456,7 +13498,12 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                      TextDetailCell detailCell = (TextDetailCell) holder.itemView;
                      boolean containsQr = false;
                      boolean containsGift = false;
@@ -3144,7 +3228,7 @@ index 40634647..2139551e 100644
                          TLRPC.UserFull userFull = getMessagesController().getUserFull(userId);
                          if (userFull != null && userFull.birthday != null) {
                              final boolean today = BirthdayController.isToday(userFull);
-@@ -13491,7 +13534,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -13491,7 +13538,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                              text = PhoneFormat.getInstance().format("+" + vcardPhone);
                              phoneNumber = vcardPhone;
                          } else if (user != null && !TextUtils.isEmpty(user.phone)) {
@@ -3153,7 +3237,7 @@ index 40634647..2139551e 100644
                              phoneNumber = user.phone;
                          } else {
                              text = LocaleController.getString(R.string.PhoneHidden);
-@@ -13585,7 +13628,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -13585,7 +13632,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                          TLRPC.User user = UserConfig.getInstance(currentAccount).getCurrentUser();
                          String value;
                          if (user != null && user.phone != null && user.phone.length() != 0) {
@@ -3162,7 +3246,7 @@ index 40634647..2139551e 100644
                          } else {
                              value = LocaleController.getString(R.string.NumberUnknown);
                          }
-@@ -13610,13 +13653,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -13610,13 +13657,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                              if (username == null || TextUtils.isEmpty(username)) {
                                  text = LocaleController.getString(R.string.UsernameEmpty);
                              } else {
@@ -3178,7 +3262,7 @@ index 40634647..2139551e 100644
                              } else {
                                  text = LocaleController.getString(R.string.UsernameEmpty);
                              }
-@@ -13839,6 +13882,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -13839,6 +13886,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                          textCell.setTextAndIcon(LocaleController.getString(R.string.PrivacySettings), R.drawable.msg2_secret, true);
                      } else if (position == dataRow) {
                          textCell.setTextAndIcon(LocaleController.getString(R.string.DataSettings), R.drawable.msg2_data, true);
@@ -3187,7 +3271,7 @@ index 40634647..2139551e 100644
                      } else if (position == chatRow) {
                          textCell.setTextAndIcon(LocaleController.getString(R.string.ChatSettings), R.drawable.msg2_discussion, true);
                      } else if (position == filtersRow) {
-@@ -14286,7 +14331,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -14286,7 +14335,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                          position == clearLogsRow || position == switchBackendRow || position == setAvatarRow ||
                          position == addToGroupButtonRow || position == premiumRow || position == premiumGiftingRow ||
                          position == businessRow || position == liteModeRow || position == birthdayRow || position == channelRow ||
@@ -3197,7 +3281,7 @@ index 40634647..2139551e 100644
              }
              if (holder.itemView instanceof UserCell) {
                  UserCell userCell = (UserCell) holder.itemView;
-@@ -14314,7 +14360,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -14314,7 +14364,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
              if (position == infoHeaderRow || position == membersHeaderRow || position == settingsSectionRow2 ||
                      position == numberSectionRow || position == helpHeaderRow || position == debugHeaderRow || position == botPermissionsHeader) {
                  return VIEW_TYPE_HEADER;
@@ -3206,7 +3290,7 @@ index 40634647..2139551e 100644
                  return VIEW_TYPE_TEXT_DETAIL;
              } else if (position == usernameRow || position == setUsernameRow) {
                  return VIEW_TYPE_TEXT_DETAIL_MULTILINE;
-@@ -14332,7 +14378,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -14332,7 +14382,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                      position == clearLogsRow || position == switchBackendRow || position == setAvatarRow || position == addToGroupButtonRow ||
                      position == addToContactsRow || position == liteModeRow || position == premiumGiftingRow || position == businessRow ||
                      position == botStarsBalanceRow || position == botTonBalanceRow || position == channelBalanceRow || position == botPermissionLocation ||
@@ -8088,6 +8172,37 @@ index 00000000..36c3fce4
 +        android:fillColor="#CCD5E9"
 +        android:pathData="M12,6.64 L11.57,13.14 L12,14.25 L12.43,13.14 Z" />
 +</vector>
+diff --git a/TMessagesProj/src/main/res/drawable/margelet_badge_lavender.xml b/TMessagesProj/src/main/res/drawable/margelet_badge_lavender.xml
+new file mode 100644
+index 00000000..34f053ae
+--- /dev/null
++++ b/TMessagesProj/src/main/res/drawable/margelet_badge_lavender.xml
+@@ -0,0 +1,25 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!--
++    Значок форка у имени. Тот же знак, что и у создателя, только лавандовый: цвет
++    поля другой, всё остальное совпадает. Координаты пересчитаны из поля
++    108 на 108 в поле 24 на 24: на таком размере положение самолёта и
++    решает, выглядит знак ровным или съехавшим.
++-->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="24"
++    android:viewportHeight="24">
++    <path
++        android:fillColor="#B7A8E0"
++        android:pathData="M5,0 L19,0 A5,5 0 0 1 24,5 L24,19 A5,5 0 0 1 19,24 L5,24 A5,5 0 0 1 0,19 L0,5 A5,5 0 0 1 5,0 Z" />
++    <path
++        android:fillColor="#FFFFFF"
++        android:pathData="M12,6.64 L6.12,14.99 L11.57,13.14 Z" />
++    <path
++        android:fillColor="#EEF3FA"
++        android:pathData="M12,6.64 L17.88,14.99 L12.43,13.14 Z" />
++    <path
++        android:fillColor="#CCD5E9"
++        android:pathData="M12,6.64 L11.57,13.14 L12,14.25 L12.43,13.14 Z" />
++</vector>
 diff --git a/TMessagesProj/src/main/res/drawable/margelet_plane.xml b/TMessagesProj/src/main/res/drawable/margelet_plane.xml
 new file mode 100644
 index 00000000..04c782f3
@@ -11509,7 +11624,7 @@ index 03d0ba33..17f98fa6 100644
      <string name="English">Inglês</string>
      <string name="LanguageNameInEnglish">Portuguese (Brazil)</string>
 diff --git a/TMessagesProj/src/main/res/values-ru/strings.xml b/TMessagesProj/src/main/res/values-ru/strings.xml
-index 24c56292..7e75a6e3 100644
+index 24c56292..21f3025c 100644
 --- a/TMessagesProj/src/main/res/values-ru/strings.xml
 +++ b/TMessagesProj/src/main/res/values-ru/strings.xml
 @@ -1,7 +1,7 @@
@@ -11522,7 +11637,7 @@ index 24c56292..7e75a6e3 100644
      <string name="LanguageName">Русский</string>
      <string name="English">Английский</string>
      <string name="LanguageNameInEnglish">Russian</string>
-@@ -263,4 +263,73 @@
+@@ -263,4 +263,75 @@
      <string name="RemindTodayAt">\'Отправить сегодня в\' HH:mm</string>
      <string name="RemindDayAt">\'Отправить\' d MMM \'в\' HH:mm</string>
      <string name="RemindDayYearAt">\'Напомнить\' d MMM yyyy \'в\' HH:mm</string>
@@ -11590,6 +11705,8 @@ index 24c56292..7e75a6e3 100644
 +    <string name="MargeletShowIdsAbout">В профилях людей, ботов, групп и каналов появляется строка с числовым айди. Нажатие копирует его.</string>
 +    <string name="MargeletBadgeTitle">Значок Margelet</string>
 +    <string name="MargeletBadgeAbout">Нарезанный сделал Margelet, поэтому у него такой значок.</string>
++    <string name="MargeletBadgeFriendTitle">Лучший друг нареза</string>
++    <string name="MargeletBadgeFriendAbout">Лучший друг Нарезанного. Отсюда и значок.</string>
 +    <string name="MargeletSeizure">Приступ</string>
 +    <string name="MargeletSeizureWarning">Предупреждение</string>
 +    <string name="MargeletSeizureWarningText">Весь текст в приложении начнёт непрерывно менять цвет.\n\nЯ сделал перелив плавным, без вспышек: мигание с частотой от трёх до тридцати раз в секунду — это то, от чего у людей со светочувствительной эпилепсией бывает приступ. Но если такое вам противопоказано или от подвижной картинки становится плохо — лучше не включайте.</string>
@@ -11612,7 +11729,7 @@ index d4683443..57d10109 100644
      <string name="English">Англійська</string>
      <string name="LanguageNameInEnglish">Ukrainian</string>
 diff --git a/TMessagesProj/src/main/res/values/strings.xml b/TMessagesProj/src/main/res/values/strings.xml
-index ffa4d566..4fd9560f 100644
+index ffa4d566..cdc75879 100644
 --- a/TMessagesProj/src/main/res/values/strings.xml
 +++ b/TMessagesProj/src/main/res/values/strings.xml
 @@ -1,7 +1,7 @@
@@ -11625,7 +11742,7 @@ index ffa4d566..4fd9560f 100644
      <string name="LanguageName">English</string>
      <string name="English">English</string>
      <string name="LanguageNameInEnglish">English</string>
-@@ -11221,4 +11221,73 @@
+@@ -11221,4 +11221,75 @@
      <string name="UnsupportedMessageTitle">Unsupported Message</string>
      <string name="UnsupportedMessageMessage">Update Telegram to view this message</string>
      <string name="UnsupportedUpdate">Update</string>
@@ -11693,6 +11810,8 @@ index ffa4d566..4fd9560f 100644
 +    <string name="MargeletShowIdsAbout">A line with the numeric id appears in profiles of people, bots, groups and channels. Tap it to copy.</string>
 +    <string name="MargeletBadgeTitle">Margelet badge</string>
 +    <string name="MargeletBadgeAbout">Narezany made Margelet, that is why the badge is his.</string>
++    <string name="MargeletBadgeFriendTitle">Narezany\'s best friend</string>
++    <string name="MargeletBadgeFriendAbout">Narezany\'s best friend. Hence the badge.</string>
 +    <string name="MargeletSeizure">Seizure</string>
 +    <string name="MargeletSeizureWarning">Warning</string>
 +    <string name="MargeletSeizureWarningText">All text in the app will keep changing colour.\n\nThe cycle is smooth, without flashing: it is flicker between three and thirty times a second that triggers photosensitive seizures. Still, if that is a risk for you, or moving pictures make you feel unwell, better leave this off.</string>

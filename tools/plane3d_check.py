@@ -36,7 +36,7 @@ def build():
                        nor, GREEN_SIDE, 'body'))
     for z,nor,mirror in ((HALF_DEPTH+0.004,(0,0,1),False), (-HALF_DEPTH-0.004,(0,0,-1),True)):
         k = -1.0 if mirror else 1.0
-        up = 0.06
+        up = -0.01
         nose=(0,0.56+up,z); left=(-0.52*k,-0.30+up,z); right=(0.52*k,-0.30+up,z)
         keelL=(-0.04*k,-0.14+up,z); keelR=(0.04*k,-0.14+up,z); tail=(0,-0.24+up,z)
         pieces.append(([nose,left,keelL], nor, WING_R if mirror else WING_L, 'decal'))

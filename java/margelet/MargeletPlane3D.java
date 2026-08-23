@@ -45,8 +45,8 @@ public class MargeletPlane3D extends View {
     private static final float CAM_Z = 3.4f;
     private static final float TILT = -10f;
 
-    private static final int GREEN = 0xFF8DD1B0;
-    private static final int GREEN_SIDE = 0xFF7BC0A0;
+    /** Цвет поля по умолчанию — тот же, что у иконки приложения. */
+    private static final int FIELD = 0xFF8DD1B0;
     private static final int WING_LEFT = 0xFFFFFFFF;
     private static final int WING_RIGHT = 0xFFEEF3FA;
     private static final int KEEL = 0xFFCCD5E9;
@@ -69,6 +69,8 @@ public class MargeletPlane3D extends View {
         }
     }
 
+    private final int field;
+    private final int side;
     private final ArrayList<Piece> pieces = new ArrayList<>();
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path path = new Path();
@@ -80,7 +82,18 @@ public class MargeletPlane3D extends View {
     private boolean dragging;
 
     public MargeletPlane3D(Context context) {
+        this(context, FIELD);
+    }
+
+    /**
+     * Цвет поля задаётся снаружи: значков в форке несколько и они разного
+     * цвета. Рёбра берутся от него же — на восьмую часть темнее, иначе
+     * толщина сливается с лицевой гранью.
+     */
+    public MargeletPlane3D(Context context, int color) {
         super(context);
+        field = color;
+        side = darker(color);
         // Заливка со швом в полпикселя: соседние грани одного цвета иначе
         // расходятся волоском от сглаживания.
         paint.setStyle(Paint.Style.FILL_AND_STROKE);
@@ -145,8 +158,8 @@ public class MargeletPlane3D extends View {
             front[i] = new float[]{p[0], p[1], HALF_DEPTH};
             back[n - 1 - i] = new float[]{p[0], p[1], -HALF_DEPTH};
         }
-        pieces.add(new Piece(front, new float[]{0, 0, 1}, GREEN, false));
-        pieces.add(new Piece(back, new float[]{0, 0, -1}, GREEN, false));
+        pieces.add(new Piece(front, new float[]{0, 0, 1}, field, false));
+        pieces.add(new Piece(back, new float[]{0, 0, -1}, field, false));
 
         // Рёбра: по четырёхугольнику на отрезок контура. Своя нормаль наружу —
         // она и делает толщину видимой.
@@ -164,7 +177,7 @@ public class MargeletPlane3D extends View {
                     {p2[0], p2[1], HALF_DEPTH},
                     {p2[0], p2[1], -HALF_DEPTH},
                     {p1[0], p1[1], -HALF_DEPTH}
-            }, normal, GREEN_SIDE, false));
+            }, normal, side, false));
         }
 
         // Самолётик на обеих гранях, приподнятый над поверхностью.
@@ -172,10 +185,19 @@ public class MargeletPlane3D extends View {
         addPlane(-HALF_DEPTH - 0.004f, new float[]{0, 0, -1}, true);
     }
 
-    /** Те же пропорции, что у плоской иконки: подъём центра на три процента. */
+    /**
+     * Пропорции самолёта — от плоской иконки, а вот подъём другой.
+     *
+     * На плоском знаке центр самолёта поднят на три процента: вся его масса
+     * внизу, в развале крыльев, и посаженный по геометрическому центру он
+     * выглядит съехавшим. В объёме тот же подъём читается как «слишком
+     * высоко» — так и сказал владелец. Здесь самолёт сидит чуть ниже
+     * геометрического центра; я отрисовал четыре варианта подъёма и выбрал
+     * тот, что смотрится ровно (tools/plane3d_check.py).
+     */
     private void addPlane(float z, float[] normal, boolean mirror) {
         final float k = mirror ? -1f : 1f;
-        final float up = 0.06f;
+        final float up = -0.01f;
         final float[] nose = {0f, 0.56f + up, z};
         final float[] left = {-0.52f * k, -0.30f + up, z};
         final float[] right = {0.52f * k, -0.30f + up, z};
@@ -281,6 +303,14 @@ public class MargeletPlane3D extends View {
                 clamp(Color.red(color) * light),
                 clamp(Color.green(color) * light),
                 clamp(Color.blue(color) * light));
+    }
+
+    /** Тот же цвет на восьмую часть темнее — для рёбер. */
+    private static int darker(int color) {
+        return Color.argb(Color.alpha(color),
+                clamp(Color.red(color) * 0.877f),
+                clamp(Color.green(color) * 0.877f),
+                clamp(Color.blue(color) * 0.877f));
     }
 
     private static int clamp(float value) {
