@@ -138,6 +138,18 @@ public class MargeletConfig {
         prefs().edit().putInt("badge_preview", index).apply();
     }
 
+    /**
+     * Дописывать ли строку со ссылкой на форк в свои оформленные сообщения.
+     * По умолчанию да: форк живёт тем, что о нём узнают.
+     */
+    public static boolean watermarkOnSend() {
+        return prefs().getBoolean("watermark_send", true);
+    }
+
+    public static void setWatermarkOnSend(boolean on) {
+        prefs().edit().putBoolean("watermark_send", on).apply();
+    }
+
     /** Премиум-значки без премиума: видны только в форке. */
     public static boolean freeEmoji() {
         return prefs().getBoolean("free_emoji", true);

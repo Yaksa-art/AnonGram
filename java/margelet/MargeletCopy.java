@@ -170,6 +170,10 @@ public class MargeletCopy {
             kind = "code"; token = "`";
         } else if (entity instanceof TLRPC.TL_messageEntityPre) {
             kind = "code"; token = "```";
+        } else if (entity instanceof TLRPC.TL_messageEntityBlockquote) {
+            final boolean collapsed = ((TLRPC.TL_messageEntityBlockquote) entity).collapsed;
+            kind = collapsed ? "quote_collapsed" : "quote";
+            token = collapsed ? ">>>" : ">>";
         } else {
             return null;
         }
@@ -178,19 +182,19 @@ public class MargeletCopy {
         return org.telegram.margelet.MargeletConfig.markdownEnabled(kind) ? token : null;
     }
 
-    /** Знак цитаты для набора видов, действующих на этом отрезке. */
-    private static String quoteToken(java.util.List<TLRPC.MessageEntity> active) {
-        for (TLRPC.MessageEntity entity : active) {
-            if (entity instanceof TLRPC.TL_messageEntityBlockquote) {
-                final boolean collapsed = ((TLRPC.TL_messageEntityBlockquote) entity).collapsed;
-                final String kind = collapsed ? "quote_collapsed" : "quote";
-                if (!org.telegram.margelet.MargeletConfig.markdownEnabled(kind)) {
-                    return null;
-                }
-                return collapsed ? ">>" : ">";
-            }
+    /**
+     * Закрывающий знак. У всех он совпадает с открывающим, у цитаты — зеркальный:
+     * «больше» открывает, «меньше» закрывает.
+     */
+    private static String closeToken(TLRPC.MessageEntity entity) {
+        final String open = token(entity);
+        if (open == null) {
+            return null;
         }
-        return null;
+        if (entity instanceof TLRPC.TL_messageEntityBlockquote) {
+            return open.replace('>', '<');
+        }
+        return open;
     }
 
     /** То же разрезание по границам, что и в HTML, только значками телеграма. */
@@ -204,8 +208,7 @@ public class MargeletCopy {
         bounds.add(text.length());
         if (entities != null) {
             for (TLRPC.MessageEntity entity : entities) {
-                final boolean quote = entity instanceof TLRPC.TL_messageEntityBlockquote;
-                if ((token(entity) != null || quote) && entity.offset >= 0 && entity.length > 0
+                if (token(entity) != null && entity.offset >= 0 && entity.length > 0
                         && entity.offset + entity.length <= text.length()) {
                     usable.add(entity);
                     bounds.add(entity.offset);
@@ -236,7 +239,7 @@ public class MargeletCopy {
                 same++;
             }
             while (stack.size() > same) {
-                final String close = token(stack.remove(stack.size() - 1));
+                final String close = closeToken(stack.remove(stack.size() - 1));
                 if (close != null) {
                     out.append(close);
                 }
@@ -248,19 +251,10 @@ public class MargeletCopy {
                 }
                 stack.add(want.get(i));
             }
-            // Цитата помечается не обёрткой, а знаком в начале каждой своей
-            // строки — как её пишут руками. Поэтому её и не было в копии:
-            // подчёркивание оборачивается, а цитата так не умеет.
-            final String quote = quoteToken(want);
-            for (int i = from; i < to; i++) {
-                if (quote != null && (out.length() == 0 || out.charAt(out.length() - 1) == '\n')) {
-                    out.append(quote);
-                }
-                out.append(text.charAt(i));
-            }
+            out.append(text, from, to);
         }
         while (!stack.isEmpty()) {
-            final String close = token(stack.remove(stack.size() - 1));
+            final String close = closeToken(stack.remove(stack.size() - 1));
             if (close != null) {
                 out.append(close);
             }

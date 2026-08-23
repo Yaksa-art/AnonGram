@@ -384,7 +384,59 @@ public class MargeletMarkup {
         }
         // Заголовок стоит в конце, а не в начале: из начала он лезет в
         // уведомления и в список чатов, где от сообщения видна одна строка.
+        // Его можно выключить — но выключается он с просьбой, а не молча:
+        // просьба честная, а решение всё равно за человеком.
+        if (!MargeletConfig.watermarkOnSend()) {
+            return out;
+        }
         return out.append("\n").append(HEADER);
+    }
+
+    /**
+     * Дописывает кнопки в список разметки сообщения обычной ссылкой телеграма.
+     *
+     * Три раза подряд я пытался сделать нажимаемую кнопку своей разметкой — и
+     * три раза не угадал, почему она не нажимается. Плашка при этом рисовалась,
+     * то есть до сообщения всё доходило; мёртвой была именно ссылочная часть.
+     *
+     * Поэтому теперь ссылку не делаю я. Я лишь дописываю в список разметки
+     * обычную «ссылку с текстом», а дальше телеграм строит её сам — тем же
+     * кодом, которым строит любую ссылку в любом сообщении. Если она не
+     * нажмётся, значит не нажимаются вообще все ссылки.
+     *
+     * Вызывается до разбора разметки, поэтому дописанное успевает попасть в
+     * обработку. Повторный вызов на том же сообщении ничего не удваивает.
+     */
+    public static void injectEntities(CharSequence text, java.util.ArrayList<org.telegram.tgnet.TLRPC.MessageEntity> entities) {
+        if (text == null || entities == null || !has(text)) {
+            return;
+        }
+        for (Run run : parse(text)) {
+            if (run.kind != KIND_BUTTON || !MargeletConfig.markupEnabled(KIND_BUTTON)) {
+                continue;
+            }
+            final String url = run.text();
+            if (url.isEmpty()) {
+                continue;
+            }
+            boolean already = false;
+            for (org.telegram.tgnet.TLRPC.MessageEntity entity : entities) {
+                if (entity instanceof org.telegram.tgnet.TLRPC.TL_messageEntityTextUrl
+                        && entity.offset == run.start && entity.length == run.end - run.start) {
+                    already = true;
+                    break;
+                }
+            }
+            if (already) {
+                continue;
+            }
+            final org.telegram.tgnet.TLRPC.TL_messageEntityTextUrl link =
+                    new org.telegram.tgnet.TLRPC.TL_messageEntityTextUrl();
+            link.offset = run.start;
+            link.length = run.end - run.start;
+            link.url = url;
+            entities.add(link);
+        }
     }
 
     /** Вешает оформление по меткам. Текст не меняется, меняется только вид. */
@@ -400,28 +452,6 @@ public class MargeletMarkup {
                 final String url = run.text();
                 text.setSpan(new MargeletSpans.Button(run.value, url),
                         run.start, run.end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-                if (!url.isEmpty()) {
-                    // Нажатие отдаём обычной ссылочной разметке: её телеграм
-                    // ловит сам, своя обработка тут была бы лишней.
-                    //
-                    // Границы ВКЛЮЧАЮЩИЕ, и это не мелочь. Телеграм ищет
-                    // разметку под пальцем так: считает позицию буквы под
-                    // нажатием и спрашивает разметку в этой точке. Но кнопка
-                    // рисуется одним куском, и позиция всегда получается ровно
-                    // на её краю — а разметку с исключающими краями в её
-                    // собственных краях не находят. Кнопка рисовалась и не
-                    // нажималась вовсе; владелец сказал «ей похуй», и был прав.
-                    //
-                    // Разметка ровно та же, какой телеграм делает обычные
-                    // ссылки в сообщениях, и с тем же вторым доводом —
-                    // описанием стиля. Сначала я позвал упрощённый вид без
-                    // него; в телеграме такой не создаётся нигде, и нажатие не
-                    // срабатывало. Делать «похоже» там, где рядом лежит рабочий
-                    // образец, — плохая идея.
-                    text.setSpan(new org.telegram.ui.Components.URLSpanBrowser(url,
-                                    new org.telegram.ui.Components.TextStyleSpan.TextStyleRun()),
-                            run.start, run.end, Spanned.SPAN_INCLUSIVE_INCLUSIVE);
-                }
                 continue;
             }
             if (run.kind == KIND_EMOJI) {

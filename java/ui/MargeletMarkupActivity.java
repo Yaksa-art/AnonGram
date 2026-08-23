@@ -28,6 +28,7 @@ public class MargeletMarkupActivity extends UniversalFragment {
     private static final int ID_BUTTON = 6;
     private static final int ID_EMOJI = 7;
     private static final int ID_MARKDOWN = 8;
+    private static final int ID_WATERMARK_SEND = 9;
 
     @Override
     protected CharSequence getTitle() {
@@ -58,6 +59,9 @@ public class MargeletMarkupActivity extends UniversalFragment {
         items.add(UItem.asButton(ID_MARKDOWN, LocaleController.getString(R.string.MargeletMarkdown),
                 LocaleController.getString(R.string.MargeletMarkdownInfo)));
         items.add(UItem.asShadow(null));
+        items.add(UItem.asCheck(ID_WATERMARK_SEND, LocaleController.getString(R.string.MargeletWatermarkSend))
+                .setChecked(MargeletConfig.watermarkOnSend()));
+        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletWatermarkSendAbout)));
         items.add(UItem.asCheck(ID_WATERMARKS, LocaleController.getString(R.string.MargeletWatermarks))
                 .setChecked(MargeletConfig.showWatermarks()));
         items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletWatermarksAbout)));
@@ -68,6 +72,26 @@ public class MargeletMarkupActivity extends UniversalFragment {
 
     @Override
     protected void onClick(UItem item, View view, int position, float x, float y) {
+        if (item.id == ID_WATERMARK_SEND) {
+            if (!MargeletConfig.watermarkOnSend()) {
+                MargeletConfig.setWatermarkOnSend(true);
+                listView.adapter.update(true);
+                return;
+            }
+            // Выключение — через просьбу. Не запрет и не уговоры по кругу:
+            // один экран, где сказано, зачем это форку, и кнопка «всё равно
+            // выключить». Решение остаётся за человеком.
+            new org.telegram.ui.ActionBar.AlertDialog.Builder(getContext())
+                    .setTitle(LocaleController.getString(R.string.MargeletWatermarkAskTitle))
+                    .setMessage(LocaleController.getString(R.string.MargeletWatermarkAskText))
+                    .setPositiveButton(LocaleController.getString(R.string.MargeletWatermarkKeep), null)
+                    .setNegativeButton(LocaleController.getString(R.string.MargeletWatermarkOff), (d, w) -> {
+                        MargeletConfig.setWatermarkOnSend(false);
+                        listView.adapter.update(true);
+                    })
+                    .show();
+            return;
+        }
         if (item.id == ID_WATERMARKS) {
             MargeletConfig.setShowWatermarks(!MargeletConfig.showWatermarks());
         } else if (item.id == ID_COPY) {

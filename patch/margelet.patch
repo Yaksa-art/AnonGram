@@ -424,10 +424,10 @@ index 00000000..3c8132c5
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
 new file mode 100644
-index 00000000..d1b68e82
+index 00000000..531622a3
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
-@@ -0,0 +1,292 @@
+@@ -0,0 +1,304 @@
 +package org.telegram.margelet;
 +
 +import android.content.Context;
@@ -566,6 +566,18 @@ index 00000000..d1b68e82
 +
 +    public static void setBadgePreview(int index) {
 +        prefs().edit().putInt("badge_preview", index).apply();
++    }
++
++    /**
++     * Дописывать ли строку со ссылкой на форк в свои оформленные сообщения.
++     * По умолчанию да: форк живёт тем, что о нём узнают.
++     */
++    public static boolean watermarkOnSend() {
++        return prefs().getBoolean("watermark_send", true);
++    }
++
++    public static void setWatermarkOnSend(boolean on) {
++        prefs().edit().putBoolean("watermark_send", on).apply();
 +    }
 +
 +    /** Премиум-значки без премиума: видны только в форке. */
@@ -722,10 +734,10 @@ index 00000000..d1b68e82
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletCopy.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletCopy.java
 new file mode 100644
-index 00000000..53fe0a3c
+index 00000000..49188575
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletCopy.java
-@@ -0,0 +1,294 @@
+@@ -0,0 +1,288 @@
 +package org.telegram.margelet;
 +
 +import android.text.TextUtils;
@@ -898,6 +910,10 @@ index 00000000..53fe0a3c
 +            kind = "code"; token = "`";
 +        } else if (entity instanceof TLRPC.TL_messageEntityPre) {
 +            kind = "code"; token = "```";
++        } else if (entity instanceof TLRPC.TL_messageEntityBlockquote) {
++            final boolean collapsed = ((TLRPC.TL_messageEntityBlockquote) entity).collapsed;
++            kind = collapsed ? "quote_collapsed" : "quote";
++            token = collapsed ? ">>>" : ">>";
 +        } else {
 +            return null;
 +        }
@@ -906,19 +922,19 @@ index 00000000..53fe0a3c
 +        return org.telegram.margelet.MargeletConfig.markdownEnabled(kind) ? token : null;
 +    }
 +
-+    /** Знак цитаты для набора видов, действующих на этом отрезке. */
-+    private static String quoteToken(java.util.List<TLRPC.MessageEntity> active) {
-+        for (TLRPC.MessageEntity entity : active) {
-+            if (entity instanceof TLRPC.TL_messageEntityBlockquote) {
-+                final boolean collapsed = ((TLRPC.TL_messageEntityBlockquote) entity).collapsed;
-+                final String kind = collapsed ? "quote_collapsed" : "quote";
-+                if (!org.telegram.margelet.MargeletConfig.markdownEnabled(kind)) {
-+                    return null;
-+                }
-+                return collapsed ? ">>" : ">";
-+            }
++    /**
++     * Закрывающий знак. У всех он совпадает с открывающим, у цитаты — зеркальный:
++     * «больше» открывает, «меньше» закрывает.
++     */
++    private static String closeToken(TLRPC.MessageEntity entity) {
++        final String open = token(entity);
++        if (open == null) {
++            return null;
 +        }
-+        return null;
++        if (entity instanceof TLRPC.TL_messageEntityBlockquote) {
++            return open.replace('>', '<');
++        }
++        return open;
 +    }
 +
 +    /** То же разрезание по границам, что и в HTML, только значками телеграма. */
@@ -932,8 +948,7 @@ index 00000000..53fe0a3c
 +        bounds.add(text.length());
 +        if (entities != null) {
 +            for (TLRPC.MessageEntity entity : entities) {
-+                final boolean quote = entity instanceof TLRPC.TL_messageEntityBlockquote;
-+                if ((token(entity) != null || quote) && entity.offset >= 0 && entity.length > 0
++                if (token(entity) != null && entity.offset >= 0 && entity.length > 0
 +                        && entity.offset + entity.length <= text.length()) {
 +                    usable.add(entity);
 +                    bounds.add(entity.offset);
@@ -964,7 +979,7 @@ index 00000000..53fe0a3c
 +                same++;
 +            }
 +            while (stack.size() > same) {
-+                final String close = token(stack.remove(stack.size() - 1));
++                final String close = closeToken(stack.remove(stack.size() - 1));
 +                if (close != null) {
 +                    out.append(close);
 +                }
@@ -976,19 +991,10 @@ index 00000000..53fe0a3c
 +                }
 +                stack.add(want.get(i));
 +            }
-+            // Цитата помечается не обёрткой, а знаком в начале каждой своей
-+            // строки — как её пишут руками. Поэтому её и не было в копии:
-+            // подчёркивание оборачивается, а цитата так не умеет.
-+            final String quote = quoteToken(want);
-+            for (int i = from; i < to; i++) {
-+                if (quote != null && (out.length() == 0 || out.charAt(out.length() - 1) == '\n')) {
-+                    out.append(quote);
-+                }
-+                out.append(text.charAt(i));
-+            }
++            out.append(text, from, to);
 +        }
 +        while (!stack.isEmpty()) {
-+            final String close = token(stack.remove(stack.size() - 1));
++            final String close = closeToken(stack.remove(stack.size() - 1));
 +            if (close != null) {
 +                out.append(close);
 +            }
@@ -1217,10 +1223,10 @@ index 00000000..33ff716b
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletMarkup.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletMarkup.java
 new file mode 100644
-index 00000000..5b7b7ff8
+index 00000000..694f949c
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletMarkup.java
-@@ -0,0 +1,519 @@
+@@ -0,0 +1,549 @@
 +package org.telegram.margelet;
 +
 +import android.text.Spannable;
@@ -1607,7 +1613,59 @@ index 00000000..5b7b7ff8
 +        }
 +        // Заголовок стоит в конце, а не в начале: из начала он лезет в
 +        // уведомления и в список чатов, где от сообщения видна одна строка.
++        // Его можно выключить — но выключается он с просьбой, а не молча:
++        // просьба честная, а решение всё равно за человеком.
++        if (!MargeletConfig.watermarkOnSend()) {
++            return out;
++        }
 +        return out.append("\n").append(HEADER);
++    }
++
++    /**
++     * Дописывает кнопки в список разметки сообщения обычной ссылкой телеграма.
++     *
++     * Три раза подряд я пытался сделать нажимаемую кнопку своей разметкой — и
++     * три раза не угадал, почему она не нажимается. Плашка при этом рисовалась,
++     * то есть до сообщения всё доходило; мёртвой была именно ссылочная часть.
++     *
++     * Поэтому теперь ссылку не делаю я. Я лишь дописываю в список разметки
++     * обычную «ссылку с текстом», а дальше телеграм строит её сам — тем же
++     * кодом, которым строит любую ссылку в любом сообщении. Если она не
++     * нажмётся, значит не нажимаются вообще все ссылки.
++     *
++     * Вызывается до разбора разметки, поэтому дописанное успевает попасть в
++     * обработку. Повторный вызов на том же сообщении ничего не удваивает.
++     */
++    public static void injectEntities(CharSequence text, java.util.ArrayList<org.telegram.tgnet.TLRPC.MessageEntity> entities) {
++        if (text == null || entities == null || !has(text)) {
++            return;
++        }
++        for (Run run : parse(text)) {
++            if (run.kind != KIND_BUTTON || !MargeletConfig.markupEnabled(KIND_BUTTON)) {
++                continue;
++            }
++            final String url = run.text();
++            if (url.isEmpty()) {
++                continue;
++            }
++            boolean already = false;
++            for (org.telegram.tgnet.TLRPC.MessageEntity entity : entities) {
++                if (entity instanceof org.telegram.tgnet.TLRPC.TL_messageEntityTextUrl
++                        && entity.offset == run.start && entity.length == run.end - run.start) {
++                    already = true;
++                    break;
++                }
++            }
++            if (already) {
++                continue;
++            }
++            final org.telegram.tgnet.TLRPC.TL_messageEntityTextUrl link =
++                    new org.telegram.tgnet.TLRPC.TL_messageEntityTextUrl();
++            link.offset = run.start;
++            link.length = run.end - run.start;
++            link.url = url;
++            entities.add(link);
++        }
 +    }
 +
 +    /** Вешает оформление по меткам. Текст не меняется, меняется только вид. */
@@ -1623,28 +1681,6 @@ index 00000000..5b7b7ff8
 +                final String url = run.text();
 +                text.setSpan(new MargeletSpans.Button(run.value, url),
 +                        run.start, run.end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-+                if (!url.isEmpty()) {
-+                    // Нажатие отдаём обычной ссылочной разметке: её телеграм
-+                    // ловит сам, своя обработка тут была бы лишней.
-+                    //
-+                    // Границы ВКЛЮЧАЮЩИЕ, и это не мелочь. Телеграм ищет
-+                    // разметку под пальцем так: считает позицию буквы под
-+                    // нажатием и спрашивает разметку в этой точке. Но кнопка
-+                    // рисуется одним куском, и позиция всегда получается ровно
-+                    // на её краю — а разметку с исключающими краями в её
-+                    // собственных краях не находят. Кнопка рисовалась и не
-+                    // нажималась вовсе; владелец сказал «ей похуй», и был прав.
-+                    //
-+                    // Разметка ровно та же, какой телеграм делает обычные
-+                    // ссылки в сообщениях, и с тем же вторым доводом —
-+                    // описанием стиля. Сначала я позвал упрощённый вид без
-+                    // него; в телеграме такой не создаётся нигде, и нажатие не
-+                    // срабатывало. Делать «похоже» там, где рядом лежит рабочий
-+                    // образец, — плохая идея.
-+                    text.setSpan(new org.telegram.ui.Components.URLSpanBrowser(url,
-+                                    new org.telegram.ui.Components.TextStyleSpan.TextStyleRun()),
-+                            run.start, run.end, Spanned.SPAN_INCLUSIVE_INCLUSIVE);
-+                }
 +                continue;
 +            }
 +            if (run.kind == KIND_EMOJI) {
@@ -3201,7 +3237,7 @@ index df646cf4..b25e5001 100644
  
      public static String getServerString(String key) {
 diff --git a/TMessagesProj/src/main/java/org/telegram/messenger/MediaDataController.java b/TMessagesProj/src/main/java/org/telegram/messenger/MediaDataController.java
-index 95495c32..a410f55c 100644
+index 95495c32..3076edb7 100644
 --- a/TMessagesProj/src/main/java/org/telegram/messenger/MediaDataController.java
 +++ b/TMessagesProj/src/main/java/org/telegram/messenger/MediaDataController.java
 @@ -129,6 +129,12 @@ public class MediaDataController extends BaseController {
@@ -3212,12 +3248,12 @@ index 95495c32..a410f55c 100644
 +    // строке целиком, поэтому режим многострочный, а свёрнутая идёт первой —
 +    // иначе одиночная «>» съест начало двойной.
 +    private static Pattern UNDERLINE_PATTERN = Pattern.compile("\\+\\+(.+?)\\+\\+"),
-+            QUOTE_COLLAPSED_PATTERN = Pattern.compile("(?m)^>>(.+)$"),
-+            QUOTE_PATTERN = Pattern.compile("(?m)^>(.+)$");
++            QUOTE_COLLAPSED_PATTERN = Pattern.compile(">>>([\\s\\S]+?)<<<"),
++            QUOTE_PATTERN = Pattern.compile(">>([\\s\\S]+?)<<");
  
      public static String SHORTCUT_CATEGORY = "org.telegram.messenger.SHORTCUT_SHARE";
  
-@@ -7490,12 +7496,38 @@ public class MediaDataController extends BaseController {
+@@ -7490,12 +7496,44 @@ public class MediaDataController extends BaseController {
          CharSequence cs = message[0];
          if (entities == null) entities = new ArrayList<>();
          if (parseMarkdown) {
@@ -3243,6 +3279,12 @@ index 95495c32..a410f55c 100644
 +            // Своё: подчёркивание и цитаты. В телеграме значков для них нет,
 +            // поэтому и разбирает их только форк — у остальных останутся
 +            // плюсы и «больше».
++            //
++            // У цитаты знак стоит и в начале, и в конце. Сначала я сделал по
++            // образцу почты — знак в начале каждой строки, — и получилось
++            // плохо: при копировании многострочная цитата рассыпалась на
++            // строки с повторяющимся знаком, а конца у неё не было вовсе.
++            // Владелец сразу предложил правильное: пусть будет начало и конец.
 +            if (org.telegram.margelet.MargeletConfig.markdownEnabled("underline")) {
 +                cs = parsePattern(cs, UNDERLINE_PATTERN, entities, obj -> new TLRPC.TL_messageEntityUnderline());
 +            }
@@ -3261,16 +3303,20 @@ index 95495c32..a410f55c 100644
  
          // trim again in case some whitespace inside tags
 diff --git a/TMessagesProj/src/main/java/org/telegram/messenger/MessageObject.java b/TMessagesProj/src/main/java/org/telegram/messenger/MessageObject.java
-index 77870805..18122c76 100644
+index 77870805..9cd3bc0f 100644
 --- a/TMessagesProj/src/main/java/org/telegram/messenger/MessageObject.java
 +++ b/TMessagesProj/src/main/java/org/telegram/messenger/MessageObject.java
-@@ -8053,6 +8053,10 @@ public class MessageObject {
+@@ -8053,6 +8053,14 @@ public class MessageObject {
          }
          text = FormattedDateSpan.restoreFormatedDateEntities(text);
          Spannable spannable = (Spannable) text;
 +        // Своё оформление форка: метки лежат в самом тексте невидимыми
 +        // знаками. Разбираем до раннего выхода ниже — сообщение может быть
 +        // оформлено только по-нашему, без единой телеграмовской разметки.
++        //
++        // Кнопки дописываются в СПИСОК разметки до его обработки: ссылку тогда
++        // строит сам телеграм, своим обычным кодом, а не я своим.
++        org.telegram.margelet.MargeletMarkup.injectEntities(text, entities);
 +        org.telegram.margelet.MargeletMarkup.apply(spannable);
          URLSpan[] spans = spannable.getSpans(0, text.length(), URLSpan.class);
          boolean hasUrls = spans != null && spans.length > 0;
@@ -4435,10 +4481,10 @@ index 00000000..521ac98c
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletMarkupActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletMarkupActivity.java
 new file mode 100644
-index 00000000..ad2e08de
+index 00000000..ed593031
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletMarkupActivity.java
-@@ -0,0 +1,96 @@
+@@ -0,0 +1,120 @@
 +package org.telegram.ui;
 +
 +import android.view.View;
@@ -4469,6 +4515,7 @@ index 00000000..ad2e08de
 +    private static final int ID_BUTTON = 6;
 +    private static final int ID_EMOJI = 7;
 +    private static final int ID_MARKDOWN = 8;
++    private static final int ID_WATERMARK_SEND = 9;
 +
 +    @Override
 +    protected CharSequence getTitle() {
@@ -4499,6 +4546,9 @@ index 00000000..ad2e08de
 +        items.add(UItem.asButton(ID_MARKDOWN, LocaleController.getString(R.string.MargeletMarkdown),
 +                LocaleController.getString(R.string.MargeletMarkdownInfo)));
 +        items.add(UItem.asShadow(null));
++        items.add(UItem.asCheck(ID_WATERMARK_SEND, LocaleController.getString(R.string.MargeletWatermarkSend))
++                .setChecked(MargeletConfig.watermarkOnSend()));
++        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletWatermarkSendAbout)));
 +        items.add(UItem.asCheck(ID_WATERMARKS, LocaleController.getString(R.string.MargeletWatermarks))
 +                .setChecked(MargeletConfig.showWatermarks()));
 +        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletWatermarksAbout)));
@@ -4509,6 +4559,26 @@ index 00000000..ad2e08de
 +
 +    @Override
 +    protected void onClick(UItem item, View view, int position, float x, float y) {
++        if (item.id == ID_WATERMARK_SEND) {
++            if (!MargeletConfig.watermarkOnSend()) {
++                MargeletConfig.setWatermarkOnSend(true);
++                listView.adapter.update(true);
++                return;
++            }
++            // Выключение — через просьбу. Не запрет и не уговоры по кругу:
++            // один экран, где сказано, зачем это форку, и кнопка «всё равно
++            // выключить». Решение остаётся за человеком.
++            new org.telegram.ui.ActionBar.AlertDialog.Builder(getContext())
++                    .setTitle(LocaleController.getString(R.string.MargeletWatermarkAskTitle))
++                    .setMessage(LocaleController.getString(R.string.MargeletWatermarkAskText))
++                    .setPositiveButton(LocaleController.getString(R.string.MargeletWatermarkKeep), null)
++                    .setNegativeButton(LocaleController.getString(R.string.MargeletWatermarkOff), (d, w) -> {
++                        MargeletConfig.setWatermarkOnSend(false);
++                        listView.adapter.update(true);
++                    })
++                    .show();
++            return;
++        }
 +        if (item.id == ID_WATERMARKS) {
 +            MargeletConfig.setShowWatermarks(!MargeletConfig.showWatermarks());
 +        } else if (item.id == ID_COPY) {
@@ -14193,7 +14263,7 @@ index 03d0ba33..17f98fa6 100644
      <string name="English">Inglês</string>
      <string name="LanguageNameInEnglish">Portuguese (Brazil)</string>
 diff --git a/TMessagesProj/src/main/res/values-ru/strings.xml b/TMessagesProj/src/main/res/values-ru/strings.xml
-index 24c56292..538d93c2 100644
+index 24c56292..765620b7 100644
 --- a/TMessagesProj/src/main/res/values-ru/strings.xml
 +++ b/TMessagesProj/src/main/res/values-ru/strings.xml
 @@ -1,7 +1,7 @@
@@ -14206,7 +14276,7 @@ index 24c56292..538d93c2 100644
      <string name="LanguageName">Русский</string>
      <string name="English">Английский</string>
      <string name="LanguageNameInEnglish">Russian</string>
-@@ -263,4 +263,124 @@
+@@ -263,4 +263,130 @@
      <string name="RemindTodayAt">\'Отправить сегодня в\' HH:mm</string>
      <string name="RemindDayAt">\'Отправить\' d MMM \'в\' HH:mm</string>
      <string name="RemindDayYearAt">\'Напомнить\' d MMM yyyy \'в\' HH:mm</string>
@@ -14311,6 +14381,12 @@ index 24c56292..538d93c2 100644
 +    <string name="MargeletMarkupInfo">Своё оформление текста</string>
 +    <string name="MargeletMarkupAbout">Что показывать в чужих сообщениях. Отправлять можно в любом случае.</string>
 +    <string name="MargeletWatermarks">Показывать ватермарки</string>
++    <string name="MargeletWatermarkSend">Ставить ватермарку</string>
++    <string name="MargeletWatermarkSendAbout">Строка со ссылкой на форк в конце своих оформленных сообщений.</string>
++    <string name="MargeletWatermarkAskTitle">Просьба</string>
++    <string name="MargeletWatermarkAskText">Margelet — начинающий проект, и узнают о нём в основном по этой строке. Автор просит её оставить.\n\nНо это ваше сообщение и ваше решение.</string>
++    <string name="MargeletWatermarkKeep">Оставлю</string>
++    <string name="MargeletWatermarkOff">Всё равно выключить</string>
 +    <string name="MargeletWatermarksAbout">Строка со ссылкой на форк в конце оформленных сообщений. Её видят те, у кого форка нет.</string>
 +    <string name="MargeletCopyFormatted">Копировать с оформлением</string>
 +    <string name="MargeletCopyFormattedAbout">Пункт в меню сообщения. Обычное копирование кладёт голый текст, этот — с жирным, курсивом, ссылками и нашим оформлением.</string>
@@ -14362,7 +14438,7 @@ index cc49d135..1a5c2cf8 100644
      <item name="menu_regular" type="id"/>
      <item name="menu_bold" type="id"/>
 diff --git a/TMessagesProj/src/main/res/values/strings.xml b/TMessagesProj/src/main/res/values/strings.xml
-index ffa4d566..b57bd87c 100644
+index ffa4d566..1c8daf88 100644
 --- a/TMessagesProj/src/main/res/values/strings.xml
 +++ b/TMessagesProj/src/main/res/values/strings.xml
 @@ -1,7 +1,7 @@
@@ -14375,7 +14451,7 @@ index ffa4d566..b57bd87c 100644
      <string name="LanguageName">English</string>
      <string name="English">English</string>
      <string name="LanguageNameInEnglish">English</string>
-@@ -11221,4 +11221,124 @@
+@@ -11221,4 +11221,130 @@
      <string name="UnsupportedMessageTitle">Unsupported Message</string>
      <string name="UnsupportedMessageMessage">Update Telegram to view this message</string>
      <string name="UnsupportedUpdate">Update</string>
@@ -14480,6 +14556,12 @@ index ffa4d566..b57bd87c 100644
 +    <string name="MargeletMarkupInfo">Text formatting of the fork</string>
 +    <string name="MargeletMarkupAbout">What to show in other people\u0027s messages. Sending is always allowed.</string>
 +    <string name="MargeletWatermarks">Show watermarks</string>
++    <string name="MargeletWatermarkSend">Add the watermark</string>
++    <string name="MargeletWatermarkSendAbout">The line linking to the fork at the end of your formatted messages.</string>
++    <string name="MargeletWatermarkAskTitle">A request</string>
++    <string name="MargeletWatermarkAskText">Margelet is a young project, and that line is mostly how people hear about it. The author asks you to keep it.\n\nBut it is your message and your call.</string>
++    <string name="MargeletWatermarkKeep">I will keep it</string>
++    <string name="MargeletWatermarkOff">Turn it off anyway</string>
 +    <string name="MargeletWatermarksAbout">The line linking to the fork at the end of formatted messages. People without the fork see it.</string>
 +    <string name="MargeletCopyFormatted">Copy with formatting</string>
 +    <string name="MargeletCopyFormattedAbout">An item in the message menu. A plain copy gives bare text, this one keeps bold, italics, links and our own formatting.</string>
