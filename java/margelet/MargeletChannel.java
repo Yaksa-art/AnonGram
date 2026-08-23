@@ -31,7 +31,7 @@ public class MargeletChannel {
     public static final long DIALOG_ID = -CHANNEL_ID;
 
     private static TLRPC.TL_dialog own;
-    private static boolean asked;
+    private static long askedAt;
 
     /**
      * Список чатов с каналом форка первой строкой.
@@ -75,11 +75,23 @@ public class MargeletChannel {
     private static boolean load(int account) {
         final MessagesController controller = MessagesController.getInstance(account);
         if (controller.getChat(CHANNEL_ID) == null) {
-            if (!asked) {
-                asked = true;
+            // Спрашиваем не один раз навсегда, а не чаще раза в десять секунд.
+            //
+            // Первая версия спрашивала однажды — и ломалась ровно там, ради
+            // чего всё затевалось: пока человек подписан, канал и так в
+            // памяти, а стоит выйти — он оттуда пропадает, и единственная
+            // попытка к тому моменту давно потрачена. Строка не появлялась
+            // именно у тех, кому она нужна.
+            final long now = android.os.SystemClock.elapsedRealtime();
+            if (now - askedAt > 10_000L) {
+                askedAt = now;
                 controller.getUserNameResolver().resolve("margeletter", id -> {
-                    // Ответ нам не нужен: важно, что канал после этого лежит
-                    // в памяти приложения и его можно показать.
+                    // Ответ сам по себе не нужен: важно, что канал теперь в
+                    // памяти. Но список уже нарисован без него, и сам себя он
+                    // не пересоберёт — просим перерисовать.
+                    org.telegram.messenger.AndroidUtilities.runOnUIThread(() ->
+                            org.telegram.messenger.NotificationCenter.getInstance(account)
+                                    .postNotificationName(org.telegram.messenger.NotificationCenter.dialogsNeedReload));
                 });
             }
             return false;
