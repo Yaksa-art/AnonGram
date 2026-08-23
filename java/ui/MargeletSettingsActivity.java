@@ -44,6 +44,7 @@ public class MargeletSettingsActivity extends UniversalFragment {
     private static final int ID_DONATE = 11;
     private static final int ID_MARKUP = 12;
     private static final int ID_HELP = 13;
+    private static final int ID_STICKERS = 14;
 
     /** Объёмный значок в шапке. Пользы ноль, и в этом вся мысль. */
     private FrameLayout header;
@@ -96,6 +97,9 @@ public class MargeletSettingsActivity extends UniversalFragment {
                 R.drawable.settings_gift, LocaleController.getString(R.string.MargeletGifts),
                 LocaleController.getString(R.string.MargeletGiftsInfo)));
         items.add(UItem.asShadow(null));
+        items.add(UItem.asCheck(ID_STICKERS, LocaleController.getString(R.string.MargeletStickers))
+                .setChecked(MargeletConfig.stickersEnabled()));
+        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletStickersAbout)));
         items.add(UItem.asCheck(ID_SEIZURE, LocaleController.getString(R.string.MargeletSeizure))
                 .setChecked(MargeletSeizure.enabled()));
         items.add(UItem.asShadow(null));
@@ -147,7 +151,10 @@ public class MargeletSettingsActivity extends UniversalFragment {
 
     @Override
     protected void onClick(UItem item, View view, int position, float x, float y) {
-        if (item.id == ID_MARKUP) {
+        if (item.id == ID_STICKERS) {
+            MargeletConfig.setStickersEnabled(!MargeletConfig.stickersEnabled());
+            listView.adapter.update(true);
+        } else if (item.id == ID_MARKUP) {
             presentFragment(new MargeletMarkupActivity());
         } else if (item.id == ID_DONATE) {
             presentFragment(new MargeletDonateActivity());

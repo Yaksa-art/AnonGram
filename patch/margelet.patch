@@ -424,10 +424,10 @@ index 00000000..3c8132c5
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
 new file mode 100644
-index 00000000..531622a3
+index 00000000..74595e0b
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
-@@ -0,0 +1,304 @@
+@@ -0,0 +1,313 @@
 +package org.telegram.margelet;
 +
 +import android.content.Context;
@@ -578,6 +578,15 @@ index 00000000..531622a3
 +
 +    public static void setWatermarkOnSend(boolean on) {
 +        prefs().edit().putBoolean("watermark_send", on).apply();
++    }
++
++    /** Свой набор стикеров первым в панели. Клиентски, на аккаунт не ставится. */
++    public static boolean stickersEnabled() {
++        return prefs().getBoolean("stickers", true);
++    }
++
++    public static void setStickersEnabled(boolean on) {
++        prefs().edit().putBoolean("stickers", on).apply();
 +    }
 +
 +    /** Премиум-значки без премиума: видны только в форке. */
@@ -2840,6 +2849,87 @@ index 00000000..a85d63c7
 +        }
 +    }
 +}
+diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletStickers.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletStickers.java
+new file mode 100644
+index 00000000..0b24983e
+--- /dev/null
++++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletStickers.java
+@@ -0,0 +1,75 @@
++package org.telegram.margelet;
++
++import org.telegram.tgnet.ConnectionsManager;
++import org.telegram.tgnet.TLRPC;
++
++import java.util.ArrayList;
++
++/**
++ * Свой набор стикеров в панели, первым.
++ *
++ * Клиентски, а не серверно: на аккаунт ничего не ставится, в список
++ * установленных наборов на сервере набор не попадает. Он просто подкладывается
++ * в начало того списка, который панель читает у себя в памяти. Выключил
++ * настройку — исчез, и на аккаунте от него не осталось следа.
++ *
++ * Отдельно скажу, чего тут нет: это самое непроверяемое место за сегодня.
++ * Всё остальное я мог либо посчитать, либо отрисовать, либо расшифровать. А
++ * подкладывание в чужой список проверяется только на живом телефоне.
++ */
++public class MargeletStickers {
++
++    private static final String SHORT_NAME = "MargeletPackMargeletter";
++
++    private static TLRPC.TL_messages_stickerSet loaded;
++    private static boolean loading;
++
++    /** Кладёт набор в начало списка, если он уже загружен. Иначе просит его. */
++    public static void inject(int account, ArrayList<TLRPC.TL_messages_stickerSet> sets) {
++        if (sets == null || !MargeletConfig.stickersEnabled()) {
++            if (sets != null && loaded != null) {
++                sets.remove(loaded);
++            }
++            return;
++        }
++        if (loaded == null) {
++            load(account);
++            return;
++        }
++        final int at = sets.indexOf(loaded);
++        if (at == 0) {
++            return;
++        }
++        if (at > 0) {
++            sets.remove(at);
++        }
++        // Если человек поставил набор себе по-настоящему, второй раз его
++        // подкладывать не надо — просто поднимаем существующий наверх.
++        for (int i = 0; i < sets.size(); i++) {
++            final TLRPC.TL_messages_stickerSet set = sets.get(i);
++            if (set != null && set.set != null && SHORT_NAME.equalsIgnoreCase(set.set.short_name)) {
++                sets.remove(i);
++                sets.add(0, set);
++                return;
++            }
++        }
++        sets.add(0, loaded);
++    }
++
++    private static void load(int account) {
++        if (loading) {
++            return;
++        }
++        loading = true;
++        final TLRPC.TL_messages_getStickerSet req = new TLRPC.TL_messages_getStickerSet();
++        final TLRPC.TL_inputStickerSetShortName name = new TLRPC.TL_inputStickerSetShortName();
++        name.short_name = SHORT_NAME;
++        req.stickerset = name;
++        ConnectionsManager.getInstance(account).sendRequest(req, (response, error) -> {
++            loading = false;
++            if (response instanceof TLRPC.TL_messages_stickerSet) {
++                loaded = (TLRPC.TL_messages_stickerSet) response;
++            }
++        });
++    }
++}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletStrings.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletStrings.java
 new file mode 100644
 index 00000000..a976d1eb
@@ -3237,7 +3327,7 @@ index df646cf4..b25e5001 100644
  
      public static String getServerString(String key) {
 diff --git a/TMessagesProj/src/main/java/org/telegram/messenger/MediaDataController.java b/TMessagesProj/src/main/java/org/telegram/messenger/MediaDataController.java
-index 95495c32..3076edb7 100644
+index 95495c32..f3e1cc7c 100644
 --- a/TMessagesProj/src/main/java/org/telegram/messenger/MediaDataController.java
 +++ b/TMessagesProj/src/main/java/org/telegram/messenger/MediaDataController.java
 @@ -129,6 +129,12 @@ public class MediaDataController extends BaseController {
@@ -3253,7 +3343,19 @@ index 95495c32..3076edb7 100644
  
      public static String SHORTCUT_CATEGORY = "org.telegram.messenger.SHORTCUT_SHARE";
  
-@@ -7490,12 +7496,44 @@ public class MediaDataController extends BaseController {
+@@ -1752,6 +1758,11 @@ public class MediaDataController extends BaseController {
+         if (type == TYPE_FEATURED) {
+             return stickerSets[2];
+         } else {
++            // Свой набор форка — первым в панели. Подкладывается только в
++            // список в памяти: на аккаунте его нет и на сервер он не уходит.
++            if (type == TYPE_IMAGE) {
++                org.telegram.margelet.MargeletStickers.inject(currentAccount, stickerSets[type]);
++            }
+             return stickerSets[type];
+         }
+     }
+@@ -7490,12 +7501,44 @@ public class MediaDataController extends BaseController {
          CharSequence cs = message[0];
          if (entities == null) entities = new ArrayList<>();
          if (parseMarkdown) {
@@ -3510,7 +3612,7 @@ index af32ccff..165ea0bb 100644
                  nameString = getString(R.string.HiddenName);
              }
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
-index 6b8cddfe..808927a9 100644
+index 6b8cddfe..568bb865 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
 @@ -1199,6 +1199,9 @@ public class ChatActivity extends BaseFragment implements
@@ -3596,20 +3698,24 @@ index 6b8cddfe..808927a9 100644
                  } else {
                      avatarContainer.setTitle(AndroidUtilities.removeRTL(AndroidUtilities.removeDiacritics(UserObject.getUserName(currentUser))), currentUser.scam, currentUser.fake, currentUser.verified, getMessagesController().isPremiumUser(currentUser), currentUser.emoji_status, animated);
                  }
-@@ -27588,6 +27616,12 @@ public class ChatActivity extends BaseFragment implements
+@@ -27588,6 +27616,16 @@ public class ChatActivity extends BaseFragment implements
          if (includeSpoilers) {
              menu.add(R.id.menu_groupbolditalic, R.id.menu_spoiler, order++, LocaleController.getString(R.string.Spoiler));
          }
 +        // Своё оформление форка. Стоит после телеграмовских: те работают у
 +        // всех, эти — только у тех, у кого тоже стоит Margelet.
-+        menu.add(R.id.menu_groupbolditalic, R.id.menu_margelet_size, order++, LocaleController.getString(R.string.MargeletMarkupSize));
-+        menu.add(R.id.menu_groupbolditalic, R.id.menu_margelet_dim, order++, LocaleController.getString(R.string.MargeletMarkupDim));
-+        menu.add(R.id.menu_groupbolditalic, R.id.menu_margelet_rainbow, order++, LocaleController.getString(R.string.MargeletMarkupRainbow));
-+        menu.add(R.id.menu_groupbolditalic, R.id.menu_margelet_button, order++, LocaleController.getString(R.string.MargeletMarkupButton));
++        // Палочка у своих пунктов: в одном списке с телеграмовскими их иначе
++        // не отличить, а ведут они себя по-разному — это оформление видно
++        // только в форке.
++        final String wand = "\uD83E\uDE84 ";
++        menu.add(R.id.menu_groupbolditalic, R.id.menu_margelet_size, order++, wand + LocaleController.getString(R.string.MargeletMarkupSize));
++        menu.add(R.id.menu_groupbolditalic, R.id.menu_margelet_dim, order++, wand + LocaleController.getString(R.string.MargeletMarkupDim));
++        menu.add(R.id.menu_groupbolditalic, R.id.menu_margelet_rainbow, order++, wand + LocaleController.getString(R.string.MargeletMarkupRainbow));
++        menu.add(R.id.menu_groupbolditalic, R.id.menu_margelet_button, order++, wand + LocaleController.getString(R.string.MargeletMarkupButton));
  
          SpannableStringBuilder stringBuilder = new SpannableStringBuilder(LocaleController.getString(R.string.Bold));
          stringBuilder.setSpan(new TypefaceSpan(AndroidUtilities.bold()), 0, stringBuilder.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-@@ -33379,6 +33413,19 @@ public class ChatActivity extends BaseFragment implements
+@@ -33379,6 +33417,19 @@ public class ChatActivity extends BaseFragment implements
                  undoView.showWithAction(0, UndoView.ACTION_MESSAGE_COPIED, null);
                  break;
              }
@@ -3629,7 +3735,7 @@ index 6b8cddfe..808927a9 100644
              case OPTION_SAVE_TO_GALLERY: {
                  if (Build.VERSION.SDK_INT >= 23 && (Build.VERSION.SDK_INT <= 28 || BuildVars.NO_SCOPED_STORAGE) && getParentActivity().checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
                      getParentActivity().requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 4);
-@@ -46097,6 +46144,33 @@ public class ChatActivity extends BaseFragment implements
+@@ -46097,6 +46148,33 @@ public class ChatActivity extends BaseFragment implements
                      }
                  }
  
@@ -4870,10 +4976,10 @@ index 00000000..397f3a69
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletSettingsActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletSettingsActivity.java
 new file mode 100644
-index 00000000..2af0158f
+index 00000000..a49aeb3e
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletSettingsActivity.java
-@@ -0,0 +1,204 @@
+@@ -0,0 +1,211 @@
 +package org.telegram.ui;
 +
 +import android.view.Gravity;
@@ -4920,6 +5026,7 @@ index 00000000..2af0158f
 +    private static final int ID_DONATE = 11;
 +    private static final int ID_MARKUP = 12;
 +    private static final int ID_HELP = 13;
++    private static final int ID_STICKERS = 14;
 +
 +    /** Объёмный значок в шапке. Пользы ноль, и в этом вся мысль. */
 +    private FrameLayout header;
@@ -4972,6 +5079,9 @@ index 00000000..2af0158f
 +                R.drawable.settings_gift, LocaleController.getString(R.string.MargeletGifts),
 +                LocaleController.getString(R.string.MargeletGiftsInfo)));
 +        items.add(UItem.asShadow(null));
++        items.add(UItem.asCheck(ID_STICKERS, LocaleController.getString(R.string.MargeletStickers))
++                .setChecked(MargeletConfig.stickersEnabled()));
++        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletStickersAbout)));
 +        items.add(UItem.asCheck(ID_SEIZURE, LocaleController.getString(R.string.MargeletSeizure))
 +                .setChecked(MargeletSeizure.enabled()));
 +        items.add(UItem.asShadow(null));
@@ -5023,7 +5133,10 @@ index 00000000..2af0158f
 +
 +    @Override
 +    protected void onClick(UItem item, View view, int position, float x, float y) {
-+        if (item.id == ID_MARKUP) {
++        if (item.id == ID_STICKERS) {
++            MargeletConfig.setStickersEnabled(!MargeletConfig.stickersEnabled());
++            listView.adapter.update(true);
++        } else if (item.id == ID_MARKUP) {
 +            presentFragment(new MargeletMarkupActivity());
 +        } else if (item.id == ID_DONATE) {
 +            presentFragment(new MargeletDonateActivity());
@@ -14263,7 +14376,7 @@ index 03d0ba33..17f98fa6 100644
      <string name="English">Inglês</string>
      <string name="LanguageNameInEnglish">Portuguese (Brazil)</string>
 diff --git a/TMessagesProj/src/main/res/values-ru/strings.xml b/TMessagesProj/src/main/res/values-ru/strings.xml
-index 24c56292..765620b7 100644
+index 24c56292..0c5d42e4 100644
 --- a/TMessagesProj/src/main/res/values-ru/strings.xml
 +++ b/TMessagesProj/src/main/res/values-ru/strings.xml
 @@ -1,7 +1,7 @@
@@ -14276,7 +14389,7 @@ index 24c56292..765620b7 100644
      <string name="LanguageName">Русский</string>
      <string name="English">Английский</string>
      <string name="LanguageNameInEnglish">Russian</string>
-@@ -263,4 +263,130 @@
+@@ -263,4 +263,132 @@
      <string name="RemindTodayAt">\'Отправить сегодня в\' HH:mm</string>
      <string name="RemindDayAt">\'Отправить\' d MMM \'в\' HH:mm</string>
      <string name="RemindDayYearAt">\'Напомнить\' d MMM yyyy \'в\' HH:mm</string>
@@ -14367,7 +14480,7 @@ index 24c56292..765620b7 100644
 +    <string name="MargeletMarkdownInfo">Что превращать в оформление при отправке</string>
 +    <string name="MargeletMarkdownQuote">Цитата</string>
 +    <string name="MargeletMarkdownQuoteCollapsed">Свёрнутая цитата</string>
-+    <string name="MargeletMarkdownAbout">Выключенный вид остаётся в тексте как есть.\n\nПодчёркивание и цитаты придуманы форком: в телеграме значков для них нет, поэтому у собеседника без форка они останутся плюсами и «больше».</string>
++    <string name="MargeletMarkdownAbout">Выключенный вид остаётся в тексте как есть.\n\nЗначки для подчёркивания и цитат придуманы форком, но само оформление настоящее и уходит на сервер: его видят все, а не только Margelet.</string>
 +    <string name="MargeletBadgeGallery">Все значки</string>
 +    <string name="MargeletBadgeGalleryInfo">Посмотреть, какие бывают</string>
 +    <string name="MargeletBadgePreview">Примерить на себя</string>
@@ -14382,11 +14495,13 @@ index 24c56292..765620b7 100644
 +    <string name="MargeletMarkupAbout">Что показывать в чужих сообщениях. Отправлять можно в любом случае.</string>
 +    <string name="MargeletWatermarks">Показывать ватермарки</string>
 +    <string name="MargeletWatermarkSend">Ставить ватермарку</string>
-+    <string name="MargeletWatermarkSendAbout">Строка со ссылкой на форк в конце своих оформленных сообщений.</string>
++    <string name="MargeletWatermarkSendAbout">Ставится только на сообщения со своим оформлением форка — размером, затемнением, радугой, кнопкой. На обычные сообщения и на жирный с курсивом не ставится.\n\nВыглядит так:\n&lt;! Message looks better with @margeletter! &gt;</string>
 +    <string name="MargeletWatermarkAskTitle">Просьба</string>
 +    <string name="MargeletWatermarkAskText">Margelet — начинающий проект, и узнают о нём в основном по этой строке. Автор просит её оставить.\n\nНо это ваше сообщение и ваше решение.</string>
 +    <string name="MargeletWatermarkKeep">Оставлю</string>
 +    <string name="MargeletWatermarkOff">Всё равно выключить</string>
++    <string name="MargeletStickers">Стикеры Margelet</string>
++    <string name="MargeletStickersAbout">Свой набор первым в панели стикеров. На аккаунт он не ставится и на сервер не уходит: выключите — исчезнет без следа.</string>
 +    <string name="MargeletWatermarksAbout">Строка со ссылкой на форк в конце оформленных сообщений. Её видят те, у кого форка нет.</string>
 +    <string name="MargeletCopyFormatted">Копировать с оформлением</string>
 +    <string name="MargeletCopyFormattedAbout">Пункт в меню сообщения. Обычное копирование кладёт голый текст, этот — с жирным, курсивом, ссылками и нашим оформлением.</string>
@@ -14438,7 +14553,7 @@ index cc49d135..1a5c2cf8 100644
      <item name="menu_regular" type="id"/>
      <item name="menu_bold" type="id"/>
 diff --git a/TMessagesProj/src/main/res/values/strings.xml b/TMessagesProj/src/main/res/values/strings.xml
-index ffa4d566..1c8daf88 100644
+index ffa4d566..ef62b509 100644
 --- a/TMessagesProj/src/main/res/values/strings.xml
 +++ b/TMessagesProj/src/main/res/values/strings.xml
 @@ -1,7 +1,7 @@
@@ -14451,7 +14566,7 @@ index ffa4d566..1c8daf88 100644
      <string name="LanguageName">English</string>
      <string name="English">English</string>
      <string name="LanguageNameInEnglish">English</string>
-@@ -11221,4 +11221,130 @@
+@@ -11221,4 +11221,132 @@
      <string name="UnsupportedMessageTitle">Unsupported Message</string>
      <string name="UnsupportedMessageMessage">Update Telegram to view this message</string>
      <string name="UnsupportedUpdate">Update</string>
@@ -14542,7 +14657,7 @@ index ffa4d566..1c8daf88 100644
 +    <string name="MargeletMarkdownInfo">What turns into formatting when sending</string>
 +    <string name="MargeletMarkdownQuote">Quote</string>
 +    <string name="MargeletMarkdownQuoteCollapsed">Collapsed quote</string>
-+    <string name="MargeletMarkdownAbout">A type you turn off stays in the text as typed.\n\nUnderline and quotes are the fork\u0027s own: Telegram has no markdown for them, so someone without the fork will just see the plus signs and the greater-than marks.</string>
++    <string name="MargeletMarkdownAbout">A type you turn off stays in the text as typed.\n\nThe shortcuts for underline and quotes are the fork\u0027s own, but the formatting itself is real and goes to the server: everyone sees it, not only Margelet.</string>
 +    <string name="MargeletBadgeGallery">All badges</string>
 +    <string name="MargeletBadgeGalleryInfo">See what there is</string>
 +    <string name="MargeletBadgePreview">Try it on</string>
@@ -14557,11 +14672,13 @@ index ffa4d566..1c8daf88 100644
 +    <string name="MargeletMarkupAbout">What to show in other people\u0027s messages. Sending is always allowed.</string>
 +    <string name="MargeletWatermarks">Show watermarks</string>
 +    <string name="MargeletWatermarkSend">Add the watermark</string>
-+    <string name="MargeletWatermarkSendAbout">The line linking to the fork at the end of your formatted messages.</string>
++    <string name="MargeletWatermarkSendAbout">Added only to messages that use the fork\u0027s own formatting — size, dim, rainbow, a button. Plain messages and Telegram\u0027s own bold or italics do not get it.\n\nIt looks like this:\n&lt;! Message looks better with @margeletter! &gt;</string>
 +    <string name="MargeletWatermarkAskTitle">A request</string>
 +    <string name="MargeletWatermarkAskText">Margelet is a young project, and that line is mostly how people hear about it. The author asks you to keep it.\n\nBut it is your message and your call.</string>
 +    <string name="MargeletWatermarkKeep">I will keep it</string>
 +    <string name="MargeletWatermarkOff">Turn it off anyway</string>
++    <string name="MargeletStickers">Margelet stickers</string>
++    <string name="MargeletStickersAbout">The fork\u0027s own pack, first in the sticker panel. It is not installed on your account and never reaches the server: turn it off and it is gone without a trace.</string>
 +    <string name="MargeletWatermarksAbout">The line linking to the fork at the end of formatted messages. People without the fork see it.</string>
 +    <string name="MargeletCopyFormatted">Copy with formatting</string>
 +    <string name="MargeletCopyFormattedAbout">An item in the message menu. A plain copy gives bare text, this one keeps bold, italics, links and our own formatting.</string>

@@ -150,6 +150,15 @@ public class MargeletConfig {
         prefs().edit().putBoolean("watermark_send", on).apply();
     }
 
+    /** Свой набор стикеров первым в панели. Клиентски, на аккаунт не ставится. */
+    public static boolean stickersEnabled() {
+        return prefs().getBoolean("stickers", true);
+    }
+
+    public static void setStickersEnabled(boolean on) {
+        prefs().edit().putBoolean("stickers", on).apply();
+    }
+
     /** Премиум-значки без премиума: видны только в форке. */
     public static boolean freeEmoji() {
         return prefs().getBoolean("free_emoji", true);
