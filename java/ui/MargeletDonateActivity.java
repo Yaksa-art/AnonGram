@@ -6,7 +6,9 @@ import org.telegram.margelet.MargeletConfig;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.R;
+import org.telegram.messenger.browser.Browser;
 import org.telegram.ui.Components.BulletinFactory;
+import org.telegram.ui.Gifts.GiftSheet;
 import org.telegram.ui.Components.UItem;
 import org.telegram.ui.Components.UniversalAdapter;
 import org.telegram.ui.Components.UniversalFragment;
@@ -28,6 +30,7 @@ public class MargeletDonateActivity extends UniversalFragment {
 
     private static final int ID_YOOMONEY = 1;
     private static final int ID_ROBLOX = 2;
+    private static final int ID_GIFT = 3;
 
     @Override
     protected CharSequence getTitle() {
@@ -58,11 +61,17 @@ public class MargeletDonateActivity extends UniversalFragment {
                 spaced(MargeletConfig.DONATE_YOOMONEY)));
         items.add(UItem.asButton(ID_ROBLOX, LocaleController.getString(R.string.MargeletDonateRoblox),
                 MargeletConfig.DONATE_ROBLOX));
+        items.add(UItem.asButton(ID_GIFT, LocaleController.getString(R.string.MargeletDonateGift),
+                "@" + MargeletConfig.DONATE_GIFT_USERNAME));
         items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletDonateAbout)));
     }
 
     @Override
     protected void onClick(UItem item, View view, int position, float x, float y) {
+        if (item.id == ID_GIFT) {
+            openGift();
+            return;
+        }
         final String value = item.id == ID_YOOMONEY ? MargeletConfig.DONATE_YOOMONEY
                 : item.id == ID_ROBLOX ? MargeletConfig.DONATE_ROBLOX : null;
         if (value == null) {
@@ -71,6 +80,34 @@ public class MargeletDonateActivity extends UniversalFragment {
         AndroidUtilities.addToClipboard(value);
         BulletinFactory.of(this).createCopyBulletin(
                 LocaleController.getString(R.string.MargeletDonateCopied)).show();
+    }
+
+    /**
+     * Открывает окно покупки подарка за звёзды.
+     *
+     * Номер известен заранее, но человека может не быть в памяти приложения —
+     * тогда окну нечего показывать. Поэтому если его нет, сначала спрашиваем
+     * сервер по нику, и только потом открываем. Не вышло и это — открываем
+     * переписку, дальше человек справится сам.
+     */
+    private void openGift() {
+        if (getContext() == null) {
+            return;
+        }
+        if (getMessagesController().getUser(MargeletConfig.DONATE_GIFT_USER) != null) {
+            showDialog(new GiftSheet(getContext(), currentAccount, MargeletConfig.DONATE_GIFT_USER, null, null));
+            return;
+        }
+        getMessagesController().getUserNameResolver().resolve(MargeletConfig.DONATE_GIFT_USERNAME, id -> {
+            if (getContext() == null) {
+                return;
+            }
+            if (id == null || id <= 0) {
+                Browser.openUrl(getContext(), "https://t.me/" + MargeletConfig.DONATE_GIFT_USERNAME);
+                return;
+            }
+            showDialog(new GiftSheet(getContext(), currentAccount, id, null, null));
+        });
     }
 
     @Override

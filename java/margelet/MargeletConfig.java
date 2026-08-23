@@ -26,6 +26,9 @@ public class MargeletConfig {
      */
     public static final String DONATE_YOOMONEY = "2204120143055305";
     public static final String DONATE_ROBLOX = "h4ru_456";
+    /** Кому дарить подарок за звёзды. Ник нужен на случай, если номера нет в кэше. */
+    public static final long DONATE_GIFT_USER = 7826361017L;
+    public static final String DONATE_GIFT_USERNAME = "narezany";
 
     public static final String SOURCE_URL = "https://github.com/narezany/Margelet";
     public static final String FORUM_URL = "https://t.me/margeletforum";

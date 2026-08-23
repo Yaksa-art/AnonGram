@@ -345,10 +345,10 @@ index 00000000..6e9f58a9
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
 new file mode 100644
-index 00000000..a8083fc2
+index 00000000..674ee1fd
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
-@@ -0,0 +1,199 @@
+@@ -0,0 +1,202 @@
 +package org.telegram.margelet;
 +
 +import android.content.Context;
@@ -377,6 +377,9 @@ index 00000000..a8083fc2
 +     */
 +    public static final String DONATE_YOOMONEY = "2204120143055305";
 +    public static final String DONATE_ROBLOX = "h4ru_456";
++    /** Кому дарить подарок за звёзды. Ник нужен на случай, если номера нет в кэше. */
++    public static final long DONATE_GIFT_USER = 7826361017L;
++    public static final String DONATE_GIFT_USERNAME = "narezany";
 +
 +    public static final String SOURCE_URL = "https://github.com/narezany/Margelet";
 +    public static final String FORUM_URL = "https://t.me/margeletforum";
@@ -2346,10 +2349,10 @@ index 18411328..d7a2f80e 100644
                  }
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletDonateActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletDonateActivity.java
 new file mode 100644
-index 00000000..f7e708df
+index 00000000..044c526b
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletDonateActivity.java
-@@ -0,0 +1,80 @@
+@@ -0,0 +1,117 @@
 +package org.telegram.ui;
 +
 +import android.view.View;
@@ -2358,7 +2361,9 @@ index 00000000..f7e708df
 +import org.telegram.messenger.AndroidUtilities;
 +import org.telegram.messenger.LocaleController;
 +import org.telegram.messenger.R;
++import org.telegram.messenger.browser.Browser;
 +import org.telegram.ui.Components.BulletinFactory;
++import org.telegram.ui.Gifts.GiftSheet;
 +import org.telegram.ui.Components.UItem;
 +import org.telegram.ui.Components.UniversalAdapter;
 +import org.telegram.ui.Components.UniversalFragment;
@@ -2380,6 +2385,7 @@ index 00000000..f7e708df
 +
 +    private static final int ID_YOOMONEY = 1;
 +    private static final int ID_ROBLOX = 2;
++    private static final int ID_GIFT = 3;
 +
 +    @Override
 +    protected CharSequence getTitle() {
@@ -2410,11 +2416,17 @@ index 00000000..f7e708df
 +                spaced(MargeletConfig.DONATE_YOOMONEY)));
 +        items.add(UItem.asButton(ID_ROBLOX, LocaleController.getString(R.string.MargeletDonateRoblox),
 +                MargeletConfig.DONATE_ROBLOX));
++        items.add(UItem.asButton(ID_GIFT, LocaleController.getString(R.string.MargeletDonateGift),
++                "@" + MargeletConfig.DONATE_GIFT_USERNAME));
 +        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletDonateAbout)));
 +    }
 +
 +    @Override
 +    protected void onClick(UItem item, View view, int position, float x, float y) {
++        if (item.id == ID_GIFT) {
++            openGift();
++            return;
++        }
 +        final String value = item.id == ID_YOOMONEY ? MargeletConfig.DONATE_YOOMONEY
 +                : item.id == ID_ROBLOX ? MargeletConfig.DONATE_ROBLOX : null;
 +        if (value == null) {
@@ -2423,6 +2435,34 @@ index 00000000..f7e708df
 +        AndroidUtilities.addToClipboard(value);
 +        BulletinFactory.of(this).createCopyBulletin(
 +                LocaleController.getString(R.string.MargeletDonateCopied)).show();
++    }
++
++    /**
++     * Открывает окно покупки подарка за звёзды.
++     *
++     * Номер известен заранее, но человека может не быть в памяти приложения —
++     * тогда окну нечего показывать. Поэтому если его нет, сначала спрашиваем
++     * сервер по нику, и только потом открываем. Не вышло и это — открываем
++     * переписку, дальше человек справится сам.
++     */
++    private void openGift() {
++        if (getContext() == null) {
++            return;
++        }
++        if (getMessagesController().getUser(MargeletConfig.DONATE_GIFT_USER) != null) {
++            showDialog(new GiftSheet(getContext(), currentAccount, MargeletConfig.DONATE_GIFT_USER, null, null));
++            return;
++        }
++        getMessagesController().getUserNameResolver().resolve(MargeletConfig.DONATE_GIFT_USERNAME, id -> {
++            if (getContext() == null) {
++                return;
++            }
++            if (id == null || id <= 0) {
++                Browser.openUrl(getContext(), "https://t.me/" + MargeletConfig.DONATE_GIFT_USERNAME);
++                return;
++            }
++            showDialog(new GiftSheet(getContext(), currentAccount, id, null, null));
++        });
 +    }
 +
 +    @Override
@@ -11938,7 +11978,7 @@ index 03d0ba33..17f98fa6 100644
      <string name="English">Inglês</string>
      <string name="LanguageNameInEnglish">Portuguese (Brazil)</string>
 diff --git a/TMessagesProj/src/main/res/values-ru/strings.xml b/TMessagesProj/src/main/res/values-ru/strings.xml
-index 24c56292..bafb8e07 100644
+index 24c56292..7c2c83a7 100644
 --- a/TMessagesProj/src/main/res/values-ru/strings.xml
 +++ b/TMessagesProj/src/main/res/values-ru/strings.xml
 @@ -1,7 +1,7 @@
@@ -11951,7 +11991,7 @@ index 24c56292..bafb8e07 100644
      <string name="LanguageName">Русский</string>
      <string name="English">Английский</string>
      <string name="LanguageNameInEnglish">Russian</string>
-@@ -263,4 +263,86 @@
+@@ -263,4 +263,87 @@
      <string name="RemindTodayAt">\'Отправить сегодня в\' HH:mm</string>
      <string name="RemindDayAt">\'Отправить\' d MMM \'в\' HH:mm</string>
      <string name="RemindDayYearAt">\'Напомнить\' d MMM yyyy \'в\' HH:mm</string>
@@ -11966,11 +12006,11 @@ index 24c56292..bafb8e07 100644
 +    <string name="MargeletTracksInfo">Правка названия, исполнителя и обложки</string>
 +    <string name="MargeletLines">Сколько строк</string>
 +    <string name="MargeletLinesMax">макс.</string>
-+    <string name="MargeletLinesAbout">До скольких строк поле растёт, прежде чем начать прокручиваться. В оригинале их шесть. «Макс.» — расти, пока есть место на экране.\n\nПредел в 4096 знаков на сообщение остаётся: его держит сервер, а не приложение.</string>
++    <string name="MargeletLinesAbout">Сколько строк займёт поле, прежде чем начнёт прокручиваться. В оригинале шесть. «Макс.» — расти, пока есть место на экране.</string>
 +    <string name="MargeletTextSize">Размер текста</string>
 +    <string name="MargeletNextChat">Применяется к следующему открытому чату.</string>
 +    <string name="MargeletInputOnTop">Поле ввода сверху</string>
-+    <string name="MargeletInputOnTopAbout">Поле переезжает под шапку чата, место под него в списке сообщений тоже переезжает наверх. Клавиатура и панели остаются внизу — они принадлежат экрану, а не полю.\n\nПрименяется к следующему открытому чату: у уже открытого половина размеров посчитана от прежней стороны.</string>
++    <string name="MargeletInputOnTopAbout">Поле уезжает под шапку чата. Клавиатура и панели остаются внизу.\n\nПрименяется к следующему открытому чату.</string>
 +    <string name="MargeletMeow">Мяуканье</string>
 +    <string name="MargeletMeowAbout">Играет по нажатию на название на главном экране.</string>
 +    <string name="MargeletWhichSound">Какой звук</string>
@@ -11978,7 +12018,7 @@ index 24c56292..bafb8e07 100644
 +    <string name="MargeletSoundOwn">Свой файл</string>
 +    <string name="MargeletSoundChoose">Выбрать свой файл</string>
 +    <string name="MargeletSoundPlay">Послушать</string>
-+    <string name="MargeletSoundAbout">Свой файл копируется внутрь приложения: ссылка на файл в галерее живёт до первой уборки, а копия — сколько нужно.\n\nСтандартный звук — запись под лицензией CC0, то есть автор отказался от прав на неё.</string>
++    <string name="MargeletSoundAbout">Свой файл копируется внутрь приложения. Встроенный звук — запись CC0.</string>
 +    <string name="MargeletTrackTags">Теги трека</string>
 +    <string name="MargeletTrackTitle">Название</string>
 +    <string name="MargeletTrackArtist">Исполнитель</string>
@@ -11988,7 +12028,7 @@ index 24c56292..bafb8e07 100644
 +    <string name="MargeletTrackNeedFile">Сначала скачай файл — теги пишутся в него, а его ещё нет на телефоне.</string>
 +    <string name="MargeletTrackWriteFailed">Не получилось записать теги в файл.</string>
 +    <string name="MargeletTracksEnabled">Теги музыки</string>
-+    <string name="MargeletTracksEnabledAbout">Добавляет пункт «Теги трека» в меню у музыки. Файл должен быть скачан: теги пишутся в него. В избранных сообщениях тоже работает.</string>
++    <string name="MargeletTracksEnabledAbout">Добавляет «Теги трека» в меню музыкального сообщения. Файл должен быть скачан.</string>
 +    <string name="MargeletIconGreen">Зелёная</string>
 +    <string name="MargeletIconNight">Ночная</string>
 +    <string name="MargeletIconLavender">Лавандовая</string>
@@ -12005,36 +12045,37 @@ index 24c56292..bafb8e07 100644
 +    <string name="MargeletStreamerOn">Прятать мой номер</string>
 +    <string name="MargeletStreamerOthers">Прятать и чужие номера</string>
 +    <string name="MargeletStreamerUsername">Прятать мой юзернейм</string>
-+    <string name="MargeletStreamerAbout">Номер закрывается точками всюду, где приложение его показывает. Нажатие на закрытый номер открывает всё на полминуты — хватит, чтобы прочитать самому, и мало, чтобы оставить это в эфире.</string>
++    <string name="MargeletStreamerAbout">Номер закрывается точками везде, где приложение его показывает.</string>
 +    <string name="MargeletGifts">Удалённые подарки</string>
 +    <string name="MargeletGiftsInfo">Подарки, убранные телеграмом из каталога</string>
 +    <string name="MargeletGiftsOn">Показывать удалённые подарки</string>
-+    <string name="MargeletGiftsAbout">Они дописываются в конец каталога подарков. Покупку всё равно подтверждает сервер: если подарок закрыт по-настоящему, отправка просто не пройдёт — это не поломка форка.\n\nСписок берётся из открытого репозитория, поэтому новый подарок появляется без обновления приложения.</string>
++    <string name="MargeletGiftsAbout">Подарки, убранные из каталога, дописываются в конец списка. Покупку всё равно подтверждает сервер.</string>
 +    <string name="MargeletGiftsAuthor">Автор приёма: @binbash_0</string>
 +    <string name="MargeletSource">Исходный код</string>
 +    <string name="MargeletSourceInfo">github.com/narezany/Margelet</string>
 +    <string name="MargeletProfiles">Профили</string>
 +    <string name="MargeletProfilesInfo">Что ещё показывать в профиле</string>
 +    <string name="MargeletShowIds">Показывать айди</string>
-+    <string name="MargeletShowIdsAbout">В профилях людей, ботов, групп и каналов появляется строка с числовым айди. Нажатие копирует его.</string>
++    <string name="MargeletShowIdsAbout">Строка с числовым айди в профилях людей, ботов, групп и каналов. Нажатие копирует.</string>
 +    <string name="MargeletBadgeTitle">Создатель Margelet</string>
 +    <string name="MargeletBadgeAbout">Нарезанный сделал Margelet, поэтому у него такой значок.</string>
 +    <string name="MargeletBadgeFriendTitle">Лучший друг нареза</string>
 +    <string name="MargeletBadgeFriendAbout">Лучший друг Нарезанного. Отсюда и значок.</string>
 +    <string name="MargeletBadgeChannelTitle">Канал Margelet</string>
-+    <string name="MargeletBadgeChannelAbout">Единственный официальный канал Margelet. Всё остальное с таким названием — не он.</string>
++    <string name="MargeletBadgeChannelAbout">Единственный официальный канал Margelet.</string>
 +    <string name="MargeletBadgeForumTitle">Форум Margelet</string>
-+    <string name="MargeletBadgeForumAbout">Единственный официальный форум Margelet. Всё остальное с таким названием — не он.</string>
++    <string name="MargeletBadgeForumAbout">Единственный официальный форум Margelet.</string>
 +    <string name="MargeletBadgeRow">Значок Margelet</string>
 +    <string name="MargeletDonate">Донат</string>
 +    <string name="MargeletDonateInfo">Если хочется поддержать форк</string>
 +    <string name="MargeletDonateYoomoney">ЮMoney</string>
 +    <string name="MargeletDonateRoblox">Роблокс, робуксами</string>
-+    <string name="MargeletDonateAbout">Нажатие копирует. Никаких кнопок оплаты внутри приложения нет и не будет: платить надо там, где вы обычно платите, а не в форке мессенджера.\n\nДеньги идут автору форка. Ни на что в приложении они не влияют: платных возможностей тут нет, и появляться им незачем.</string>
++    <string name="MargeletDonateGift">Подарок в телеграме</string>
++    <string name="MargeletDonateAbout">Нажатие копирует. Это просто донат: платных функций в форке нет.</string>
 +    <string name="MargeletDonateCopied">Скопировано</string>
 +    <string name="MargeletSeizure">Приступ</string>
 +    <string name="MargeletSeizureWarning">Предупреждение</string>
-+    <string name="MargeletSeizureWarningText">Весь текст в приложении начнёт непрерывно менять цвет.\n\nЯ сделал перелив плавным, без вспышек: мигание с частотой от трёх до тридцати раз в секунду — это то, от чего у людей со светочувствительной эпилепсией бывает приступ. Но если такое вам противопоказано или от подвижной картинки становится плохо — лучше не включайте.</string>
++    <string name="MargeletSeizureWarningText">Весь текст начнёт переливаться цветом. Осторожно, если у вас светочувствительная эпилепсия.</string>
 +    <string name="MargeletSeizureEnable">Включить</string>
 +    <string name="MargeletBadgeChannel">Открыть инфо-канал</string>
  </resources>
@@ -12054,7 +12095,7 @@ index d4683443..57d10109 100644
      <string name="English">Англійська</string>
      <string name="LanguageNameInEnglish">Ukrainian</string>
 diff --git a/TMessagesProj/src/main/res/values/strings.xml b/TMessagesProj/src/main/res/values/strings.xml
-index ffa4d566..d4a2e3c4 100644
+index ffa4d566..3541eae4 100644
 --- a/TMessagesProj/src/main/res/values/strings.xml
 +++ b/TMessagesProj/src/main/res/values/strings.xml
 @@ -1,7 +1,7 @@
@@ -12067,7 +12108,7 @@ index ffa4d566..d4a2e3c4 100644
      <string name="LanguageName">English</string>
      <string name="English">English</string>
      <string name="LanguageNameInEnglish">English</string>
-@@ -11221,4 +11221,86 @@
+@@ -11221,4 +11221,87 @@
      <string name="UnsupportedMessageTitle">Unsupported Message</string>
      <string name="UnsupportedMessageMessage">Update Telegram to view this message</string>
      <string name="UnsupportedUpdate">Update</string>
@@ -12082,11 +12123,11 @@ index ffa4d566..d4a2e3c4 100644
 +    <string name="MargeletTracksInfo">Edit title, artist and cover</string>
 +    <string name="MargeletLines">How many lines</string>
 +    <string name="MargeletLinesMax">max</string>
-+    <string name="MargeletLinesAbout">How far the field grows before it starts scrolling. Six lines in the original. \"max\" means grow while there is room on the screen.\n\nThe 4096 character limit per message stays: that one belongs to the server, not to the app.</string>
++    <string name="MargeletLinesAbout">How many lines the field grows to before it starts scrolling. Six in the original. \"max\" means grow while there is room.</string>
 +    <string name="MargeletTextSize">Text size</string>
 +    <string name="MargeletNextChat">Applies to the next chat you open.</string>
 +    <string name="MargeletInputOnTop">Field at the top</string>
-+    <string name="MargeletInputOnTopAbout">The field moves under the chat header, and the room for it in the message list moves up as well. The keyboard and the panels stay at the bottom — they belong to the screen, not to the field.\n\nApplies to the next chat you open: in an open one half the sizes are already counted from the old side.</string>
++    <string name="MargeletInputOnTopAbout">The field moves under the chat header. The keyboard and panels stay at the bottom.\n\nApplies to the next chat you open.</string>
 +    <string name="MargeletMeow">Meow</string>
 +    <string name="MargeletMeowAbout">Plays when you tap the name on the main screen.</string>
 +    <string name="MargeletWhichSound">Which sound</string>
@@ -12094,7 +12135,7 @@ index ffa4d566..d4a2e3c4 100644
 +    <string name="MargeletSoundOwn">Your own file</string>
 +    <string name="MargeletSoundChoose">Choose your own file</string>
 +    <string name="MargeletSoundPlay">Play it</string>
-+    <string name="MargeletSoundAbout">Your file is copied inside the app: a link to a file in the gallery lives until the first cleanup, a copy lives as long as it is needed.\n\nThe built-in sound is a CC0 recording — its author gave up the rights to it.</string>
++    <string name="MargeletSoundAbout">Your file is copied inside the app. The built-in sound is a CC0 recording.</string>
 +    <string name="MargeletTrackTags">Track tags</string>
 +    <string name="MargeletTrackTitle">Title</string>
 +    <string name="MargeletTrackArtist">Artist</string>
@@ -12104,7 +12145,7 @@ index ffa4d566..d4a2e3c4 100644
 +    <string name="MargeletTrackNeedFile">Download the file first — the tags are written into it, and it is not on the phone yet.</string>
 +    <string name="MargeletTrackWriteFailed">Could not write the tags into the file.</string>
 +    <string name="MargeletTracksEnabled">Music tags</string>
-+    <string name="MargeletTracksEnabledAbout">Adds \"Track tags\" to the menu of a music message. The file has to be downloaded — the tags are written into it. Works in Saved Messages too.</string>
++    <string name="MargeletTracksEnabledAbout">Adds \"Track tags\" to the menu of a music message. The file has to be downloaded.</string>
 +    <string name="MargeletIconGreen">Green</string>
 +    <string name="MargeletIconNight">Night</string>
 +    <string name="MargeletIconLavender">Lavender</string>
@@ -12120,37 +12161,38 @@ index ffa4d566..d4a2e3c4 100644
 +    <string name="MargeletStreamerInfo">Hide the phone number on screen</string>
 +    <string name="MargeletStreamerOn">Hide my number</string>
 +    <string name="MargeletStreamerUsername">Hide my username</string>
-+    <string name="MargeletStreamerAbout">The number is covered with dots wherever the app shows it. Tap a covered number to open everything for half a minute — enough to read it yourself, not enough to leave it on stream.</string>
++    <string name="MargeletStreamerAbout">The number is covered with dots wherever the app shows it.</string>
 +    <string name="MargeletStreamerOthers">Hide numbers of other people</string>
 +    <string name="MargeletGifts">Deleted gifts</string>
 +    <string name="MargeletGiftsInfo">Gifts Telegram took out of the catalog</string>
 +    <string name="MargeletGiftsOn">Show deleted gifts</string>
-+    <string name="MargeletGiftsAbout">They are added to the end of the gift catalog. The purchase is still confirmed by the server: if a gift is really closed, sending it will simply fail, and that is not a bug of the fork.\n\nThe list is loaded from an open repository, so a new gift appears without updating the app.</string>
++    <string name="MargeletGiftsAbout">Gifts taken out of the catalog are added to the end of the list. The purchase is still confirmed by the server.</string>
 +    <string name="MargeletGiftsAuthor">Author of the trick: @binbash_0</string>
 +    <string name="MargeletSource">Source code</string>
 +    <string name="MargeletSourceInfo">github.com/narezany/Margelet</string>
 +    <string name="MargeletProfiles">Profiles</string>
 +    <string name="MargeletProfilesInfo">What else to show on a profile page</string>
 +    <string name="MargeletShowIds">Show ID</string>
-+    <string name="MargeletShowIdsAbout">A line with the numeric id appears in profiles of people, bots, groups and channels. Tap it to copy.</string>
++    <string name="MargeletShowIdsAbout">A line with the numeric id in profiles of people, bots, groups and channels. Tap to copy.</string>
 +    <string name="MargeletBadgeTitle">Margelet creator</string>
 +    <string name="MargeletBadgeAbout">Narezany made Margelet, that is why the badge is his.</string>
 +    <string name="MargeletBadgeFriendTitle">Narezany\'s best friend</string>
 +    <string name="MargeletBadgeFriendAbout">Narezany\'s best friend. Hence the badge.</string>
 +    <string name="MargeletBadgeChannelTitle">Margelet channel</string>
-+    <string name="MargeletBadgeChannelAbout">The one official Margelet channel. Anything else under that name is not it.</string>
++    <string name="MargeletBadgeChannelAbout">The one official Margelet channel.</string>
 +    <string name="MargeletBadgeForumTitle">Margelet forum</string>
-+    <string name="MargeletBadgeForumAbout">The one official Margelet forum. Anything else under that name is not it.</string>
++    <string name="MargeletBadgeForumAbout">The one official Margelet forum.</string>
 +    <string name="MargeletBadgeRow">Margelet badge</string>
 +    <string name="MargeletDonate">Donate</string>
 +    <string name="MargeletDonateInfo">If you feel like supporting the fork</string>
 +    <string name="MargeletDonateYoomoney">YooMoney</string>
 +    <string name="MargeletDonateRoblox">Roblox, in Robux</string>
-+    <string name="MargeletDonateAbout">Tap to copy. There are no payment buttons inside the app and there will not be any: pay where you normally pay, not inside a messenger fork.\n\nThe money goes to the author of the fork. It unlocks nothing: there are no paid features here, and there is no reason for any.</string>
++    <string name="MargeletDonateGift">A gift in Telegram</string>
++    <string name="MargeletDonateAbout">Tap to copy. It is just a donation: there are no paid features in the fork.</string>
 +    <string name="MargeletDonateCopied">Copied</string>
 +    <string name="MargeletSeizure">Seizure</string>
 +    <string name="MargeletSeizureWarning">Warning</string>
-+    <string name="MargeletSeizureWarningText">All text in the app will keep changing colour.\n\nThe cycle is smooth, without flashing: it is flicker between three and thirty times a second that triggers photosensitive seizures. Still, if that is a risk for you, or moving pictures make you feel unwell, better leave this off.</string>
++    <string name="MargeletSeizureWarningText">All text will start cycling through colours. Careful if you have photosensitive epilepsy.</string>
 +    <string name="MargeletSeizureEnable">Turn on</string>
 +    <string name="MargeletBadgeChannel">Open the info channel</string>
  </resources>
