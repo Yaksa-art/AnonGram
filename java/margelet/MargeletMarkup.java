@@ -430,10 +430,16 @@ public class MargeletMarkup {
             if (url.isEmpty()) {
                 continue;
             }
+            // Отсчёты считаем до проверки на повтор: проверять надо ровно то,
+            // что положим, иначе на каждом заходе будет добавляться ещё одна
+            // такая же ссылка.
+            final int offset = Math.max(0, run.start - 1);
+            final int length = Math.min(text.length() - offset,
+                    run.end - run.start + (run.start - offset) + 1);
             boolean already = false;
             for (org.telegram.tgnet.TLRPC.MessageEntity entity : entities) {
                 if (entity instanceof org.telegram.tgnet.TLRPC.TL_messageEntityTextUrl
-                        && entity.offset == run.start && entity.length == run.end - run.start) {
+                        && entity.offset == offset && entity.length == length) {
                     already = true;
                     break;
                 }
@@ -443,8 +449,12 @@ public class MargeletMarkup {
             }
             final org.telegram.tgnet.TLRPC.TL_messageEntityTextUrl link =
                     new org.telegram.tgnet.TLRPC.TL_messageEntityTextUrl();
-            link.offset = run.start;
-            link.length = run.end - run.start;
+            // Ссылка шире подписи на один знак с каждой стороны — на
+            // невидимые метки, стоящие вплотную. Телеграм переводит точку
+            // касания в отсчёт знака, и на краю плашки этот отсчёт попадает
+            // на границу куска, а не внутрь; растянутый кусок ловит и край.
+            link.offset = offset;
+            link.length = length;
             link.url = url;
             entities.add(link);
         }
