@@ -317,7 +317,14 @@ public class MargeletMarkup {
             return text;
         }
         final Spanned spanned = (Spanned) text;
-        final MargeletSpans.Base[] spans = spanned.getSpans(0, spanned.length(), MargeletSpans.Base.class);
+        final MargeletSpans.Base[] all = spanned.getSpans(0, spanned.length(), MargeletSpans.Base.class);
+        final ArrayList<MargeletSpans.Base> fresh = new ArrayList<>();
+        for (MargeletSpans.Base span : all) {
+            if (!span.decoded) {
+                fresh.add(span);
+            }
+        }
+        final MargeletSpans.Base[] spans = fresh.toArray(new MargeletSpans.Base[0]);
         final boolean hasEmoji = spanned.getSpans(0, spanned.length(),
                 org.telegram.ui.Components.AnimatedEmojiSpan.class).length > 0;
         if (spans.length == 0 && !hasEmoji) {
@@ -338,6 +345,10 @@ public class MargeletMarkup {
             marks.add(new int[]{start, 1, start, end, span.kind(), span.value(), payloads.size()});
             marks.add(new int[]{end, 0, start, end, span.kind(), span.value(), payloads.size()});
             payloads.add(span.payload());
+            // Оформление теперь живёт в метках. Спан снимаем, иначе второй
+            // проход по тому же тексту напишет метки ещё раз: подписей у
+            // одного отправления бывает несколько.
+            out.removeSpan(span);
         }
 
         // Премиум-значки: у них своя разметка от телеграма, не наша. Меняем её
@@ -466,6 +477,11 @@ public class MargeletMarkup {
             }
             final Object span = MargeletSpans.create(run.kind, run.value);
             if (span != null) {
+                if (span instanceof MargeletSpans.Base) {
+                    // Метки этого куска уже в тексте: при отправке их не
+                    // ставить заново.
+                    ((MargeletSpans.Base) span).decoded = true;
+                }
                 text.setSpan(span, run.start, run.end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
             }
         }

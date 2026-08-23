@@ -1301,10 +1301,10 @@ index 00000000..33ff716b
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletMarkup.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletMarkup.java
 new file mode 100644
-index 00000000..694f949c
+index 00000000..6670b46c
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletMarkup.java
-@@ -0,0 +1,549 @@
+@@ -0,0 +1,565 @@
 +package org.telegram.margelet;
 +
 +import android.text.Spannable;
@@ -1624,7 +1624,14 @@ index 00000000..694f949c
 +            return text;
 +        }
 +        final Spanned spanned = (Spanned) text;
-+        final MargeletSpans.Base[] spans = spanned.getSpans(0, spanned.length(), MargeletSpans.Base.class);
++        final MargeletSpans.Base[] all = spanned.getSpans(0, spanned.length(), MargeletSpans.Base.class);
++        final ArrayList<MargeletSpans.Base> fresh = new ArrayList<>();
++        for (MargeletSpans.Base span : all) {
++            if (!span.decoded) {
++                fresh.add(span);
++            }
++        }
++        final MargeletSpans.Base[] spans = fresh.toArray(new MargeletSpans.Base[0]);
 +        final boolean hasEmoji = spanned.getSpans(0, spanned.length(),
 +                org.telegram.ui.Components.AnimatedEmojiSpan.class).length > 0;
 +        if (spans.length == 0 && !hasEmoji) {
@@ -1645,6 +1652,10 @@ index 00000000..694f949c
 +            marks.add(new int[]{start, 1, start, end, span.kind(), span.value(), payloads.size()});
 +            marks.add(new int[]{end, 0, start, end, span.kind(), span.value(), payloads.size()});
 +            payloads.add(span.payload());
++            // Оформление теперь живёт в метках. Спан снимаем, иначе второй
++            // проход по тому же тексту напишет метки ещё раз: подписей у
++            // одного отправления бывает несколько.
++            out.removeSpan(span);
 +        }
 +
 +        // Премиум-значки: у них своя разметка от телеграма, не наша. Меняем её
@@ -1773,6 +1784,11 @@ index 00000000..694f949c
 +            }
 +            final Object span = MargeletSpans.create(run.kind, run.value);
 +            if (span != null) {
++                if (span instanceof MargeletSpans.Base) {
++                    // Метки этого куска уже в тексте: при отправке их не
++                    // ставить заново.
++                    ((MargeletSpans.Base) span).decoded = true;
++                }
 +                text.setSpan(span, run.start, run.end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
 +            }
 +        }
@@ -3197,10 +3213,10 @@ index 00000000..8a3b8ef8
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletSpans.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletSpans.java
 new file mode 100644
-index 00000000..a85d63c7
+index 00000000..635136f4
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletSpans.java
-@@ -0,0 +1,288 @@
+@@ -0,0 +1,298 @@
 +package org.telegram.margelet;
 +
 +import android.graphics.Canvas;
@@ -3230,6 +3246,16 @@ index 00000000..a85d63c7
 +     * мерился по обычному размеру. Владелец это увидел сразу.
 +     */
 +    public abstract static class Base extends MetricAffectingSpan {
++
++        /**
++         * Оформление пришло из меток в самом тексте, а не поставлено руками.
++         *
++         * Разница важна при отправке: метки такого куска уже лежат в тексте,
++         * и добавлять их второй раз нельзя. Так бывает при правке своего же
++         * сообщения — в поле приезжает разобранный текст со спанами.
++         */
++        public boolean decoded;
++
 +        public abstract int kind();
 +
 +        public abstract int value();
@@ -3902,7 +3928,7 @@ index df646cf4..b25e5001 100644
  
      public static String getServerString(String key) {
 diff --git a/TMessagesProj/src/main/java/org/telegram/messenger/MediaDataController.java b/TMessagesProj/src/main/java/org/telegram/messenger/MediaDataController.java
-index 95495c32..3076edb7 100644
+index 95495c32..5d00f2d9 100644
 --- a/TMessagesProj/src/main/java/org/telegram/messenger/MediaDataController.java
 +++ b/TMessagesProj/src/main/java/org/telegram/messenger/MediaDataController.java
 @@ -129,6 +129,12 @@ public class MediaDataController extends BaseController {
@@ -3918,7 +3944,23 @@ index 95495c32..3076edb7 100644
  
      public static String SHORTCUT_CATEGORY = "org.telegram.messenger.SHORTCUT_SHARE";
  
-@@ -7490,12 +7496,44 @@ public class MediaDataController extends BaseController {
+@@ -7206,6 +7212,15 @@ public class MediaDataController extends BaseController {
+         if (message == null || message[0] == null) {
+             return null;
+         }
++        // Своё оформление форка — в невидимые метки, до подсчёта отсчётов.
++        //
++        // Раньше это делалось только на отправке обычного текста, и подпись к
++        // фотографии оформление теряла: у неё другой путь. Владелец это и
++        // поймал. Общее у всех путей — вот это место: везде, где телеграм
++        // превращает размеченный текст в текст плюс список разметки, он зовёт
++        // getEntities. Значит, и метки ставить надо здесь, а не в каждом
++        // экране по отдельности.
++        message[0] = org.telegram.margelet.MargeletMarkup.encode(message[0]);
+         ArrayList<TLRPC.MessageEntity> entities = null;
+         int index;
+         int start = -1;
+@@ -7490,12 +7505,44 @@ public class MediaDataController extends BaseController {
          CharSequence cs = message[0];
          if (entities == null) entities = new ArrayList<>();
          if (parseMarkdown) {

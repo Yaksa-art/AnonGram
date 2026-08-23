@@ -27,6 +27,16 @@ public class MargeletSpans {
      * мерился по обычному размеру. Владелец это увидел сразу.
      */
     public abstract static class Base extends MetricAffectingSpan {
+
+        /**
+         * Оформление пришло из меток в самом тексте, а не поставлено руками.
+         *
+         * Разница важна при отправке: метки такого куска уже лежат в тексте,
+         * и добавлять их второй раз нельзя. Так бывает при правке своего же
+         * сообщения — в поле приезжает разобранный текст со спанами.
+         */
+        public boolean decoded;
+
         public abstract int kind();
 
         public abstract int value();
