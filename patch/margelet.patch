@@ -1761,10 +1761,10 @@ index 00000000..dd5e0a34
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletWordmark.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletWordmark.java
 new file mode 100644
-index 00000000..9e079b73
+index 00000000..c77ddf9b
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletWordmark.java
-@@ -0,0 +1,78 @@
+@@ -0,0 +1,84 @@
 +package org.telegram.margelet;
 +
 +import android.graphics.Canvas;
@@ -1794,9 +1794,15 @@ index 00000000..9e079b73
 +public class MargeletWordmark extends Drawable {
 +
 +    private final TextPaint paint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
-+    private final int height = AndroidUtilities.dp(20);
++    private final int height;
 +
 +    public MargeletWordmark() {
++        this(20);
++    }
++
++    /** Высота букв. На главном экране одна, на экране до входа крупнее. */
++    public MargeletWordmark(int heightDp) {
++        height = AndroidUtilities.dp(heightDp);
 +        paint.setTypeface(AndroidUtilities.bold());
 +        paint.setColor(0xFFFFFFFF);
 +        paint.setTextSize(height);
@@ -2044,7 +2050,7 @@ index af32ccff..165ea0bb 100644
                  nameString = getString(R.string.HiddenName);
              }
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
-index 6b8cddfe..851ccd78 100644
+index 6b8cddfe..dcdfa551 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
 @@ -1199,6 +1199,8 @@ public class ChatActivity extends BaseFragment implements
@@ -2056,7 +2062,45 @@ index 6b8cddfe..851ccd78 100644
      public final static int OPTION_SAVE_TO_GALLERY = 4;
      public final static int OPTION_APPLY_LOCALIZATION_OR_THEME = 5;
      public final static int OPTION_SHARE = 6;
-@@ -12018,13 +12020,23 @@ public class ChatActivity extends BaseFragment implements
+@@ -10880,18 +10882,33 @@ public class ChatActivity extends BaseFragment implements
+     }
+ 
+     private void updatePagedownButtonsPosition() {
++        // Когда поле ввода наверху, снизу его больше нет — и вычитать его
++        // высоту из низа экрана не за что. Без этого кнопка «вниз» и счётчики
++        // висели над пустым местом.
++        final boolean inputOnTop = chatInputViewsContainer.isInputOnTop();
+         if (sideControlsButtonsLayout != null) {
+             float baseTranslationY2 = -windowInsetsStateHolder.getAnimatedMaxBottomInset()
+-                - chatInputViewsContainer.getInputBubbleHeight()
++                - (inputOnTop ? 0 : chatInputViewsContainer.getInputBubbleHeight())
+                 - getTopicTabsSideSize(TopicsTabsView.Position.BOTTOM)
+                 - dp(ChatInputViewsContainer.INPUT_BUBBLE_BOTTOM + 4);
+             sideControlsButtonsLayout.setTranslationY(baseTranslationY2);
+         }
+ 
+         if (suggestEmojiPanel != null) {
+-            float baseTranslationY2 = -windowInsetsStateHolder.getAnimatedMaxBottomInset()
+-                - dp(ChatInputViewsContainer.INPUT_BUBBLE_BOTTOM + 7);
+-            suggestEmojiPanel.setTranslationY(baseTranslationY2);
++            if (inputOnTop) {
++                // Подсказки эмодзи должны стоять у поля, а не у низа экрана.
++                // Панель лежит с привязкой к низу, поэтому поднимаем её на всю
++                // высоту содержимого и опускаем под поле сверху.
++                final View parent = (View) suggestEmojiPanel.getParent();
++                final float bottom = parent == null ? 0 : parent.getHeight();
++                suggestEmojiPanel.setTranslationY(
++                    -bottom + chatListViewPaddingTop + chatInputViewsContainer.getInputBubbleHeight()
++                        + suggestEmojiPanel.getHeight() + dp(ChatInputViewsContainer.INPUT_BUBBLE_BOTTOM));
++            } else {
++                float baseTranslationY2 = -windowInsetsStateHolder.getAnimatedMaxBottomInset()
++                    - dp(ChatInputViewsContainer.INPUT_BUBBLE_BOTTOM + 7);
++                suggestEmojiPanel.setTranslationY(baseTranslationY2);
++            }
+         }
+     }
+ 
+@@ -12018,13 +12035,23 @@ public class ChatActivity extends BaseFragment implements
          if (isInsideContainer && parentChatActivity == null) {
              paddingBottom = AndroidUtilities.navigationBarHeight;
          } else {
@@ -2082,7 +2126,7 @@ index 6b8cddfe..851ccd78 100644
          if (topicsTabs != null) {
              topicsTabs.setSideMenuBackgroundMarginTop(0);//Math.max(0, paddingTop - blurredViewTopOffset - dp(5)));
          }
-@@ -19520,7 +19532,7 @@ public class ChatActivity extends BaseFragment implements
+@@ -19520,7 +19547,7 @@ public class ChatActivity extends BaseFragment implements
                  avatarContainer.setTitle(LocaleController.getString(R.string.SavedMessages));
              } else if (!MessagesController.isSupportUser(currentUser) && getContactsController().contactsDict.get(currentUser.id) == null && (getContactsController().contactsDict.size() != 0 || !getContactsController().isLoadingContacts())) {
                  if (!TextUtils.isEmpty(currentUser.phone)) {
@@ -2091,7 +2135,7 @@ index 6b8cddfe..851ccd78 100644
                  } else {
                      avatarContainer.setTitle(AndroidUtilities.removeRTL(AndroidUtilities.removeDiacritics(UserObject.getUserName(currentUser))), currentUser.scam, currentUser.fake, currentUser.verified, getMessagesController().isPremiumUser(currentUser), currentUser.emoji_status, animated);
                  }
-@@ -33379,6 +33391,10 @@ public class ChatActivity extends BaseFragment implements
+@@ -33379,6 +33406,10 @@ public class ChatActivity extends BaseFragment implements
                  undoView.showWithAction(0, UndoView.ACTION_MESSAGE_COPIED, null);
                  break;
              }
@@ -2102,7 +2146,7 @@ index 6b8cddfe..851ccd78 100644
              case OPTION_SAVE_TO_GALLERY: {
                  if (Build.VERSION.SDK_INT >= 23 && (Build.VERSION.SDK_INT <= 28 || BuildVars.NO_SCOPED_STORAGE) && getParentActivity().checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
                      getParentActivity().requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 4);
-@@ -46097,6 +46113,21 @@ public class ChatActivity extends BaseFragment implements
+@@ -46097,6 +46128,21 @@ public class ChatActivity extends BaseFragment implements
                      }
                  }
  
@@ -2277,6 +2321,25 @@ index b04f149f..c2d63df5 100644
              if (initialDialogsType != DIALOGS_TYPE_WIDGET) {
                  hideFloatingButton(false);
              }
+diff --git a/TMessagesProj/src/main/java/org/telegram/ui/IntroActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/IntroActivity.java
+index 4153ceb2..d1557801 100644
+--- a/TMessagesProj/src/main/java/org/telegram/ui/IntroActivity.java
++++ b/TMessagesProj/src/main/java/org/telegram/ui/IntroActivity.java
+@@ -153,8 +153,12 @@ public class IntroActivity extends BaseFragment implements NotificationCenter.No
+ 
+     @Override
+     public View createView(Context context) {
+-        logoDrawable = context.getResources().getDrawable(R.drawable.telegram_logo).mutate();
+-        logoDrawable.setBounds(0, dp(8.666f), dp(115), dp(35));
++        // Заголовок первой страницы — это картинка со словом «Telegram»,
++        // вставленная в текст. Рисуем вместо неё название форка: та же
++        // подстановка, только буквами. Ширину берём по самой надписи, иначе
++        // короткое имя окажется прижатым влево внутри чужой ширины.
++        logoDrawable = new org.telegram.margelet.MargeletWordmark(26);
++        logoDrawable.setBounds(0, dp(8.666f), logoDrawable.getIntrinsicWidth(), dp(35));
+         SpannableStringBuilder ssb = new SpannableStringBuilder(LocaleController.getString(R.string.Page1Title));
+         ssb.setSpan(new ImageSpan(logoDrawable), 0, ssb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+         titles[0] = ssb;
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/LaunchActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/LaunchActivity.java
 index 470be57c..4da562c2 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/LaunchActivity.java

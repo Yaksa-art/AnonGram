@@ -27,9 +27,15 @@ import org.telegram.messenger.AndroidUtilities;
 public class MargeletWordmark extends Drawable {
 
     private final TextPaint paint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
-    private final int height = AndroidUtilities.dp(20);
+    private final int height;
 
     public MargeletWordmark() {
+        this(20);
+    }
+
+    /** Высота букв. На главном экране одна, на экране до входа крупнее. */
+    public MargeletWordmark(int heightDp) {
+        height = AndroidUtilities.dp(heightDp);
         paint.setTypeface(AndroidUtilities.bold());
         paint.setColor(0xFFFFFFFF);
         paint.setTextSize(height);
