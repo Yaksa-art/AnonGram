@@ -91,6 +91,19 @@ public class MargeletConfig {
         prefs().edit().putBoolean("show_ids", on).apply();
     }
 
+    /**
+     * «Приступ»: весь текст переливается радугой. Выключено по умолчанию и
+     * включается только через предупреждение — мигающая картинка бывает опасна
+     * не в переносном смысле.
+     */
+    public static boolean seizure() {
+        return prefs().getBoolean("seizure", false);
+    }
+
+    public static void setSeizure(boolean on) {
+        prefs().edit().putBoolean("seizure", on).apply();
+    }
+
     /** Режим стримера: прятать номер телефона. */
     public static boolean streamerMode() {
         return prefs().getBoolean("streamer", false);

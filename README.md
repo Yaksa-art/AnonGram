@@ -101,6 +101,17 @@ none of them behind Premium.
 </details>
 
 <details>
+<summary><b>Seizure</b></summary>
+
+Every piece of text in the app keeps changing colour. It is good for nothing.
+
+It is not a flicker: the hue moves smoothly and the brightness stays put.
+Flashing between three and thirty times a second is what triggers photosensitive
+seizures, and that is not something to ship even on request. There is a warning
+before you turn it on anyway.
+</details>
+
+<details>
 <summary><b>A cat</b></summary>
 
 Somewhere. Want yours in the app? Write to [@narezany](https://t.me/narezany).

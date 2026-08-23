@@ -88,6 +88,15 @@ Telegram 从目录中移除的礼物会被重新加回列表末尾，可以再�
 </details>
 
 <details>
+<summary><b>发作</b></summary>
+
+应用里的所有文字都会不停变换颜色。毫无用处。
+
+这不是闪烁：色相平滑地循环，亮度保持不变。每秒三到三十次的闪烁正是诱发光敏性癫痫
+的原因，这种东西即使有人要求也不能做。开启前仍然会有一次提醒。
+</details>
+
+<details>
 <summary><b>一只猫</b></summary>
 
 在某处。想让自己的猫进入应用，请联系 [@narezany](https://t.me/narezany)。

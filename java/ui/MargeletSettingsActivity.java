@@ -1,12 +1,18 @@
 package org.telegram.ui;
 
+import android.view.Gravity;
 import android.view.View;
+import android.widget.FrameLayout;
 
 import org.telegram.margelet.MargeletConfig;
+import org.telegram.margelet.MargeletPlane3D;
+import org.telegram.margelet.MargeletSeizure;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.R;
 import org.telegram.messenger.browser.Browser;
+import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.Components.IconBackgroundColors;
+import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.UItem;
 import org.telegram.ui.Components.UniversalAdapter;
 import org.telegram.ui.Components.UniversalFragment;
@@ -33,6 +39,10 @@ public class MargeletSettingsActivity extends UniversalFragment {
     private static final int ID_GIFTS = 7;
     private static final int ID_SOURCE = 8;
     private static final int ID_PROFILES = 9;
+    private static final int ID_SEIZURE = 10;
+
+    /** Объёмный значок в шапке. Пользы ноль, и в этом вся мысль. */
+    private FrameLayout header;
 
     @Override
     protected CharSequence getTitle() {
@@ -41,6 +51,17 @@ public class MargeletSettingsActivity extends UniversalFragment {
 
     @Override
     protected void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
+        if (header == null && getContext() != null) {
+            header = new FrameLayout(getContext());
+            // Значок сидит в своём квадрате, а не во всю ширину строки: тогда
+            // список тянется пальцем везде, кроме самого значка, и вертикальная
+            // прокрутка не спорит с вращением.
+            header.addView(new MargeletPlane3D(getContext()),
+                    LayoutHelper.createFrame(112, 112, Gravity.CENTER));
+        }
+        if (header != null) {
+            items.add(UItem.asCustomShadow(header, 132));
+        }
         items.add(SettingsActivity.SettingCell.Factory.of(ID_INPUT,
                 IconBackgroundColors.GREEN.top, IconBackgroundColors.GREEN.bottom,
                 R.drawable.settings_chat, LocaleController.getString(R.string.MargeletInput), LocaleController.getString(R.string.MargeletInputInfo)));
@@ -67,6 +88,9 @@ public class MargeletSettingsActivity extends UniversalFragment {
                 R.drawable.settings_gift, LocaleController.getString(R.string.MargeletGifts),
                 LocaleController.getString(R.string.MargeletGiftsInfo)));
         items.add(UItem.asShadow(null));
+        items.add(UItem.asCheck(ID_SEIZURE, LocaleController.getString(R.string.MargeletSeizure))
+                .setChecked(MargeletSeizure.enabled()));
+        items.add(UItem.asShadow(null));
         items.add(SettingsActivity.SettingCell.Factory.of(ID_CHANNEL,
                 IconBackgroundColors.BLUE.top, IconBackgroundColors.BLUE.bottom,
                 R.drawable.settings_channel, LocaleController.getString(R.string.MargeletChannel), "t.me/margeletter"));
@@ -82,6 +106,7 @@ public class MargeletSettingsActivity extends UniversalFragment {
 
     @Override
     public View createView(android.content.Context context) {
+        header = null;      // прошлый экран уносит с собой своё окно
         final View view = super.createView(context);
         // Скруглённые карточки — так выглядят нынешние экраны настроек.
         // Без этой строки список рисуется сплошной лентой, как в прошлой
@@ -92,7 +117,9 @@ public class MargeletSettingsActivity extends UniversalFragment {
 
     @Override
     protected void onClick(UItem item, View view, int position, float x, float y) {
-        if (item.id == ID_INPUT) {
+        if (item.id == ID_SEIZURE) {
+            toggleSeizure();
+        } else if (item.id == ID_INPUT) {
             presentFragment(new MargeletInputActivity());
         } else if (item.id == ID_SOUND) {
             presentFragment(new MargeletSoundActivity());
@@ -111,6 +138,28 @@ public class MargeletSettingsActivity extends UniversalFragment {
         } else if (item.id == ID_FORUM) {
             Browser.openUrl(getContext(), MargeletConfig.FORUM_URL);
         }
+    }
+
+    /**
+     * Выключается молча, включается только через предупреждение: подвижная
+     * картинка бывает опасна не в переносном смысле, и решать это за человека
+     * нельзя.
+     */
+    private void toggleSeizure() {
+        if (MargeletSeizure.enabled()) {
+            MargeletSeizure.set(false);
+            listView.adapter.update(true);
+            return;
+        }
+        new AlertDialog.Builder(getContext())
+                .setTitle(LocaleController.getString(R.string.MargeletSeizureWarning))
+                .setMessage(LocaleController.getString(R.string.MargeletSeizureWarningText))
+                .setPositiveButton(LocaleController.getString(R.string.MargeletSeizureEnable), (d, w) -> {
+                    MargeletSeizure.set(true);
+                    listView.adapter.update(true);
+                })
+                .setNegativeButton(LocaleController.getString(R.string.Cancel), null)
+                .show();
     }
 
     @Override
