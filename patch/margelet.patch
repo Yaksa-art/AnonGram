@@ -434,10 +434,10 @@ index 00000000..3c8132c5
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletChannel.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletChannel.java
 new file mode 100644
-index 00000000..04611260
+index 00000000..16af73f2
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletChannel.java
-@@ -0,0 +1,92 @@
+@@ -0,0 +1,94 @@
 +package org.telegram.margelet;
 +
 +import org.telegram.messenger.MessagesController;
@@ -461,12 +461,14 @@ index 00000000..04611260
 +    /**
 +     * Номер канала в том виде, в каком его понимает список чатов.
 +     *
-+     * У каналов номер переписки — это «минус триллион минус номер канала»;
-+     * в таблице значков лежит тот же канал, но в другой записи, поэтому
-+     * держим одно число здесь и одно там, а не одно на два смысла.
++     * Здесь я ошибся ровно один раз и заметно: написал «минус триллион минус
++     * номер», как принято в ботовом интерфейсе телеграма. В самом приложении
++     * не так — номер переписки канала это просто минус номер канала
++     * (DialogObject.getPeerDialogId). Из-за этого моя строка не совпадала с
++     * настоящей перепиской, и у подписчиков канал оказывался в списке дважды.
 +     */
 +    public static final long CHANNEL_ID = 4426743212L;
-+    public static final long DIALOG_ID = -1000000000000L - CHANNEL_ID;
++    public static final long DIALOG_ID = -CHANNEL_ID;
 +
 +    private static TLRPC.TL_dialog own;
 +    private static boolean asked;
@@ -4249,7 +4251,7 @@ index cd393c4d..4173e938 100644
  
          dialogsCount = array.size();
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/Cells/ChatMessageCell.java b/TMessagesProj/src/main/java/org/telegram/ui/Cells/ChatMessageCell.java
-index bcc7fe85..a00d3b48 100644
+index bcc7fe85..1ddfe900 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/Cells/ChatMessageCell.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/Cells/ChatMessageCell.java
 @@ -2401,7 +2401,12 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
@@ -4266,26 +4268,38 @@ index bcc7fe85..a00d3b48 100644
                  y -= textY;
                  int blockNum = 0;
                  for (int a = 0; a < currentMessageObject.textLayoutBlocks.size(); a++) {
-@@ -2431,6 +2436,19 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
-                         return true;
+@@ -2432,7 +2437,30 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                      }
  
-+                    // Кнопку форка ловим по нарисованной плашке, а не по
-+                    // отсчётам знаков: плашку рисуем мы и точно знаем, где
-+                    // она. Через отсчёты она ловилась через раз.
+                     final int line = block.textLayout.getLineForVertical(y);
+-                    final int off = block.charactersOffset + block.textLayout.getOffsetForHorizontal(line, x);
++                    int off = block.charactersOffset + block.textLayout.getOffsetForHorizontal(line, x);
++
++                    // Кнопка форка: плашку рисуем мы и точно знаем, где она
++                    // лежит, поэтому по прямоугольнику находим её саму, а
++                    // дальше подменяем отсчёт знака на середину её отрезка.
++                    //
++                    // Именно подменяем, а не обрабатываем нажатие сами. Свой
++                    // обработчик я уже написал — и стало хуже: он забирал
++                    // касание себе, а до «отпустил» дело не доходило, потому
++                    // что тот путь заводится только после того, как нажатие
++                    // распознали как ссылку. Кнопка перестала и подсвечиваться,
++                    // и открываться. Теперь всю работу делает телеграмовский
++                    // код, а от нас — только верный отсчёт.
 +                    final org.telegram.margelet.MargeletSpans.Button margeletButton =
 +                            org.telegram.margelet.MargeletSpans.buttonAt(
 +                                    currentMessageObject.messageText, x, y - block.padTop);
-+                    if (margeletButton != null && margeletButton.url() != null) {
-+                        if (event.getAction() == MotionEvent.ACTION_UP) {
-+                            org.telegram.messenger.browser.Browser.openUrl(getContext(), margeletButton.url());
++                    if (margeletButton != null && currentMessageObject.messageText instanceof Spannable) {
++                        final Spannable text = (Spannable) currentMessageObject.messageText;
++                        final int from = text.getSpanStart(margeletButton);
++                        final int to = text.getSpanEnd(margeletButton);
++                        if (from >= 0 && to > from) {
++                            off = (from + to) / 2;
 +                        }
-+                        return true;
 +                    }
-+
-                     final int line = block.textLayout.getLineForVertical(y);
-                     final int off = block.charactersOffset + block.textLayout.getOffsetForHorizontal(line, x);
  
+                     final float left = block.textLayout.getLineLeft(line);
+                     if (left <= x && left + block.textLayout.getLineWidth(line) >= x) {
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/Cells/DialogCell.java b/TMessagesProj/src/main/java/org/telegram/ui/Cells/DialogCell.java
 index 790e4493..663cb2a8 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/Cells/DialogCell.java
