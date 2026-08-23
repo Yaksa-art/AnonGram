@@ -31,10 +31,10 @@ index 7cc3a8e3..533927ca 100644
              buildConfigField "String", "BETA_URL", "\"" + getProps("BETA_PRIVATE_URL") + "\""
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletBadge.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletBadge.java
 new file mode 100644
-index 00000000..a97c8bcc
+index 00000000..e52cd0a9
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletBadge.java
-@@ -0,0 +1,193 @@
+@@ -0,0 +1,227 @@
 +package org.telegram.margelet;
 +
 +import android.content.Context;
@@ -129,10 +129,38 @@ index 00000000..a97c8bcc
 +        return -chatId;
 +    }
 +
++    /** Вся таблица: нужна витрине значков. */
++    public static Badge[] list() {
++        return BADGES;
++    }
++
++    /**
++     * Примеренный значок: человек выбрал его в витрине, чтобы посмотреть на
++     * себе. Виден только ему и только внутри приложения — на сервер ничего не
++     * уходит, и никому другому он не показывается.
++     */
++    private static Badge previewed() {
++        final int index = MargeletConfig.badgePreview();
++        return index >= 0 && index < BADGES.length ? BADGES[index] : null;
++    }
++
++    private static boolean isSelf(long peerId) {
++        try {
++            return peerId > 0 && peerId == org.telegram.messenger.UserConfig
++                    .getInstance(org.telegram.messenger.UserConfig.selectedAccount)
++                    .getClientUserId();
++        } catch (Throwable t) {
++            return false;
++        }
++    }
++
 +    /** Старший значок — тот, что стоит у имени. Первый в таблице и есть старший. */
 +    public static Badge of(long peerId) {
 +        if (!MargeletConfig.badgesEnabled()) {
 +            return null;
++        }
++        if (isSelf(peerId) && previewed() != null) {
++            return previewed();
 +        }
 +        for (Badge badge : BADGES) {
 +            if (badge.peerId == peerId) {
@@ -148,7 +176,13 @@ index 00000000..a97c8bcc
 +        if (!MargeletConfig.badgesEnabled()) {
 +            return found;
 +        }
++        if (isSelf(peerId) && previewed() != null) {
++            found.add(previewed());
++        }
 +        for (Badge badge : BADGES) {
++            if (found.contains(badge)) {
++                continue;
++            }
 +            if (badge.peerId == peerId) {
 +                found.add(badge);
 +            }
@@ -390,10 +424,10 @@ index 00000000..3c8132c5
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
 new file mode 100644
-index 00000000..844100bf
+index 00000000..d1b68e82
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
-@@ -0,0 +1,270 @@
+@@ -0,0 +1,292 @@
 +package org.telegram.margelet;
 +
 +import android.content.Context;
@@ -510,6 +544,28 @@ index 00000000..844100bf
 +
 +    public static void setShowWatermarks(boolean on) {
 +        prefs().edit().putBoolean("watermarks", on).apply();
++    }
++
++    /**
++     * Разметка значками по видам: **жирный**, __курсив__ и прочие, включая
++     * свои — ++подчёркнутый++ и цитаты через «больше». Всё включено по
++     * умолчанию; выключенный вид остаётся в тексте как есть.
++     */
++    public static boolean markdownEnabled(String kind) {
++        return prefs().getBoolean("markdown_" + kind, true);
++    }
++
++    public static void setMarkdownEnabled(String kind, boolean on) {
++        prefs().edit().putBoolean("markdown_" + kind, on).apply();
++    }
++
++    /** Примеренный значок из витрины: номер в таблице или -1. */
++    public static int badgePreview() {
++        return prefs().getInt("badge_preview", -1);
++    }
++
++    public static void setBadgePreview(int index) {
++        prefs().edit().putInt("badge_preview", index).apply();
 +    }
 +
 +    /** Премиум-значки без премиума: видны только в форке. */
@@ -666,10 +722,10 @@ index 00000000..844100bf
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletCopy.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletCopy.java
 new file mode 100644
-index 00000000..ad6221e4
+index 00000000..1564b6cc
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletCopy.java
-@@ -0,0 +1,252 @@
+@@ -0,0 +1,260 @@
 +package org.telegram.margelet;
 +
 +import android.text.TextUtils;
@@ -826,20 +882,28 @@ index 00000000..ad6221e4
 +     * потерять, чем написать значок, который потом не разберётся.
 +     */
 +    private static String token(TLRPC.MessageEntity entity) {
++        final String kind;
++        final String token;
 +        if (entity instanceof TLRPC.TL_messageEntityBold) {
-+            return "**";
++            kind = "bold"; token = "**";
 +        } else if (entity instanceof TLRPC.TL_messageEntityItalic) {
-+            return "__";
++            kind = "italic"; token = "__";
 +        } else if (entity instanceof TLRPC.TL_messageEntityStrike) {
-+            return "~~";
++            kind = "strike"; token = "~~";
 +        } else if (entity instanceof TLRPC.TL_messageEntitySpoiler) {
-+            return "||";
++            kind = "spoiler"; token = "||";
++        } else if (entity instanceof TLRPC.TL_messageEntityUnderline) {
++            kind = "underline"; token = "++";
 +        } else if (entity instanceof TLRPC.TL_messageEntityCode) {
-+            return "`";
++            kind = "code"; token = "`";
 +        } else if (entity instanceof TLRPC.TL_messageEntityPre) {
-+            return "```";
++            kind = "code"; token = "```";
++        } else {
++            return null;
 +        }
-+        return null;
++        // Выключенный вид не пишем: значок, который у человека не разбирается,
++        // в буфере только мешает.
++        return org.telegram.margelet.MargeletConfig.markdownEnabled(kind) ? token : null;
 +    }
 +
 +    /** То же разрезание по границам, что и в HTML, только значками телеграма. */
@@ -1119,10 +1183,10 @@ index 00000000..33ff716b
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletMarkup.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletMarkup.java
 new file mode 100644
-index 00000000..83a5f5a2
+index 00000000..3ae32905
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletMarkup.java
-@@ -0,0 +1,478 @@
+@@ -0,0 +1,511 @@
 +package org.telegram.margelet;
 +
 +import android.text.Spannable;
@@ -1287,6 +1351,31 @@ index 00000000..83a5f5a2
 +        } catch (Exception e) {
 +            return "";
 +        }
++    }
++
++    /**
++     * Приводит написанное человеком к настоящей ссылке.
++     *
++     * Если это не «http://» и не «https://», считаем, что назвали человека или
++     * канал: «@ник» и просто «ник» превращаются в t.me. Так короче и так его
++     * и просили.
++     */
++    public static String link(String written) {
++        if (written == null) {
++            return "";
++        }
++        final String text = written.trim();
++        if (text.isEmpty()) {
++            return "";
++        }
++        final String lower = text.toLowerCase();
++        if (lower.startsWith("http://") || lower.startsWith("https://")) {
++            return text;
++        }
++        if (lower.startsWith("t.me/") || lower.startsWith("telegram.me/")) {
++            return "https://" + text;
++        }
++        return "https://t.me/" + (text.startsWith("@") ? text.substring(1) : text);
 +    }
 +
 +    public static byte[] bytesOf(String text) {
@@ -1503,8 +1592,16 @@ index 00000000..83a5f5a2
 +                if (!url.isEmpty()) {
 +                    // Нажатие отдаём обычной ссылочной разметке: её телеграм
 +                    // ловит сам, своя обработка тут была бы лишней.
++                    //
++                    // Границы ВКЛЮЧАЮЩИЕ, и это не мелочь. Телеграм ищет
++                    // разметку под пальцем так: считает позицию буквы под
++                    // нажатием и спрашивает разметку в этой точке. Но кнопка
++                    // рисуется одним куском, и позиция всегда получается ровно
++                    // на её краю — а разметку с исключающими краями в её
++                    // собственных краях не находят. Кнопка рисовалась и не
++                    // нажималась вовсе; владелец сказал «ей похуй», и был прав.
 +                    text.setSpan(new org.telegram.ui.Components.URLSpanReplacement(url),
-+                            run.start, run.end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
++                            run.start, run.end, Spanned.SPAN_INCLUSIVE_INCLUSIVE);
 +                }
 +                continue;
 +            }
@@ -3061,6 +3158,66 @@ index df646cf4..b25e5001 100644
      }
  
      public static String getServerString(String key) {
+diff --git a/TMessagesProj/src/main/java/org/telegram/messenger/MediaDataController.java b/TMessagesProj/src/main/java/org/telegram/messenger/MediaDataController.java
+index 95495c32..a410f55c 100644
+--- a/TMessagesProj/src/main/java/org/telegram/messenger/MediaDataController.java
++++ b/TMessagesProj/src/main/java/org/telegram/messenger/MediaDataController.java
+@@ -129,6 +129,12 @@ public class MediaDataController extends BaseController {
+             ITALIC_PATTERN = Pattern.compile("__(.+?)__"),
+             SPOILER_PATTERN = Pattern.compile("\\|\\|(.+?)\\|\\|"),
+             STRIKE_PATTERN = Pattern.compile("~~(.+?)~~");
++    // Своё, чего в телеграме нет: подчёркивание и цитаты. Цитата ловится по
++    // строке целиком, поэтому режим многострочный, а свёрнутая идёт первой —
++    // иначе одиночная «>» съест начало двойной.
++    private static Pattern UNDERLINE_PATTERN = Pattern.compile("\\+\\+(.+?)\\+\\+"),
++            QUOTE_COLLAPSED_PATTERN = Pattern.compile("(?m)^>>(.+)$"),
++            QUOTE_PATTERN = Pattern.compile("(?m)^>(.+)$");
+ 
+     public static String SHORTCUT_CATEGORY = "org.telegram.messenger.SHORTCUT_SHARE";
+ 
+@@ -7490,12 +7496,38 @@ public class MediaDataController extends BaseController {
+         CharSequence cs = message[0];
+         if (entities == null) entities = new ArrayList<>();
+         if (parseMarkdown) {
+-            cs = parsePattern(cs, BOLD_PATTERN, entities, obj -> new TLRPC.TL_messageEntityBold());
+-            cs = parsePattern(cs, ITALIC_PATTERN, entities, obj -> new TLRPC.TL_messageEntityItalic());
+-            cs = parsePattern(cs, SPOILER_PATTERN, entities, obj -> new TLRPC.TL_messageEntitySpoiler());
+-            if (allowStrike) {
++            // Каждый вид разметки значками можно выключить у себя: тогда
++            // звёздочки останутся звёздочками. Настройка форка, по умолчанию
++            // всё включено.
++            if (org.telegram.margelet.MargeletConfig.markdownEnabled("bold")) {
++                cs = parsePattern(cs, BOLD_PATTERN, entities, obj -> new TLRPC.TL_messageEntityBold());
++            }
++            if (org.telegram.margelet.MargeletConfig.markdownEnabled("italic")) {
++                cs = parsePattern(cs, ITALIC_PATTERN, entities, obj -> new TLRPC.TL_messageEntityItalic());
++            }
++            if (org.telegram.margelet.MargeletConfig.markdownEnabled("spoiler")) {
++                cs = parsePattern(cs, SPOILER_PATTERN, entities, obj -> new TLRPC.TL_messageEntitySpoiler());
++            }
++            if (allowStrike && org.telegram.margelet.MargeletConfig.markdownEnabled("strike")) {
+                 cs = parsePattern(cs, STRIKE_PATTERN, entities, obj -> new TLRPC.TL_messageEntityStrike());
+             }
++            // Своё: подчёркивание и цитаты. В телеграме значков для них нет,
++            // поэтому и разбирает их только форк — у остальных останутся
++            // плюсы и «больше».
++            if (org.telegram.margelet.MargeletConfig.markdownEnabled("underline")) {
++                cs = parsePattern(cs, UNDERLINE_PATTERN, entities, obj -> new TLRPC.TL_messageEntityUnderline());
++            }
++            if (org.telegram.margelet.MargeletConfig.markdownEnabled("quote_collapsed")) {
++                cs = parsePattern(cs, QUOTE_COLLAPSED_PATTERN, entities, obj -> {
++                    final TLRPC.TL_messageEntityBlockquote quote = new TLRPC.TL_messageEntityBlockquote();
++                    quote.collapsed = true;
++                    quote.flags |= 1;
++                    return quote;
++                });
++            }
++            if (org.telegram.margelet.MargeletConfig.markdownEnabled("quote")) {
++                cs = parsePattern(cs, QUOTE_PATTERN, entities, obj -> new TLRPC.TL_messageEntityBlockquote());
++            }
+         }
+ 
+         // trim again in case some whitespace inside tags
 diff --git a/TMessagesProj/src/main/java/org/telegram/messenger/MessageObject.java b/TMessagesProj/src/main/java/org/telegram/messenger/MessageObject.java
 index 77870805..18122c76 100644
 --- a/TMessagesProj/src/main/java/org/telegram/messenger/MessageObject.java
@@ -3419,7 +3576,7 @@ index 6b8cddfe..808927a9 100644
                      && !isQuickRepliesOrWelcomeMessagesMode()
                      && chatMode != MODE_SCHEDULED
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/Components/ChatActivityEnterView.java b/TMessagesProj/src/main/java/org/telegram/ui/Components/ChatActivityEnterView.java
-index ac402db5..0c8731f1 100644
+index ac402db5..415b7e37 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/Components/ChatActivityEnterView.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/Components/ChatActivityEnterView.java
 @@ -5775,8 +5775,8 @@ public class ChatActivityEnterView extends FrameLayout implements
@@ -3433,7 +3590,22 @@ index ac402db5..0c8731f1 100644
          messageEditText.setGravity(Gravity.BOTTOM);
          messageEditText.setPadding(0, dp(9), 0, dp(10));
          messageEditText.setBackgroundDrawable(null);
-@@ -7733,6 +7733,10 @@ public class ChatActivityEnterView extends FrameLayout implements
+@@ -7426,6 +7426,14 @@ public class ChatActivityEnterView extends FrameLayout implements
+             return false;
+         }
+         final boolean isPremium = UserConfig.getInstance(currentAccount).isPremium();
++        // Вторая застава на премиум-значки, уже при отправке. Первая стоит в
++        // выборе значков, и её мало: владелец вставил значок, а отправить не
++        // дало. Когда форк разрешает такие значки, проверять нечего — сама
++        // телеграмовская пометка до сервера не доедет, её снимает MargeletMarkup
++        // и заменяет своей невидимой.
++        if (org.telegram.margelet.MargeletConfig.freeEmoji()) {
++            return false;
++        }
+         if (!isPremium && UserConfig.getInstance(currentAccount).getClientUserId() != dialogId && message instanceof Spanned) {
+             AnimatedEmojiSpan[] animatedEmojis = ((Spanned) message).getSpans(0, message.length(), AnimatedEmojiSpan.class);
+             if (animatedEmojis != null) {
+@@ -7733,6 +7741,10 @@ public class ChatActivityEnterView extends FrameLayout implements
      }
  
      public boolean processSendingText(CharSequence text, boolean notify, int scheduleDate, int scheduleRepeatPeriod, long payStars) {
@@ -3793,6 +3965,76 @@ index 18411328..d7a2f80e 100644
                  if (viewPager.isManualScrolling() || viewPager.isTouch()) {
                      return;
                  }
+diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletBadgeGalleryActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletBadgeGalleryActivity.java
+new file mode 100644
+index 00000000..9cf6ccc9
+--- /dev/null
++++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletBadgeGalleryActivity.java
+@@ -0,0 +1,64 @@
++package org.telegram.ui;
++
++import android.view.View;
++
++import org.telegram.margelet.MargeletBadge;
++import org.telegram.margelet.MargeletConfig;
++import org.telegram.messenger.LocaleController;
++import org.telegram.messenger.R;
++import org.telegram.ui.Components.UItem;
++import org.telegram.ui.Components.UniversalAdapter;
++import org.telegram.ui.Components.UniversalFragment;
++
++import java.util.ArrayList;
++
++/**
++ * Витрина значков: какие вообще бывают и как выглядит любой из них на себе.
++ *
++ * Примерка живёт только в этом приложении и только у того, кто примеряет: на
++ * сервер ничего не уходит, чужим ничего не видно. Значок и так ничего не
++ * удостоверяет, но примерка не должна выглядеть как способ им притвориться.
++ */
++public class MargeletBadgeGalleryActivity extends UniversalFragment {
++
++    private static final int ID_NONE = 1000;
++
++    @Override
++    protected CharSequence getTitle() {
++        return LocaleController.getString(R.string.MargeletBadgeGallery);
++    }
++
++    @Override
++    public View createView(android.content.Context context) {
++        final View view = super.createView(context);
++        listView.setSections();
++        return view;
++    }
++
++    @Override
++    protected void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
++        final MargeletBadge.Badge[] badges = MargeletBadge.list();
++        final int chosen = MargeletConfig.badgePreview();
++        items.add(UItem.asRadio(ID_NONE, LocaleController.getString(R.string.MargeletBadgePreviewOff))
++                .setChecked(chosen < 0));
++        for (int i = 0; i < badges.length; i++) {
++            items.add(UItem.asRadio(i, LocaleController.getString(badges[i].title))
++                    .setChecked(chosen == i));
++        }
++        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletBadgePreviewAbout)));
++    }
++
++    @Override
++    protected void onClick(UItem item, View view, int position, float x, float y) {
++        MargeletConfig.setBadgePreview(item.id == ID_NONE ? -1 : item.id);
++        listView.adapter.update(true);
++        if (item.id != ID_NONE) {
++            MargeletBadge.show(getContext(), MargeletBadge.list()[item.id]);
++        }
++    }
++
++    @Override
++    protected boolean onLongClick(UItem item, View view, int position, float x, float y) {
++        return false;
++    }
++}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletDonateActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletDonateActivity.java
 new file mode 100644
 index 00000000..044c526b
@@ -4074,12 +4316,87 @@ index 00000000..1d675319
 +        return false;
 +    }
 +}
+diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletMarkdownActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletMarkdownActivity.java
+new file mode 100644
+index 00000000..521ac98c
+--- /dev/null
++++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletMarkdownActivity.java
+@@ -0,0 +1,69 @@
++package org.telegram.ui;
++
++import android.view.View;
++
++import org.telegram.margelet.MargeletConfig;
++import org.telegram.messenger.LocaleController;
++import org.telegram.messenger.R;
++import org.telegram.ui.Components.UItem;
++import org.telegram.ui.Components.UniversalAdapter;
++import org.telegram.ui.Components.UniversalFragment;
++
++import java.util.ArrayList;
++
++/**
++ * Разметка значками: какие сочетания превращать в оформление при отправке.
++ *
++ * Выключенный вид остаётся в тексте как есть — звёздочки уедут звёздочками.
++ * Подчёркивание и цитаты придуманы форком: в телеграме значков для них нет,
++ * поэтому у собеседника без форка они и останутся плюсами и «больше».
++ */
++public class MargeletMarkdownActivity extends UniversalFragment {
++
++    private static final String[] KINDS = {
++            "bold", "italic", "underline", "strike", "spoiler", "code", "quote", "quote_collapsed"
++    };
++    private static final int[] TITLES = {
++            R.string.Bold, R.string.Italic, R.string.Underline, R.string.Strike,
++            R.string.Spoiler, R.string.Mono, R.string.MargeletMarkdownQuote,
++            R.string.MargeletMarkdownQuoteCollapsed
++    };
++    private static final String[] SAMPLES = {
++            "**…**", "__…__", "++…++", "~~…~~", "||…||", "`…`", ">…", ">>…"
++    };
++
++    @Override
++    protected CharSequence getTitle() {
++        return LocaleController.getString(R.string.MargeletMarkdown);
++    }
++
++    @Override
++    public View createView(android.content.Context context) {
++        final View view = super.createView(context);
++        listView.setSections();
++        return view;
++    }
++
++    @Override
++    protected void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
++        for (int i = 0; i < KINDS.length; i++) {
++            items.add(UItem.asCheck(i, LocaleController.getString(TITLES[i]) + "   " + SAMPLES[i])
++                    .setChecked(MargeletConfig.markdownEnabled(KINDS[i])));
++        }
++        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletMarkdownAbout)));
++    }
++
++    @Override
++    protected void onClick(UItem item, View view, int position, float x, float y) {
++        if (item.id >= 0 && item.id < KINDS.length) {
++            MargeletConfig.setMarkdownEnabled(KINDS[item.id],
++                    !MargeletConfig.markdownEnabled(KINDS[item.id]));
++            listView.adapter.update(true);
++        }
++    }
++
++    @Override
++    protected boolean onLongClick(UItem item, View view, int position, float x, float y) {
++        return false;
++    }
++}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletMarkupActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletMarkupActivity.java
 new file mode 100644
-index 00000000..7713ce43
+index 00000000..ad2e08de
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletMarkupActivity.java
-@@ -0,0 +1,89 @@
+@@ -0,0 +1,96 @@
 +package org.telegram.ui;
 +
 +import android.view.View;
@@ -4109,6 +4426,7 @@ index 00000000..7713ce43
 +    private static final int ID_COPY = 5;
 +    private static final int ID_BUTTON = 6;
 +    private static final int ID_EMOJI = 7;
++    private static final int ID_MARKDOWN = 8;
 +
 +    @Override
 +    protected CharSequence getTitle() {
@@ -4136,6 +4454,9 @@ index 00000000..7713ce43
 +        items.add(UItem.asCheck(ID_EMOJI, LocaleController.getString(R.string.MargeletFreeEmoji))
 +                .setChecked(MargeletConfig.freeEmoji()));
 +        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletFreeEmojiAbout)));
++        items.add(UItem.asButton(ID_MARKDOWN, LocaleController.getString(R.string.MargeletMarkdown),
++                LocaleController.getString(R.string.MargeletMarkdownInfo)));
++        items.add(UItem.asShadow(null));
 +        items.add(UItem.asCheck(ID_WATERMARKS, LocaleController.getString(R.string.MargeletWatermarks))
 +                .setChecked(MargeletConfig.showWatermarks()));
 +        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletWatermarksAbout)));
@@ -4150,6 +4471,9 @@ index 00000000..7713ce43
 +            MargeletConfig.setShowWatermarks(!MargeletConfig.showWatermarks());
 +        } else if (item.id == ID_COPY) {
 +            MargeletConfig.setCopyFormatting(!MargeletConfig.copyFormatting());
++        } else if (item.id == ID_MARKDOWN) {
++            presentFragment(new MargeletMarkdownActivity());
++            return;
 +        } else if (item.id == ID_EMOJI) {
 +            MargeletConfig.setFreeEmoji(!MargeletConfig.freeEmoji());
 +        } else if (item.id == ID_BUTTON) {
@@ -4171,10 +4495,10 @@ index 00000000..7713ce43
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletMarkupAlert.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletMarkupAlert.java
 new file mode 100644
-index 00000000..8d19cbb8
+index 00000000..ebbdb770
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletMarkupAlert.java
-@@ -0,0 +1,179 @@
+@@ -0,0 +1,188 @@
 +package org.telegram.ui;
 +
 +import static org.telegram.messenger.AndroidUtilities.dp;
@@ -4306,7 +4630,16 @@ index 00000000..8d19cbb8
 +                .setTitle(LocaleController.getString(R.string.MargeletMarkupButton))
 +                .setView(layout)
 +                .setPositiveButton(LocaleController.getString(R.string.Done), (d, w) -> {
-+                    final String url = address.getText().toString().trim();
++                    // Без ссылки кнопка не кнопка: нажимать нечего. Владелец
++                    // на это и наткнулся — плашка нарисовалась, а нажатие не
++                    // делало ничего, потому что ссылка осталась пустой.
++                    final String url = MargeletMarkup.link(address.getText().toString());
++                    if (url.isEmpty()) {
++                        android.widget.Toast.makeText(context,
++                                LocaleController.getString(R.string.MargeletMarkupButtonNoLink),
++                                android.widget.Toast.LENGTH_SHORT).show();
++                        return;
++                    }
 +                    editText.makeSelectedButton(chosen[0], url, start, end);
 +                })
 +                .setNegativeButton(LocaleController.getString(R.string.Cancel), null)
@@ -4356,10 +4689,10 @@ index 00000000..8d19cbb8
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletProfilesActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletProfilesActivity.java
 new file mode 100644
-index 00000000..60faa7cf
+index 00000000..397f3a69
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletProfilesActivity.java
-@@ -0,0 +1,57 @@
+@@ -0,0 +1,63 @@
 +package org.telegram.ui;
 +
 +import android.view.View;
@@ -4378,6 +4711,7 @@ index 00000000..60faa7cf
 +
 +    private static final int ID_SHOW_IDS = 1;
 +    private static final int ID_BADGES = 2;
++    private static final int ID_GALLERY = 3;
 +
 +    @Override
 +    protected CharSequence getTitle() {
@@ -4399,6 +4733,9 @@ index 00000000..60faa7cf
 +        items.add(UItem.asCheck(ID_BADGES, LocaleController.getString(R.string.MargeletBadges))
 +                .setChecked(MargeletConfig.badgesEnabled()));
 +        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletBadgesAbout)));
++        items.add(UItem.asButton(ID_GALLERY, LocaleController.getString(R.string.MargeletBadgeGallery),
++                LocaleController.getString(R.string.MargeletBadgeGalleryInfo)));
++        items.add(UItem.asShadow(null));
 +    }
 +
 +    @Override
@@ -4406,6 +4743,8 @@ index 00000000..60faa7cf
 +        if (item.id == ID_SHOW_IDS) {
 +            MargeletConfig.setShowIds(!MargeletConfig.showIds());
 +            listView.adapter.update(true);
++        } else if (item.id == ID_GALLERY) {
++            presentFragment(new MargeletBadgeGalleryActivity());
 +        } else if (item.id == ID_BADGES) {
 +            MargeletConfig.setBadgesEnabled(!MargeletConfig.badgesEnabled());
 +            listView.adapter.update(true);
@@ -13812,7 +14151,7 @@ index 03d0ba33..17f98fa6 100644
      <string name="English">Inglês</string>
      <string name="LanguageNameInEnglish">Portuguese (Brazil)</string>
 diff --git a/TMessagesProj/src/main/res/values-ru/strings.xml b/TMessagesProj/src/main/res/values-ru/strings.xml
-index 24c56292..562e30cd 100644
+index 24c56292..538d93c2 100644
 --- a/TMessagesProj/src/main/res/values-ru/strings.xml
 +++ b/TMessagesProj/src/main/res/values-ru/strings.xml
 @@ -1,7 +1,7 @@
@@ -13825,7 +14164,7 @@ index 24c56292..562e30cd 100644
      <string name="LanguageName">Русский</string>
      <string name="English">Английский</string>
      <string name="LanguageNameInEnglish">Russian</string>
-@@ -263,4 +263,113 @@
+@@ -263,4 +263,124 @@
      <string name="RemindTodayAt">\'Отправить сегодня в\' HH:mm</string>
      <string name="RemindDayAt">\'Отправить\' d MMM \'в\' HH:mm</string>
      <string name="RemindDayYearAt">\'Напомнить\' d MMM yyyy \'в\' HH:mm</string>
@@ -13911,6 +14250,17 @@ index 24c56292..562e30cd 100644
 +    <string name="MargeletMarkupRainbow">Радуга</string>
 +    <string name="MargeletMarkupButton">Кнопка</string>
 +    <string name="MargeletMarkupButtonHint">Ссылка: сайт или t.me/…</string>
++    <string name="MargeletMarkupButtonNoLink">Кнопке нужна ссылка</string>
++    <string name="MargeletMarkdown">Разметка значками</string>
++    <string name="MargeletMarkdownInfo">Что превращать в оформление при отправке</string>
++    <string name="MargeletMarkdownQuote">Цитата</string>
++    <string name="MargeletMarkdownQuoteCollapsed">Свёрнутая цитата</string>
++    <string name="MargeletMarkdownAbout">Выключенный вид остаётся в тексте как есть.\n\nПодчёркивание и цитаты придуманы форком: в телеграме значков для них нет, поэтому у собеседника без форка они останутся плюсами и «больше».</string>
++    <string name="MargeletBadgeGallery">Все значки</string>
++    <string name="MargeletBadgeGalleryInfo">Посмотреть, какие бывают</string>
++    <string name="MargeletBadgePreview">Примерить на себя</string>
++    <string name="MargeletBadgePreviewOff">Не примерять</string>
++    <string name="MargeletBadgePreviewAbout">Примеренный значок видно только вам и только в этом приложении. Никому другому он не показывается.</string>
 +    <string name="MargeletFreeEmoji">Премиум-значки без премиума</string>
 +    <string name="MargeletFreeEmojiAbout">Ставить платные значки в свои сообщения. Их увидят только в Margelet: сервер такую пометку у не-премиума не пропускает, остальным придёт запасной символ.</string>
 +    <string name="MargeletEmojiWarnTitle">Премиум-значки</string>
@@ -13937,7 +14287,7 @@ index 24c56292..562e30cd 100644
 +    <string name="MargeletSeizureWarning">Предупреждение</string>
 +    <string name="MargeletSeizureWarningText">Весь текст начнёт переливаться цветом. Осторожно, если у вас светочувствительная эпилепсия.</string>
 +    <string name="MargeletSeizureEnable">Включить</string>
-+    <string name="MargeletBadgeChannel">Открыть инфо-канал</string>
++    <string name="MargeletBadgeChannel">Канал</string>
  </resources>
 \ No newline at end of file
 diff --git a/TMessagesProj/src/main/res/values-uk/strings.xml b/TMessagesProj/src/main/res/values-uk/strings.xml
@@ -13970,7 +14320,7 @@ index cc49d135..1a5c2cf8 100644
      <item name="menu_regular" type="id"/>
      <item name="menu_bold" type="id"/>
 diff --git a/TMessagesProj/src/main/res/values/strings.xml b/TMessagesProj/src/main/res/values/strings.xml
-index ffa4d566..4e6f70f1 100644
+index ffa4d566..b57bd87c 100644
 --- a/TMessagesProj/src/main/res/values/strings.xml
 +++ b/TMessagesProj/src/main/res/values/strings.xml
 @@ -1,7 +1,7 @@
@@ -13983,7 +14333,7 @@ index ffa4d566..4e6f70f1 100644
      <string name="LanguageName">English</string>
      <string name="English">English</string>
      <string name="LanguageNameInEnglish">English</string>
-@@ -11221,4 +11221,113 @@
+@@ -11221,4 +11221,124 @@
      <string name="UnsupportedMessageTitle">Unsupported Message</string>
      <string name="UnsupportedMessageMessage">Update Telegram to view this message</string>
      <string name="UnsupportedUpdate">Update</string>
@@ -14069,6 +14419,17 @@ index ffa4d566..4e6f70f1 100644
 +    <string name="MargeletMarkupRainbow">Rainbow</string>
 +    <string name="MargeletMarkupButton">Button</string>
 +    <string name="MargeletMarkupButtonHint">Link: a site or t.me/…</string>
++    <string name="MargeletMarkupButtonNoLink">A button needs a link</string>
++    <string name="MargeletMarkdown">Markdown</string>
++    <string name="MargeletMarkdownInfo">What turns into formatting when sending</string>
++    <string name="MargeletMarkdownQuote">Quote</string>
++    <string name="MargeletMarkdownQuoteCollapsed">Collapsed quote</string>
++    <string name="MargeletMarkdownAbout">A type you turn off stays in the text as typed.\n\nUnderline and quotes are the fork\u0027s own: Telegram has no markdown for them, so someone without the fork will just see the plus signs and the greater-than marks.</string>
++    <string name="MargeletBadgeGallery">All badges</string>
++    <string name="MargeletBadgeGalleryInfo">See what there is</string>
++    <string name="MargeletBadgePreview">Try it on</string>
++    <string name="MargeletBadgePreviewOff">Stop trying on</string>
++    <string name="MargeletBadgePreviewAbout">A badge you try on is visible only to you and only inside this app. Nobody else sees it.</string>
 +    <string name="MargeletFreeEmoji">Premium emoji without Premium</string>
 +    <string name="MargeletFreeEmojiAbout">Put paid emoji into your messages. Only Margelet shows them: the server does not accept that marker from a non-Premium account, so everyone else gets the fallback character.</string>
 +    <string name="MargeletEmojiWarnTitle">Premium emoji</string>
@@ -14095,7 +14456,7 @@ index ffa4d566..4e6f70f1 100644
 +    <string name="MargeletSeizureWarning">Warning</string>
 +    <string name="MargeletSeizureWarningText">All text will start cycling through colours. Careful if you have photosensitive epilepsy.</string>
 +    <string name="MargeletSeizureEnable">Turn on</string>
-+    <string name="MargeletBadgeChannel">Open the info channel</string>
++    <string name="MargeletBadgeChannel">Channel</string>
  </resources>
 diff --git a/TMessagesProj_App/build.gradle b/TMessagesProj_App/build.gradle
 index 2aa197cb..8fd9c9ec 100644

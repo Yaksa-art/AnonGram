@@ -164,6 +164,31 @@ public class MargeletMarkup {
         }
     }
 
+    /**
+     * Приводит написанное человеком к настоящей ссылке.
+     *
+     * Если это не «http://» и не «https://», считаем, что назвали человека или
+     * канал: «@ник» и просто «ник» превращаются в t.me. Так короче и так его
+     * и просили.
+     */
+    public static String link(String written) {
+        if (written == null) {
+            return "";
+        }
+        final String text = written.trim();
+        if (text.isEmpty()) {
+            return "";
+        }
+        final String lower = text.toLowerCase();
+        if (lower.startsWith("http://") || lower.startsWith("https://")) {
+            return text;
+        }
+        if (lower.startsWith("t.me/") || lower.startsWith("telegram.me/")) {
+            return "https://" + text;
+        }
+        return "https://t.me/" + (text.startsWith("@") ? text.substring(1) : text);
+    }
+
     public static byte[] bytesOf(String text) {
         if (text == null) {
             return new byte[0];
@@ -378,8 +403,16 @@ public class MargeletMarkup {
                 if (!url.isEmpty()) {
                     // Нажатие отдаём обычной ссылочной разметке: её телеграм
                     // ловит сам, своя обработка тут была бы лишней.
+                    //
+                    // Границы ВКЛЮЧАЮЩИЕ, и это не мелочь. Телеграм ищет
+                    // разметку под пальцем так: считает позицию буквы под
+                    // нажатием и спрашивает разметку в этой точке. Но кнопка
+                    // рисуется одним куском, и позиция всегда получается ровно
+                    // на её краю — а разметку с исключающими краями в её
+                    // собственных краях не находят. Кнопка рисовалась и не
+                    // нажималась вовсе; владелец сказал «ей похуй», и был прав.
                     text.setSpan(new org.telegram.ui.Components.URLSpanReplacement(url),
-                            run.start, run.end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                            run.start, run.end, Spanned.SPAN_INCLUSIVE_INCLUSIVE);
                 }
                 continue;
             }

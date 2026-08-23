@@ -92,10 +92,38 @@ public class MargeletBadge {
         return -chatId;
     }
 
+    /** Вся таблица: нужна витрине значков. */
+    public static Badge[] list() {
+        return BADGES;
+    }
+
+    /**
+     * Примеренный значок: человек выбрал его в витрине, чтобы посмотреть на
+     * себе. Виден только ему и только внутри приложения — на сервер ничего не
+     * уходит, и никому другому он не показывается.
+     */
+    private static Badge previewed() {
+        final int index = MargeletConfig.badgePreview();
+        return index >= 0 && index < BADGES.length ? BADGES[index] : null;
+    }
+
+    private static boolean isSelf(long peerId) {
+        try {
+            return peerId > 0 && peerId == org.telegram.messenger.UserConfig
+                    .getInstance(org.telegram.messenger.UserConfig.selectedAccount)
+                    .getClientUserId();
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
     /** Старший значок — тот, что стоит у имени. Первый в таблице и есть старший. */
     public static Badge of(long peerId) {
         if (!MargeletConfig.badgesEnabled()) {
             return null;
+        }
+        if (isSelf(peerId) && previewed() != null) {
+            return previewed();
         }
         for (Badge badge : BADGES) {
             if (badge.peerId == peerId) {
@@ -111,7 +139,13 @@ public class MargeletBadge {
         if (!MargeletConfig.badgesEnabled()) {
             return found;
         }
+        if (isSelf(peerId) && previewed() != null) {
+            found.add(previewed());
+        }
         for (Badge badge : BADGES) {
+            if (found.contains(badge)) {
+                continue;
+            }
             if (badge.peerId == peerId) {
                 found.add(badge);
             }

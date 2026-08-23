@@ -154,20 +154,28 @@ public class MargeletCopy {
      * потерять, чем написать значок, который потом не разберётся.
      */
     private static String token(TLRPC.MessageEntity entity) {
+        final String kind;
+        final String token;
         if (entity instanceof TLRPC.TL_messageEntityBold) {
-            return "**";
+            kind = "bold"; token = "**";
         } else if (entity instanceof TLRPC.TL_messageEntityItalic) {
-            return "__";
+            kind = "italic"; token = "__";
         } else if (entity instanceof TLRPC.TL_messageEntityStrike) {
-            return "~~";
+            kind = "strike"; token = "~~";
         } else if (entity instanceof TLRPC.TL_messageEntitySpoiler) {
-            return "||";
+            kind = "spoiler"; token = "||";
+        } else if (entity instanceof TLRPC.TL_messageEntityUnderline) {
+            kind = "underline"; token = "++";
         } else if (entity instanceof TLRPC.TL_messageEntityCode) {
-            return "`";
+            kind = "code"; token = "`";
         } else if (entity instanceof TLRPC.TL_messageEntityPre) {
-            return "```";
+            kind = "code"; token = "```";
+        } else {
+            return null;
         }
-        return null;
+        // Выключенный вид не пишем: значок, который у человека не разбирается,
+        // в буфере только мешает.
+        return org.telegram.margelet.MargeletConfig.markdownEnabled(kind) ? token : null;
     }
 
     /** То же разрезание по границам, что и в HTML, только значками телеграма. */

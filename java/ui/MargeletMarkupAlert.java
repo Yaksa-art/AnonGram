@@ -129,7 +129,16 @@ public class MargeletMarkupAlert {
                 .setTitle(LocaleController.getString(R.string.MargeletMarkupButton))
                 .setView(layout)
                 .setPositiveButton(LocaleController.getString(R.string.Done), (d, w) -> {
-                    final String url = address.getText().toString().trim();
+                    // Без ссылки кнопка не кнопка: нажимать нечего. Владелец
+                    // на это и наткнулся — плашка нарисовалась, а нажатие не
+                    // делало ничего, потому что ссылка осталась пустой.
+                    final String url = MargeletMarkup.link(address.getText().toString());
+                    if (url.isEmpty()) {
+                        android.widget.Toast.makeText(context,
+                                LocaleController.getString(R.string.MargeletMarkupButtonNoLink),
+                                android.widget.Toast.LENGTH_SHORT).show();
+                        return;
+                    }
                     editText.makeSelectedButton(chosen[0], url, start, end);
                 })
                 .setNegativeButton(LocaleController.getString(R.string.Cancel), null)

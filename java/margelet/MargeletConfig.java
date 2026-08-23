@@ -116,6 +116,28 @@ public class MargeletConfig {
         prefs().edit().putBoolean("watermarks", on).apply();
     }
 
+    /**
+     * Разметка значками по видам: **жирный**, __курсив__ и прочие, включая
+     * свои — ++подчёркнутый++ и цитаты через «больше». Всё включено по
+     * умолчанию; выключенный вид остаётся в тексте как есть.
+     */
+    public static boolean markdownEnabled(String kind) {
+        return prefs().getBoolean("markdown_" + kind, true);
+    }
+
+    public static void setMarkdownEnabled(String kind, boolean on) {
+        prefs().edit().putBoolean("markdown_" + kind, on).apply();
+    }
+
+    /** Примеренный значок из витрины: номер в таблице или -1. */
+    public static int badgePreview() {
+        return prefs().getInt("badge_preview", -1);
+    }
+
+    public static void setBadgePreview(int index) {
+        prefs().edit().putInt("badge_preview", index).apply();
+    }
+
     /** Премиум-значки без премиума: видны только в форке. */
     public static boolean freeEmoji() {
         return prefs().getBoolean("free_emoji", true);

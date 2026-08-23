@@ -27,6 +27,7 @@ public class MargeletMarkupActivity extends UniversalFragment {
     private static final int ID_COPY = 5;
     private static final int ID_BUTTON = 6;
     private static final int ID_EMOJI = 7;
+    private static final int ID_MARKDOWN = 8;
 
     @Override
     protected CharSequence getTitle() {
@@ -54,6 +55,9 @@ public class MargeletMarkupActivity extends UniversalFragment {
         items.add(UItem.asCheck(ID_EMOJI, LocaleController.getString(R.string.MargeletFreeEmoji))
                 .setChecked(MargeletConfig.freeEmoji()));
         items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletFreeEmojiAbout)));
+        items.add(UItem.asButton(ID_MARKDOWN, LocaleController.getString(R.string.MargeletMarkdown),
+                LocaleController.getString(R.string.MargeletMarkdownInfo)));
+        items.add(UItem.asShadow(null));
         items.add(UItem.asCheck(ID_WATERMARKS, LocaleController.getString(R.string.MargeletWatermarks))
                 .setChecked(MargeletConfig.showWatermarks()));
         items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletWatermarksAbout)));
@@ -68,6 +72,9 @@ public class MargeletMarkupActivity extends UniversalFragment {
             MargeletConfig.setShowWatermarks(!MargeletConfig.showWatermarks());
         } else if (item.id == ID_COPY) {
             MargeletConfig.setCopyFormatting(!MargeletConfig.copyFormatting());
+        } else if (item.id == ID_MARKDOWN) {
+            presentFragment(new MargeletMarkdownActivity());
+            return;
         } else if (item.id == ID_EMOJI) {
             MargeletConfig.setFreeEmoji(!MargeletConfig.freeEmoji());
         } else if (item.id == ID_BUTTON) {
