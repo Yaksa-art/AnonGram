@@ -208,7 +208,13 @@ public class MargeletTagsAlert {
         imageUpdater = new ImageUpdater(false, ImageUpdater.FOR_TYPE_USER, false);
         imageUpdater.parentFragment = fragment;
         imageUpdater.setCanSelectVideo(false);
-        imageUpdater.setSearchAvailable(false);
+        // Обязательно версия с двумя доводами. Та, что с одним, кроме поиска
+        // картинок выключает и сам нижний лист — а без него открывается старый
+        // экран галереи. Ровно на это владелец и показал двумя снимками.
+        imageUpdater.setSearchAvailable(false, true);
+        // Ничего не загружаем: нам нужен файл на диске, а не аватарка на
+        // сервере. Так честнее, чем отменять уже начатую отправку.
+        imageUpdater.setUploadAfterSelect(false);
         imageUpdater.setDelegate((photo, video, videoStartTimestamp, videoPath, bigSize, smallSize, isVideo, emojiMarkup) -> {
             if (coverTaken || bigSize == null) {
                 return;
@@ -216,9 +222,6 @@ public class MargeletTagsAlert {
             coverTaken = true;
             final File file = FileLoader.getInstance(fragment.getCurrentAccount())
                     .getPathToAttach(bigSize, true);
-            // Отменяем сразу: следующим шагом он отправил бы картинку на сервер
-            // как аватарку. Нам нужен только файл на диске.
-            imageUpdater.cancel();
             if (file != null && file.exists()) {
                 takeCover(BitmapFactory.decodeFile(file.getAbsolutePath()));
             }

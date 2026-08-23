@@ -1021,10 +1021,10 @@ index 00000000..1d675319
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletSettingsActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletSettingsActivity.java
 new file mode 100644
-index 00000000..258afa70
+index 00000000..62be4514
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletSettingsActivity.java
-@@ -0,0 +1,94 @@
+@@ -0,0 +1,92 @@
 +package org.telegram.ui;
 +
 +import android.view.View;
@@ -1073,6 +1073,10 @@ index 00000000..258afa70
 +                    IconBackgroundColors.ORANGE_DEEP.top, IconBackgroundColors.ORANGE_DEEP.bottom,
 +                    R.drawable.settings_sounds, LocaleController.getString(R.string.MargeletSound), LocaleController.getString(R.string.MargeletSoundInfo)));
 +        }
++        items.add(SettingsActivity.SettingCell.Factory.of(ID_TRACKS,
++                IconBackgroundColors.PURPLE.top, IconBackgroundColors.PURPLE.bottom,
++                R.drawable.settings_folders, LocaleController.getString(R.string.MargeletTracks),
++                LocaleController.getString(R.string.MargeletTracksInfo)));
 +        items.add(UItem.asShadow(null));
 +        items.add(SettingsActivity.SettingCell.Factory.of(ID_CHANNEL,
 +                IconBackgroundColors.BLUE.top, IconBackgroundColors.BLUE.bottom,
@@ -1081,11 +1085,6 @@ index 00000000..258afa70
 +                IconBackgroundColors.ORANGE.top, IconBackgroundColors.ORANGE.bottom,
 +                R.drawable.settings_group, LocaleController.getString(R.string.MargeletForum), "t.me/margeletforum"));
 +        items.add(UItem.asShadow(null));
-+        // Пункт-выключатель, а не ветка: настраивать тут больше нечего, а
-+        // прятать один переключатель за отдельным экраном — лишний шаг.
-+        items.add(UItem.asCheck(ID_TRACKS, LocaleController.getString(R.string.MargeletTracksEnabled))
-+                .setChecked(MargeletConfig.tagsEnabled()));
-+        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletTracksEnabledAbout)));
 +    }
 +
 +    @Override
@@ -1107,8 +1106,7 @@ index 00000000..258afa70
 +        } else if (item.id == ID_CHANNEL) {
 +            Browser.openUrl(getContext(), MargeletConfig.CHANNEL_URL);
 +        } else if (item.id == ID_TRACKS) {
-+            MargeletConfig.setTagsEnabled(!MargeletConfig.tagsEnabled());
-+            listView.adapter.update(true);
++            presentFragment(new MargeletTracksActivity());
 +        } else if (item.id == ID_FORUM) {
 +            Browser.openUrl(getContext(), MargeletConfig.FORUM_URL);
 +        }
@@ -1234,10 +1232,10 @@ index 00000000..6fd6827d
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletTagsAlert.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletTagsAlert.java
 new file mode 100644
-index 00000000..cd264788
+index 00000000..d73e1cc9
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletTagsAlert.java
-@@ -0,0 +1,273 @@
+@@ -0,0 +1,276 @@
 +package org.telegram.ui;
 +
 +import static org.telegram.messenger.AndroidUtilities.dp;
@@ -1448,7 +1446,13 @@ index 00000000..cd264788
 +        imageUpdater = new ImageUpdater(false, ImageUpdater.FOR_TYPE_USER, false);
 +        imageUpdater.parentFragment = fragment;
 +        imageUpdater.setCanSelectVideo(false);
-+        imageUpdater.setSearchAvailable(false);
++        // Обязательно версия с двумя доводами. Та, что с одним, кроме поиска
++        // картинок выключает и сам нижний лист — а без него открывается старый
++        // экран галереи. Ровно на это владелец и показал двумя снимками.
++        imageUpdater.setSearchAvailable(false, true);
++        // Ничего не загружаем: нам нужен файл на диске, а не аватарка на
++        // сервере. Так честнее, чем отменять уже начатую отправку.
++        imageUpdater.setUploadAfterSelect(false);
 +        imageUpdater.setDelegate((photo, video, videoStartTimestamp, videoPath, bigSize, smallSize, isVideo, emojiMarkup) -> {
 +            if (coverTaken || bigSize == null) {
 +                return;
@@ -1456,9 +1460,6 @@ index 00000000..cd264788
 +            coverTaken = true;
 +            final File file = FileLoader.getInstance(fragment.getCurrentAccount())
 +                    .getPathToAttach(bigSize, true);
-+            // Отменяем сразу: следующим шагом он отправил бы картинку на сервер
-+            // как аватарку. Нам нужен только файл на диске.
-+            imageUpdater.cancel();
 +            if (file != null && file.exists()) {
 +                takeCover(BitmapFactory.decodeFile(file.getAbsolutePath()));
 +            }
@@ -1509,6 +1510,62 @@ index 00000000..cd264788
 +                fragment.getDialogId(), null, fragment.getThreadMessage(), null, null, null,
 +                true, 0, null, fragment.getMessageChatSendParams(), false);
 +        current = null;
++    }
++}
+diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletTracksActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletTracksActivity.java
+new file mode 100644
+index 00000000..60a2f81f
+--- /dev/null
++++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletTracksActivity.java
+@@ -0,0 +1,50 @@
++package org.telegram.ui;
++
++import android.view.View;
++
++import org.telegram.margelet.MargeletConfig;
++import org.telegram.messenger.LocaleController;
++import org.telegram.messenger.R;
++import org.telegram.ui.Components.UItem;
++import org.telegram.ui.Components.UniversalAdapter;
++import org.telegram.ui.Components.UniversalFragment;
++
++import java.util.ArrayList;
++
++/** Ветка «Теги музыки»: включение пункта в меню у аудио. */
++public class MargeletTracksActivity extends UniversalFragment {
++
++    private static final int ID_ENABLED = 1;
++
++    @Override
++    protected CharSequence getTitle() {
++        return LocaleController.getString(R.string.MargeletTracks);
++    }
++
++    @Override
++    public View createView(android.content.Context context) {
++        final View view = super.createView(context);
++        listView.setSections();
++        return view;
++    }
++
++    @Override
++    protected void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
++        items.add(UItem.asCheck(ID_ENABLED, LocaleController.getString(R.string.MargeletTracksEnabled))
++                .setChecked(MargeletConfig.tagsEnabled()));
++        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletTracksEnabledAbout)));
++    }
++
++    @Override
++    protected void onClick(UItem item, View view, int position, float x, float y) {
++        if (item.id == ID_ENABLED) {
++            MargeletConfig.setTagsEnabled(!MargeletConfig.tagsEnabled());
++            listView.adapter.update(true);
++        }
++    }
++
++    @Override
++    protected boolean onLongClick(UItem item, View view, int position, float x, float y) {
++        return false;
 +    }
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java

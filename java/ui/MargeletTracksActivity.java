@@ -1,0 +1,50 @@
+package org.telegram.ui;
+
+import android.view.View;
+
+import org.telegram.margelet.MargeletConfig;
+import org.telegram.messenger.LocaleController;
+import org.telegram.messenger.R;
+import org.telegram.ui.Components.UItem;
+import org.telegram.ui.Components.UniversalAdapter;
+import org.telegram.ui.Components.UniversalFragment;
+
+import java.util.ArrayList;
+
+/** Ветка «Теги музыки»: включение пункта в меню у аудио. */
+public class MargeletTracksActivity extends UniversalFragment {
+
+    private static final int ID_ENABLED = 1;
+
+    @Override
+    protected CharSequence getTitle() {
+        return LocaleController.getString(R.string.MargeletTracks);
+    }
+
+    @Override
+    public View createView(android.content.Context context) {
+        final View view = super.createView(context);
+        listView.setSections();
+        return view;
+    }
+
+    @Override
+    protected void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
+        items.add(UItem.asCheck(ID_ENABLED, LocaleController.getString(R.string.MargeletTracksEnabled))
+                .setChecked(MargeletConfig.tagsEnabled()));
+        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletTracksEnabledAbout)));
+    }
+
+    @Override
+    protected void onClick(UItem item, View view, int position, float x, float y) {
+        if (item.id == ID_ENABLED) {
+            MargeletConfig.setTagsEnabled(!MargeletConfig.tagsEnabled());
+            listView.adapter.update(true);
+        }
+    }
+
+    @Override
+    protected boolean onLongClick(UItem item, View view, int position, float x, float y) {
+        return false;
+    }
+}

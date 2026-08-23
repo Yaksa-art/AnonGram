@@ -46,6 +46,10 @@ public class MargeletSettingsActivity extends UniversalFragment {
                     IconBackgroundColors.ORANGE_DEEP.top, IconBackgroundColors.ORANGE_DEEP.bottom,
                     R.drawable.settings_sounds, LocaleController.getString(R.string.MargeletSound), LocaleController.getString(R.string.MargeletSoundInfo)));
         }
+        items.add(SettingsActivity.SettingCell.Factory.of(ID_TRACKS,
+                IconBackgroundColors.PURPLE.top, IconBackgroundColors.PURPLE.bottom,
+                R.drawable.settings_folders, LocaleController.getString(R.string.MargeletTracks),
+                LocaleController.getString(R.string.MargeletTracksInfo)));
         items.add(UItem.asShadow(null));
         items.add(SettingsActivity.SettingCell.Factory.of(ID_CHANNEL,
                 IconBackgroundColors.BLUE.top, IconBackgroundColors.BLUE.bottom,
@@ -54,11 +58,6 @@ public class MargeletSettingsActivity extends UniversalFragment {
                 IconBackgroundColors.ORANGE.top, IconBackgroundColors.ORANGE.bottom,
                 R.drawable.settings_group, LocaleController.getString(R.string.MargeletForum), "t.me/margeletforum"));
         items.add(UItem.asShadow(null));
-        // Пункт-выключатель, а не ветка: настраивать тут больше нечего, а
-        // прятать один переключатель за отдельным экраном — лишний шаг.
-        items.add(UItem.asCheck(ID_TRACKS, LocaleController.getString(R.string.MargeletTracksEnabled))
-                .setChecked(MargeletConfig.tagsEnabled()));
-        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletTracksEnabledAbout)));
     }
 
     @Override
@@ -80,8 +79,7 @@ public class MargeletSettingsActivity extends UniversalFragment {
         } else if (item.id == ID_CHANNEL) {
             Browser.openUrl(getContext(), MargeletConfig.CHANNEL_URL);
         } else if (item.id == ID_TRACKS) {
-            MargeletConfig.setTagsEnabled(!MargeletConfig.tagsEnabled());
-            listView.adapter.update(true);
+            presentFragment(new MargeletTracksActivity());
         } else if (item.id == ID_FORUM) {
             Browser.openUrl(getContext(), MargeletConfig.FORUM_URL);
         }
