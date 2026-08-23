@@ -9,6 +9,7 @@ import org.telegram.tgnet.TLRPC;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.TreeSet;
 
 /**
  * Копирование сообщения вместе с оформлением.
@@ -61,63 +62,80 @@ public class MargeletCopy {
     /**
      * Собирает HTML по разметке сообщения.
      *
-     * Идём по тексту один раз и на каждой границе выписываем метки: сначала
-     * закрывающие, потом открывающие. Порядок внутри границы важен так же, как
-     * в своём формате: среди открывающих первым идёт длинный кусок, среди
-     * закрывающих — внутренний, иначе вложенность собирается наизнанку.
+     * Наивный способ — выписать метку на каждый кусок — ломается там, где
+     * куски <b>пересекаются, но не вложены</b>: жирный на «АБВГ» и курсив на
+     * «ВГДЕ» дают &lt;b&gt;АБ&lt;i&gt;ВГ&lt;/b&gt;ДЕ&lt;/i&gt;, а такую разметку
+     * никто не разберёт. Поймано моделью (tools/copy_model.py) до того, как это
+     * увидел кто-то живой.
+     *
+     * Поэтому режем текст по всем границам сразу и держим стопку открытых
+     * меток: на каждом отрезке закрываем лишние в обратном порядке и открываем
+     * недостающие. При таком порядке разметка закрывается всегда правильно, а
+     * пересечение само собой распадается на два куска.
      */
     public static String html(CharSequence text, ArrayList<TLRPC.MessageEntity> entities) {
         if (text == null) {
             return null;
         }
         final List<TLRPC.MessageEntity> usable = new ArrayList<>();
+        final TreeSet<Integer> bounds = new TreeSet<>();
+        bounds.add(0);
+        bounds.add(text.length());
         if (entities != null) {
             for (TLRPC.MessageEntity entity : entities) {
                 if (tag(entity, true) != null && entity.offset >= 0 && entity.length > 0
                         && entity.offset + entity.length <= text.length()) {
                     usable.add(entity);
+                    bounds.add(entity.offset);
+                    bounds.add(entity.offset + entity.length);
                 }
             }
         }
-        final List<TLRPC.MessageEntity> opening = new ArrayList<>(usable);
-        // Длинный кусок открывается раньше короткого.
-        Collections.sort(opening, (a, b) -> a.offset != b.offset
+        // Порядок вложения: кто начинается раньше — тот снаружи; при общем
+        // начале снаружи длинный.
+        Collections.sort(usable, (a, b) -> a.offset != b.offset
                 ? Integer.compare(a.offset, b.offset)
                 : Integer.compare(b.length, a.length));
-        final List<TLRPC.MessageEntity> closing = new ArrayList<>(usable);
-        // Внутренний кусок закрывается раньше внешнего.
-        Collections.sort(closing, (a, b) -> {
-            final int ae = a.offset + a.length, be = b.offset + b.length;
-            return ae != be ? Integer.compare(ae, be) : Integer.compare(b.offset, a.offset);
-        });
 
         final StringBuilder out = new StringBuilder();
-        for (int i = 0; i <= text.length(); i++) {
-            for (TLRPC.MessageEntity entity : closing) {
-                if (entity.offset + entity.length == i) {
-                    out.append(tag(entity, false));
+        final List<TLRPC.MessageEntity> stack = new ArrayList<>();
+        final List<Integer> points = new ArrayList<>(bounds);
+        for (int k = 0; k + 1 < points.size(); k++) {
+            final int from = points.get(k), to = points.get(k + 1);
+            final List<TLRPC.MessageEntity> want = new ArrayList<>();
+            for (TLRPC.MessageEntity entity : usable) {
+                if (entity.offset <= from && from < entity.offset + entity.length) {
+                    want.add(entity);
                 }
             }
-            for (TLRPC.MessageEntity entity : opening) {
-                if (entity.offset == i) {
-                    out.append(tag(entity, true));
+            int same = 0;
+            while (same < stack.size() && same < want.size() && stack.get(same) == want.get(same)) {
+                same++;
+            }
+            while (stack.size() > same) {
+                out.append(tag(stack.remove(stack.size() - 1), false));
+            }
+            for (int i = same; i < want.size(); i++) {
+                out.append(tag(want.get(i), true));
+                stack.add(want.get(i));
+            }
+            for (int i = from; i < to; i++) {
+                final char c = text.charAt(i);
+                if (c == '&') {
+                    out.append("&amp;");
+                } else if (c == '<') {
+                    out.append("&lt;");
+                } else if (c == '>') {
+                    out.append("&gt;");
+                } else if (c == '\n') {
+                    out.append("<br>");
+                } else {
+                    out.append(c);
                 }
             }
-            if (i == text.length()) {
-                break;
-            }
-            final char c = text.charAt(i);
-            if (c == '&') {
-                out.append("&amp;");
-            } else if (c == '<') {
-                out.append("&lt;");
-            } else if (c == '>') {
-                out.append("&gt;");
-            } else if (c == '\n') {
-                out.append("<br>");
-            } else {
-                out.append(c);
-            }
+        }
+        while (!stack.isEmpty()) {
+            out.append(tag(stack.remove(stack.size() - 1), false));
         }
         return out.toString();
     }
