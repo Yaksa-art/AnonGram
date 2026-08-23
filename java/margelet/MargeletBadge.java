@@ -168,7 +168,7 @@ public class MargeletBadge {
                 icon.startAnimation(spin);
                 spinner = icon;
             }
-            layout.addView(spinner, LayoutHelper.createLinear(120, 120, Gravity.CENTER_HORIZONTAL, 0, 6, 0, 14));
+            layout.addView(spinner, LayoutHelper.createLinear(150, 150, Gravity.CENTER_HORIZONTAL, 0, 4, 0, 12));
 
             final TextView text = new TextView(context);
             text.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);

@@ -31,7 +31,7 @@ index 7cc3a8e3..533927ca 100644
              buildConfigField "String", "BETA_URL", "\"" + getProps("BETA_PRIVATE_URL") + "\""
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletBadge.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletBadge.java
 new file mode 100644
-index 00000000..acff59a1
+index 00000000..a97c8bcc
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletBadge.java
 @@ -0,0 +1,193 @@
@@ -205,7 +205,7 @@ index 00000000..acff59a1
 +                icon.startAnimation(spin);
 +                spinner = icon;
 +            }
-+            layout.addView(spinner, LayoutHelper.createLinear(120, 120, Gravity.CENTER_HORIZONTAL, 0, 6, 0, 14));
++            layout.addView(spinner, LayoutHelper.createLinear(150, 150, Gravity.CENTER_HORIZONTAL, 0, 4, 0, 12));
 +
 +            final TextView text = new TextView(context);
 +            text.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
@@ -923,10 +923,10 @@ index 00000000..f3d81a4d
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletPlane3D.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletPlane3D.java
 new file mode 100644
-index 00000000..b2543817
+index 00000000..545fca3f
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletPlane3D.java
-@@ -0,0 +1,327 @@
+@@ -0,0 +1,330 @@
 +package org.telegram.margelet;
 +
 +import android.content.Context;
@@ -1183,10 +1183,13 @@ index 00000000..b2543817
 +            return;
 +        }
 +        final float cx = w / 2f, cy = h / 2f;
-+        // Плашка занимает почти весь кадр, как иконка на своём поле. Запас
-+        // оставлен на перспективу: при развороте ближний край подходит к
-+        // камере и вырастает.
-+        final float focal = CAM_Z * Math.min(w, h) * 0.43f;
++        // Запас на перспективу. Предыдущее значение я взял на глаз, и при
++        // развороте верхний угол вылезал за кадр — владелец это увидел.
++        // Теперь оно посчитано: максимум проекции по всем углам поворота
++        // приходится на вертикаль и равен 0,412 от расстояния до камеры,
++        // значит множитель должен быть не больше 0,357. Взято 0,34 — знак
++        // занимает 95 процентов высоты кадра и не касается краёв.
++        final float focal = CAM_Z * Math.min(w, h) * 0.34f;
 +
 +        final double a = Math.toRadians(angle), t = Math.toRadians(TILT);
 +        final float sinA = (float) Math.sin(a), cosA = (float) Math.cos(a);
@@ -2810,7 +2813,7 @@ index 00000000..60faa7cf
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletSettingsActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletSettingsActivity.java
 new file mode 100644
-index 00000000..738c3971
+index 00000000..59459f7a
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletSettingsActivity.java
 @@ -0,0 +1,176 @@
@@ -2874,10 +2877,10 @@ index 00000000..738c3971
 +            // список тянется пальцем везде, кроме самого значка, и вертикальная
 +            // прокрутка не спорит с вращением.
 +            header.addView(new MargeletPlane3D(getContext()),
-+                    LayoutHelper.createFrame(112, 112, Gravity.CENTER));
++                    LayoutHelper.createFrame(150, 150, Gravity.CENTER));
 +        }
 +        if (header != null) {
-+            items.add(UItem.asCustomShadow(header, 132));
++            items.add(UItem.asCustomShadow(header, 168));
 +        }
 +        items.add(SettingsActivity.SettingCell.Factory.of(ID_INPUT,
 +                IconBackgroundColors.GREEN.top, IconBackgroundColors.GREEN.bottom,
@@ -3515,7 +3518,7 @@ index 00000000..60a2f81f
 +    }
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java
-index 40634647..629f23b6 100644
+index 40634647..10759752 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java
 @@ -626,6 +626,21 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
@@ -3696,17 +3699,21 @@ index 40634647..629f23b6 100644
                      } else {
                          nameTextView[a].setRightDrawable2(null);
                      }
-@@ -13456,7 +13544,19 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -13456,7 +13544,23 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                      TextDetailCell detailCell = (TextDetailCell) holder.itemView;
                      boolean containsQr = false;
                      boolean containsGift = false;
 -                    if (position == birthdayRow) {
++                    // Значок форка рисуется у своей же строки: строка про
++                    // значок без значка выглядит странно.
++                    int margeletIcon = 0;
 +                    if (margeletBadgesStartRow != -1 && position >= margeletBadgesStartRow && position < margeletBadgesEndRow) {
 +                        final org.telegram.margelet.MargeletBadge.Badge badge = margeletBadgeAt(position);
 +                        if (badge != null) {
 +                            detailCell.setTextAndValue(LocaleController.getString(badge.title),
 +                                    LocaleController.getString(R.string.MargeletBadgeRow),
 +                                    position < margeletBadgesEndRow - 1);
++                            margeletIcon = badge.icon;
 +                        }
 +                    } else if (position == margeletIdRow) {
 +                        // Айди показываем как есть, без знака у каналов: в таком
@@ -3717,7 +3724,7 @@ index 40634647..629f23b6 100644
                          TLRPC.UserFull userFull = getMessagesController().getUserFull(userId);
                          if (userFull != null && userFull.birthday != null) {
                              final boolean today = BirthdayController.isToday(userFull);
-@@ -13491,7 +13591,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -13491,7 +13595,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                              text = PhoneFormat.getInstance().format("+" + vcardPhone);
                              phoneNumber = vcardPhone;
                          } else if (user != null && !TextUtils.isEmpty(user.phone)) {
@@ -3726,7 +3733,7 @@ index 40634647..629f23b6 100644
                              phoneNumber = user.phone;
                          } else {
                              text = LocaleController.getString(R.string.PhoneHidden);
-@@ -13585,7 +13685,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -13585,7 +13689,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                          TLRPC.User user = UserConfig.getInstance(currentAccount).getCurrentUser();
                          String value;
                          if (user != null && user.phone != null && user.phone.length() != 0) {
@@ -3735,7 +3742,7 @@ index 40634647..629f23b6 100644
                          } else {
                              value = LocaleController.getString(R.string.NumberUnknown);
                          }
-@@ -13610,13 +13710,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -13610,13 +13714,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                              if (username == null || TextUtils.isEmpty(username)) {
                                  text = LocaleController.getString(R.string.UsernameEmpty);
                              } else {
@@ -3751,7 +3758,22 @@ index 40634647..629f23b6 100644
                              } else {
                                  text = LocaleController.getString(R.string.UsernameEmpty);
                              }
-@@ -13839,6 +13939,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -13624,7 +13728,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+                         detailCell.setTextAndValue(text, value, true);
+                         detailCell.setContentDescriptionValueFirst(true);
+                     }
+-                    if (containsGift) {
++                    if (margeletIcon != 0) {
++                        // Свой цвет, без перекраски под тему: значок тем и
++                        // отличается, что у каждого он свой.
++                        detailCell.setImage(ContextCompat.getDrawable(detailCell.getContext(), margeletIcon),
++                                LocaleController.getString(R.string.MargeletBadgeRow));
++                        detailCell.setImageClickListener(null);
++                    } else if (containsGift) {
+                         Drawable drawable = ContextCompat.getDrawable(detailCell.getContext(), R.drawable.msg_input_gift);
+                         drawable.setColorFilter(new PorterDuffColorFilter(dontApplyPeerColor(getThemedColor(Theme.key_switch2TrackChecked), false), PorterDuff.Mode.MULTIPLY));
+                         if (UserObject.areGiftsDisabled(userInfo)) {
+@@ -13839,6 +13949,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                          textCell.setTextAndIcon(LocaleController.getString(R.string.PrivacySettings), R.drawable.msg2_secret, true);
                      } else if (position == dataRow) {
                          textCell.setTextAndIcon(LocaleController.getString(R.string.DataSettings), R.drawable.msg2_data, true);
@@ -3760,7 +3782,7 @@ index 40634647..629f23b6 100644
                      } else if (position == chatRow) {
                          textCell.setTextAndIcon(LocaleController.getString(R.string.ChatSettings), R.drawable.msg2_discussion, true);
                      } else if (position == filtersRow) {
-@@ -14286,7 +14388,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -14286,7 +14398,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                          position == clearLogsRow || position == switchBackendRow || position == setAvatarRow ||
                          position == addToGroupButtonRow || position == premiumRow || position == premiumGiftingRow ||
                          position == businessRow || position == liteModeRow || position == birthdayRow || position == channelRow ||
@@ -3771,7 +3793,7 @@ index 40634647..629f23b6 100644
              }
              if (holder.itemView instanceof UserCell) {
                  UserCell userCell = (UserCell) holder.itemView;
-@@ -14314,7 +14418,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -14314,7 +14428,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
              if (position == infoHeaderRow || position == membersHeaderRow || position == settingsSectionRow2 ||
                      position == numberSectionRow || position == helpHeaderRow || position == debugHeaderRow || position == botPermissionsHeader) {
                  return VIEW_TYPE_HEADER;
@@ -3781,7 +3803,7 @@ index 40634647..629f23b6 100644
                  return VIEW_TYPE_TEXT_DETAIL;
              } else if (position == usernameRow || position == setUsernameRow) {
                  return VIEW_TYPE_TEXT_DETAIL_MULTILINE;
-@@ -14332,7 +14437,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -14332,7 +14447,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                      position == clearLogsRow || position == switchBackendRow || position == setAvatarRow || position == addToGroupButtonRow ||
                      position == addToContactsRow || position == liteModeRow || position == premiumGiftingRow || position == businessRow ||
                      position == botStarsBalanceRow || position == botTonBalanceRow || position == channelBalanceRow || position == botPermissionLocation ||
@@ -3791,7 +3813,7 @@ index 40634647..629f23b6 100644
              ) {
                  return VIEW_TYPE_TEXT;
              } else if (position == notificationsDividerRow) {
-@@ -14346,7 +14452,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -14346,7 +14462,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                      position == helpSectionCell || position == setAvatarSectionRow || position == passwordSuggestionSectionRow ||
                      position == phoneSuggestionSectionRow || position == premiumSectionsRow || position == reportDividerRow ||
                      position == channelDividerRow || position == graceSuggestionSectionRow || position == balanceDividerRow ||

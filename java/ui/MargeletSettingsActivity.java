@@ -58,10 +58,10 @@ public class MargeletSettingsActivity extends UniversalFragment {
             // список тянется пальцем везде, кроме самого значка, и вертикальная
             // прокрутка не спорит с вращением.
             header.addView(new MargeletPlane3D(getContext()),
-                    LayoutHelper.createFrame(112, 112, Gravity.CENTER));
+                    LayoutHelper.createFrame(150, 150, Gravity.CENTER));
         }
         if (header != null) {
-            items.add(UItem.asCustomShadow(header, 132));
+            items.add(UItem.asCustomShadow(header, 168));
         }
         items.add(SettingsActivity.SettingCell.Factory.of(ID_INPUT,
                 IconBackgroundColors.GREEN.top, IconBackgroundColors.GREEN.bottom,

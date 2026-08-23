@@ -60,7 +60,7 @@ def render(pieces, angle, size, mode):
     img = Image.new("RGB",(size,size),(30,30,34))
     d = ImageDraw.Draw(img)
     cx = cy = size/2
-    focal = CAM_Z*size*0.43
+    focal = CAM_Z*size*0.34
     sa,ca = math.sin(math.radians(angle)), math.cos(math.radians(angle))
     st,ct = math.sin(math.radians(TILT)), math.cos(math.radians(TILT))
     vis = []
