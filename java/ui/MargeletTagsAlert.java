@@ -19,6 +19,11 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import org.telegram.margelet.MargeletTags;
+import android.graphics.BitmapFactory;
+import android.graphics.Outline;
+import android.view.ViewOutlineProvider;
+
+import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.FileLoader;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessageObject;
@@ -29,6 +34,7 @@ import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.BulletinFactory;
 import org.telegram.ui.Components.EditTextBoldCursor;
+import org.telegram.ui.Components.ImageUpdater;
 import org.telegram.ui.Components.LayoutHelper;
 
 import java.io.ByteArrayOutputStream;
@@ -63,6 +69,9 @@ public class MargeletTagsAlert {
 
     private EditTextBoldCursor titleField;
     private EditTextBoldCursor artistField;
+    private AlertDialog dialog;
+    private ImageUpdater imageUpdater;
+    private boolean coverTaken;
     private ImageView coverView;
     private TextView coverHint;
 
@@ -115,6 +124,15 @@ public class MargeletTagsAlert {
         coverView = new ImageView(context);
         coverView.setScaleType(ImageView.ScaleType.CENTER_CROP);
         coverView.setBackgroundColor(Theme.getColor(Theme.key_dialogInputField));
+        // Квадрат — это форма обложки альбома, а не моя лень; скругляю углы,
+        // чтобы он не выглядел вырезанным ножницами.
+        coverView.setOutlineProvider(new ViewOutlineProvider() {
+            @Override
+            public void getOutline(View view, Outline outline) {
+                outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), dp(10));
+            }
+        });
+        coverView.setClipToOutline(true);
         coverView.setOnClickListener(v -> pickCover());
 
         coverHint = new TextView(context);
@@ -143,7 +161,7 @@ public class MargeletTagsAlert {
 
         updateCoverView();
 
-        new AlertDialog.Builder(context)
+        dialog = new AlertDialog.Builder(context)
                 .setTitle(LocaleController.getString(R.string.MargeletTrackTags))
                 .setView(layout)
                 .setPositiveButton(LocaleController.getString(R.string.MargeletTrackSend), (d, w) -> apply())
@@ -177,44 +195,37 @@ public class MargeletTagsAlert {
 
     private void pickCover() {
         remember();
-        final PhotoAlbumPickerActivity picker =
-                new PhotoAlbumPickerActivity(PhotoAlbumPickerActivity.SELECT_TYPE_AVATAR, false, false, null);
-        picker.setMaxSelectedPhotos(1, false);
-        picker.setDelegate(new PhotoAlbumPickerActivity.PhotoAlbumPickerActivityDelegate() {
-            @Override
-            public void didSelectPhotos(ArrayList<SendMessagesHelper.SendingMediaInfo> photos, boolean notify, int scheduleDate) {
-                if (photos == null || photos.isEmpty()) {
-                    return;
-                }
-                openCrop(photos.get(0));
-            }
-
-            @Override
-            public void startPhotoSelectActivity() {
-            }
-        });
-        fragment.presentFragment(picker);
-    }
-
-    private void openCrop(SendMessagesHelper.SendingMediaInfo info) {
-        final Bundle args = new Bundle();
-        if (info.path != null) {
-            args.putString("photoPath", info.path);
-        } else if (info.uri != null) {
-            args.putParcelable("photoUri", info.uri);
-        } else {
-            return;
+        // Окно надо закрыть ДО открытия галереи. Пока оно висело, галерея
+        // открывалась за ним — владелец это увидел первым делом.
+        if (dialog != null) {
+            dialog.dismiss();
+            dialog = null;
         }
-        final PhotoCropActivity crop = new PhotoCropActivity(args);
-        crop.setDelegate(bitmap -> {
-            takeCover(bitmap);
-            // Экран кадрирования закрывает себя сам, сразу после этого вызова.
-            // Поэтому окно тегов открываем чуть позже: иначе оно всплыло бы
-            // поверх уходящего экрана. Стек при этом не трогаем — вызов
-            // removeSelfFromStack у fragment убрал бы сам чат, а не картинку.
-            org.telegram.messenger.AndroidUtilities.runOnUIThread(this::open, 220);
+        coverTaken = false;
+        // Галерея и кадрирование телеграмовские, нынешние: тот же нижний лист,
+        // что при смене аватарки. Своего кадрирования больше нет — из-за него
+        // обрезка шла дважды, вторым разом чужим по стилю квадратным экраном.
+        imageUpdater = new ImageUpdater(false, ImageUpdater.FOR_TYPE_USER, false);
+        imageUpdater.parentFragment = fragment;
+        imageUpdater.setCanSelectVideo(false);
+        imageUpdater.setSearchAvailable(false);
+        imageUpdater.setDelegate((photo, video, videoStartTimestamp, videoPath, bigSize, smallSize, isVideo, emojiMarkup) -> {
+            if (coverTaken || bigSize == null) {
+                return;
+            }
+            coverTaken = true;
+            final File file = FileLoader.getInstance(fragment.getCurrentAccount())
+                    .getPathToAttach(bigSize, true);
+            // Отменяем сразу: следующим шагом он отправил бы картинку на сервер
+            // как аватарку. Нам нужен только файл на диске.
+            imageUpdater.cancel();
+            if (file != null && file.exists()) {
+                takeCover(BitmapFactory.decodeFile(file.getAbsolutePath()));
+            }
+            AndroidUtilities.runOnUIThread(this::open, 120);
         });
-        fragment.presentFragment(crop, true);
+        imageUpdater.openMenu(false, null, d -> {
+        }, 0);
     }
 
     private void takeCover(Bitmap bitmap) {
