@@ -92,6 +92,15 @@ public class MargeletConfig {
         prefs().edit().putBoolean("gifts", on).apply();
     }
 
+    /** Показывали ли предупреждение о своём оформлении. Один раз за всё время. */
+    public static boolean markupWarned() {
+        return prefs().getBoolean("markup_warned", false);
+    }
+
+    public static void setMarkupWarned(boolean value) {
+        prefs().edit().putBoolean("markup_warned", value).apply();
+    }
+
     /** Значки форка у имён. Включены по умолчанию: без них форк выглядит чужим. */
     public static boolean badgesEnabled() {
         return prefs().getBoolean("badges", true);

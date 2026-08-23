@@ -57,6 +57,22 @@ public class MargeletSeizure {
         return cached;
     }
 
+    /**
+     * Просьба подержать кадры ещё немного: её шлёт радужная разметка, когда её
+     * рисуют. «Приступ» при этом может быть выключен — обход нужен обоим, и
+     * заводить второй такой же незачем.
+     */
+    private static long pokedAt;
+
+    public static void poke() {
+        pokedAt = SystemClock.elapsedRealtime();
+        start();
+    }
+
+    private static boolean wanted() {
+        return enabled() || SystemClock.elapsedRealtime() - pokedAt < 1000L;
+    }
+
     public static void set(boolean on) {
         MargeletConfig.setSeizure(on);
         cached = on;
@@ -170,7 +186,7 @@ public class MargeletSeizure {
      */
     public static void attach(View root) {
         window = root == null ? null : new WeakReference<>(root);
-        if (enabled()) {
+        if (wanted()) {
             start();
         }
     }
@@ -190,7 +206,7 @@ public class MargeletSeizure {
             if (context instanceof Activity && ((Activity) context).isDestroyed()) {
                 return;
             }
-            if (!enabled()) {
+            if (!wanted()) {
                 return;
             }
             invalidate(root);
