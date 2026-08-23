@@ -8,25 +8,17 @@ import org.telegram.messenger.UserConfig;
  *
  * Настоящего спойлера, как в сообщениях, тут нет и быть не может: он умеет
  * жить только в тех вьюшках телеграма, которые его рисуют, а номер в шапке
- * профиля показывает простой текст. Поэтому замазка и общий показ по нажатию:
- * тронул закрытый номер — открылось всё на полминуты.
+ * профиля показывает простой текст. Поэтому замазка.
+ *
+ * Показа по нажатию нет намеренно. Он тут был и был убран по требованию
+ * владельца, и требование правильное: в эфире случайное касание экрана — это
+ * ровно тот случай, ради которого режим и включают. Открывается только
+ * выключателем в настройках.
  */
 public class MargeletPrivacy {
 
-    private static final long REVEAL_MS = 30_000;
-
-    private static long revealedUntil;
-
     public static boolean streamer() {
         return MargeletConfig.streamerMode();
-    }
-
-    public static boolean revealed() {
-        return System.currentTimeMillis() < revealedUntil;
-    }
-
-    public static void reveal() {
-        revealedUntil = System.currentTimeMillis() + REVEAL_MS;
     }
 
     private static boolean own(long userId) {
@@ -35,7 +27,7 @@ public class MargeletPrivacy {
 
     /** Номер телефона, уже отформатированный. userId — чей он. */
     public static String phone(String formatted, long userId) {
-        if (formatted == null || !streamer() || revealed()) {
+        if (formatted == null || !streamer()) {
             return formatted;
         }
         if (!own(userId) && !MargeletConfig.streamerHidesOthers()) {
@@ -46,7 +38,7 @@ public class MargeletPrivacy {
 
     /** Юзернейм без собачки. */
     public static String username(String name, long userId) {
-        if (name == null || !streamer() || revealed()) {
+        if (name == null || !streamer()) {
             return name;
         }
         if (!own(userId) || !MargeletConfig.streamerHidesUsername()) {
