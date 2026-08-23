@@ -126,10 +126,10 @@ index 00000000..dbbaf49b
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletCats.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletCats.java
 new file mode 100644
-index 00000000..8668ad3a
+index 00000000..6e9f58a9
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletCats.java
-@@ -0,0 +1,125 @@
+@@ -0,0 +1,145 @@
 +package org.telegram.margelet;
 +
 +import static org.telegram.messenger.AndroidUtilities.dp;
@@ -163,6 +163,12 @@ index 00000000..8668ad3a
 + * Считаем нажатия подряд: семь штук, между соседними не больше секунды. Порог
 + * такой, чтобы обычный человек, переключающий вкладки, на него не наткнулся, а
 + * тот, кто именно долбит, — наткнулся сразу.
++ *
++ * Отсюда же две меры против собственного открытия. Подпись висит сверху, а не
++ * снизу: снизу ровно то место, по которому человек только что долбил пальцем.
++ * И первые полсекунды окно нажатий не принимает вовсе — палец после седьмого
++ * тапа успевает опуститься восьмой раз, и без этой задержки кошка закрывалась
++ * или уводила в переписку с владельцем раньше, чем её успевали увидеть.
 + */
 +public class MargeletCats {
 +
@@ -174,6 +180,9 @@ index 00000000..8668ad3a
 +    private static final int[] NAMES = {R.string.MargeletCatOne, R.string.MargeletCatTwo};
 +
 +    private static final String OWNER = "narezany";
++
++    /** Сколько окно не принимает нажатий после открытия. */
++    private static final long DEAF_MS = 500;
 +
 +    private static int taps;
 +    private static long lastTap;
@@ -194,6 +203,7 @@ index 00000000..8668ad3a
 +        }
 +        try {
 +            final int index = (int) (Math.random() * PHOTOS.length);
++            final long openedAt = System.currentTimeMillis();
 +
 +            final FrameLayout root = new FrameLayout(activity);
 +            root.setBackgroundColor(0xFF000000);
@@ -203,28 +213,33 @@ index 00000000..8668ad3a
 +            photo.setImageResource(PHOTOS[index]);
 +            root.addView(photo, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
 +
-+            final LinearLayout bottom = new LinearLayout(activity);
-+            bottom.setOrientation(LinearLayout.VERTICAL);
-+            bottom.setBackgroundColor(0xB0000000);
-+            bottom.setPadding(dp(20), dp(16), dp(20), dp(24));
++            final LinearLayout caption = new LinearLayout(activity);
++            caption.setOrientation(LinearLayout.VERTICAL);
++            caption.setBackgroundColor(0xB0000000);
++            caption.setPadding(dp(20), dp(16) + AndroidUtilities.statusBarHeight, dp(20), dp(18));
 +
 +            final TextView name = new TextView(activity);
 +            name.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 22);
 +            name.setTypeface(AndroidUtilities.bold());
 +            name.setTextColor(Color.WHITE);
 +            name.setText(LocaleController.getString(NAMES[index]));
-+            bottom.addView(name, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
++            caption.addView(name, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 +
 +            final TextView invite = new TextView(activity);
 +            invite.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
 +            invite.setTextColor(0xFF8DD1B0);
 +            invite.setText(LocaleController.getString(R.string.MargeletCatAddYours));
 +            invite.setPadding(0, dp(10), 0, 0);
-+            invite.setOnClickListener(v -> writeToOwner(activity));
-+            bottom.addView(invite, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
++            invite.setOnClickListener(v -> {
++                if (System.currentTimeMillis() - openedAt < DEAF_MS) {
++                    return;
++                }
++                writeToOwner(activity);
++            });
++            caption.addView(invite, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 +
-+            root.addView(bottom, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT,
-+                    LayoutHelper.WRAP_CONTENT, Gravity.BOTTOM));
++            root.addView(caption, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT,
++                    LayoutHelper.WRAP_CONTENT, Gravity.TOP));
 +
 +            final Dialog dialog = new Dialog(activity);
 +            dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
@@ -235,9 +250,14 @@ index 00000000..8668ad3a
 +                window.setBackgroundDrawable(new ColorDrawable(Color.BLACK));
 +                window.setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT);
 +            }
-+            // По кошке — закрыть. По надписи снизу — написать владельцу; она
++            // По кошке — закрыть. По надписи сверху — написать владельцу; она
 +            // ловит нажатие сама и до этого обработчика не доходит.
-+            photo.setOnClickListener(v -> dialog.dismiss());
++            photo.setOnClickListener(v -> {
++                if (System.currentTimeMillis() - openedAt < DEAF_MS) {
++                    return;
++                }
++                dialog.dismiss();
++            });
 +            dialog.show();
 +        } catch (Exception ignored) {
 +            // Пасхалка не то, ради чего можно ронять приложение.
@@ -771,10 +791,10 @@ index 00000000..f3d81a4d
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletPlane3D.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletPlane3D.java
 new file mode 100644
-index 00000000..9d342443
+index 00000000..0ac970bc
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletPlane3D.java
-@@ -0,0 +1,292 @@
+@@ -0,0 +1,289 @@
 +package org.telegram.margelet;
 +
 +import android.content.Context;
@@ -786,7 +806,6 @@ index 00000000..9d342443
 +import android.view.View;
 +
 +import java.util.ArrayList;
-+import java.util.Collections;
 +
 +/**
 + * Иконка Margelet в объёме: тот же скруглённый квадрат с самолётиком, только
@@ -801,9 +820,17 @@ index 00000000..9d342443
 + * и в диалоге, и в шапке списка, по которому ездят строки. Треугольников тут
 + * меньше сотни — рисовать их кистью дешевле, чем разбираться с порядком слоёв.
 + *
-+ * Тело выпуклое, поэтому весь «трёхмерный движок» помещается в две вещи:
-+ * отбросить грани, отвёрнутые от зрителя, и рисовать оставшиеся от дальних к
-+ * ближним. Наклейки самолёта приподняты над гранью и потому ложатся поверх неё.
++ * Тело выпуклое, и это сильно упрощает дело: у выпуклой фигуры видимые грани
++ * между собой не перекрываются вовсе. Значит, хватает отсечения отвёрнутых
++ * граней, а сортировать тело не нужно. Наклейки самолёта рисуются после тела —
++ * они лежат на грани, вместе с ней видны и вместе с ней пропадают.
++ *
++ * Сортировка по глубине тут была и оказалась неправильной: у плашки середина в
++ * центре, у наклейки поднята вверх, а наклон фигуры уводит верх от зрителя
++ * сильнее, чем наклейку поднимает её отступ от грани. Самолёт уходил «глубже»
++ * плашки и закрашивался ею — в лоб не было видно ничего, вполоборота оставалось
++ * одно крыло. Владелец это увидел, а я — нет, потому что на собственный рисунок
++ * не посмотрел ни разу.
 + */
 +public class MargeletPlane3D extends View {
 +
@@ -828,12 +855,14 @@ index 00000000..9d342443
 +        final float[][] points;
 +        final float[] normal;
 +        final int color;
-+        float depth;
++        /** Наклейка на грани: рисуется после тела, иначе тонет в нём. */
++        final boolean decal;
 +
-+        Piece(float[][] points, float[] normal, int color) {
++        Piece(float[][] points, float[] normal, int color, boolean decal) {
 +            this.points = points;
 +            this.normal = normal;
 +            this.color = color;
++            this.decal = decal;
 +        }
 +    }
 +
@@ -913,8 +942,8 @@ index 00000000..9d342443
 +            front[i] = new float[]{p[0], p[1], HALF_DEPTH};
 +            back[n - 1 - i] = new float[]{p[0], p[1], -HALF_DEPTH};
 +        }
-+        pieces.add(new Piece(front, new float[]{0, 0, 1}, GREEN));
-+        pieces.add(new Piece(back, new float[]{0, 0, -1}, GREEN));
++        pieces.add(new Piece(front, new float[]{0, 0, 1}, GREEN, false));
++        pieces.add(new Piece(back, new float[]{0, 0, -1}, GREEN, false));
 +
 +        // Рёбра: по четырёхугольнику на отрезок контура. Своя нормаль наружу —
 +        // она и делает толщину видимой.
@@ -932,7 +961,7 @@ index 00000000..9d342443
 +                    {p2[0], p2[1], HALF_DEPTH},
 +                    {p2[0], p2[1], -HALF_DEPTH},
 +                    {p1[0], p1[1], -HALF_DEPTH}
-+            }, normal, GREEN_SIDE));
++            }, normal, GREEN_SIDE, false));
 +        }
 +
 +        // Самолётик на обеих гранях, приподнятый над поверхностью.
@@ -953,10 +982,10 @@ index 00000000..9d342443
 +
 +        // Крылья и ребро сгиба разной светлоты — иначе плоскости сливаются.
 +        pieces.add(new Piece(new float[][]{nose, left, keelL}, normal,
-+                mirror ? WING_RIGHT : WING_LEFT));
++                mirror ? WING_RIGHT : WING_LEFT, true));
 +        pieces.add(new Piece(new float[][]{nose, keelR, right}, normal,
-+                mirror ? WING_LEFT : WING_RIGHT));
-+        pieces.add(new Piece(new float[][]{nose, keelL, tail, keelR}, normal, KEEL));
++                mirror ? WING_LEFT : WING_RIGHT, true));
++        pieces.add(new Piece(new float[][]{nose, keelL, tail, keelR}, normal, KEEL, true));
 +    }
 +
 +    // ------------------------------------------------------------------ рисунок
@@ -1001,52 +1030,40 @@ index 00000000..9d342443
 +        final float sinA = (float) Math.sin(a), cosA = (float) Math.cos(a);
 +        final float sinT = (float) Math.sin(t), cosT = (float) Math.cos(t);
 +
-+        final ArrayList<Piece> visible = new ArrayList<>(pieces.size());
-+        for (int i = 0; i < pieces.size(); i++) {
-+            final Piece piece = pieces.get(i);
-+            rotate(piece.normal[0], piece.normal[1], piece.normal[2],
-+                    sinA, cosA, sinT, cosT, tmp);
-+            final float nx = tmp[0], ny = tmp[1], nz = tmp[2];
-+
-+            float sumZ = 0f;
-+            float toCamera = 0f;
-+            for (float[] p : piece.points) {
-+                rotate(p[0], p[1], p[2], sinA, cosA, sinT, cosT, tmp);
-+                sumZ += tmp[2];
-+                toCamera += nx * -tmp[0] + ny * -tmp[1] + nz * (CAM_Z - tmp[2]);
-+            }
-+            if (toCamera <= 0) {
-+                continue;   // грань отвёрнута от зрителя
-+            }
-+            piece.depth = sumZ / piece.points.length;
-+            visible.add(piece);
-+        }
-+
-+        // От дальних к ближним. Тело выпуклое, наклейки лежат на гранях —
-+        // этого порядка достаточно, глубина попиксельно не нужна.
-+        Collections.sort(visible, (p1, p2) -> Float.compare(p1.depth, p2.depth));
-+
-+        for (int i = 0; i < visible.size(); i++) {
-+            final Piece piece = visible.get(i);
-+            rotate(piece.normal[0], piece.normal[1], piece.normal[2],
-+                    sinA, cosA, sinT, cosT, tmp);
-+            paint.setColor(shade(piece.color, tmp[0], tmp[1], tmp[2]));
-+
-+            path.reset();
-+            for (int j = 0; j < piece.points.length; j++) {
-+                final float[] p = piece.points[j];
-+                rotate(p[0], p[1], p[2], sinA, cosA, sinT, cosT, tmp);
-+                final float denom = Math.max(CAM_Z - tmp[2], 0.1f);
-+                final float sx = cx + tmp[0] * focal / denom;
-+                final float sy = cy - tmp[1] * focal / denom;
-+                if (j == 0) {
-+                    path.moveTo(sx, sy);
-+                } else {
-+                    path.lineTo(sx, sy);
++        // Два прохода: сначала тело, потом наклейки. Порядка внутри прохода
++        // не нужно — видимые грани выпуклой фигуры не перекрываются.
++        for (int pass = 0; pass < 2; pass++) {
++            for (int i = 0; i < pieces.size(); i++) {
++                final Piece piece = pieces.get(i);
++                if (piece.decal != (pass == 1)) {
++                    continue;
 +                }
++                rotate(piece.normal[0], piece.normal[1], piece.normal[2],
++                        sinA, cosA, sinT, cosT, tmp);
++                final float nx = tmp[0], ny = tmp[1], nz = tmp[2];
++
++                float toCamera = 0f;
++                path.reset();
++                for (int j = 0; j < piece.points.length; j++) {
++                    final float[] p = piece.points[j];
++                    rotate(p[0], p[1], p[2], sinA, cosA, sinT, cosT, tmp);
++                    toCamera += nx * -tmp[0] + ny * -tmp[1] + nz * (CAM_Z - tmp[2]);
++                    final float denom = Math.max(CAM_Z - tmp[2], 0.1f);
++                    final float sx = cx + tmp[0] * focal / denom;
++                    final float sy = cy - tmp[1] * focal / denom;
++                    if (j == 0) {
++                        path.moveTo(sx, sy);
++                    } else {
++                        path.lineTo(sx, sy);
++                    }
++                }
++                if (toCamera <= 0) {
++                    continue;   // грань отвёрнута от зрителя
++                }
++                path.close();
++                paint.setColor(shade(piece.color, nx, ny, nz));
++                canvas.drawPath(path, paint);
 +            }
-+            path.close();
-+            canvas.drawPath(path, paint);
 +        }
 +
 +        postInvalidateOnAnimation();
@@ -1138,10 +1155,10 @@ index 00000000..09f68164
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletSeizure.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletSeizure.java
 new file mode 100644
-index 00000000..dfd4d60d
+index 00000000..dd744a42
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletSeizure.java
-@@ -0,0 +1,186 @@
+@@ -0,0 +1,222 @@
 +package org.telegram.margelet;
 +
 +import android.app.Activity;
@@ -1210,30 +1227,57 @@ index 00000000..dfd4d60d
 +    }
 +
 +    /**
-+     * Отвечает ли ключ темы за текст. Список строится по названиям ключей: их
-+     * больше тысячи, и перечислять руками — гарантированно что-нибудь забыть.
++     * Слова, по которым ключ темы опознаётся как текстовый. Ключей больше
++     * восьмисот, перечислять их руками — гарантированно что-нибудь забыть.
++     */
++    private static final String[] WORDS = {
++            "text", "title", "subtitle", "name", "link", "hint", "message",
++            "date", "status", "time", "placeholder", "header", "caption", "label"
++    };
++
++    /**
++     * Что стоит в названии ПОСЛЕ слова про текст и означает, что красится не
++     * текст, а подложка под ним, значок или полоска.
++     */
++    private static final String[] NOT_AFTER = {
++            "background", "selection", "highlight", "shadow", "icon",
++            "gradient", "cursor", "arrow", "progress", "line", "panel"
++    };
++
++    /** Немногие исключения, которые правилом не ловятся. */
++    private static final String[] NOT_AT_ALL = {
++            "emptylist", "photoplaceholder", "locationplaceholder",
++            "sharedmedia_linkplaceholder", "panelvoice", "panelsend", "panelcancel"
++    };
++
++    /**
++     * Отвечает ли ключ темы за текст.
++     *
++     * Первая версия правила смотрела на названия с учётом регистра и знала
++     * шесть слов. Из-за этого мимо прошли chats_name, chats_message, chats_date
++     * — то есть весь список чатов целиком, самый видный экран приложения.
++     * Владелец посмотрел и сказал: «меняется очень мало, большинство остаётся
++     * белым». Так и было.
++     *
++     * Отдельная ловушка — слово «background» в названии: у половины текстовых
++     * ключей оно стоит в начале (windowBackgroundWhiteBlackText — это цвет
++     * букв, а не фона). Поэтому подложка отсекается по хвосту после слова про
++     * текст, а не по всему названию.
 +     */
 +    private static boolean isTextKey(int key) {
 +        if (textKeys == null) {
-+            final String[] words = {"Text", "Title", "Subtitle", "Name", "Link", "Hint"};
 +            final boolean[] table = new boolean[Theme.colorsCount];
 +            for (int i = 0; i < Theme.colorsCount; i++) {
 +                final String name = ThemeColors.getStringName(i);
 +                if (name == null) {
 +                    continue;
 +                }
++                final String low = name.toLowerCase();
 +                int at = -1;
-+                for (String word : words) {
-+                    at = Math.max(at, name.lastIndexOf(word));
++                for (String word : WORDS) {
++                    at = Math.max(at, low.lastIndexOf(word));
 +                }
-+                if (at < 0) {
-+                    continue;
-+                }
-+                // «...TextSelectionBackground» — это подложка, а не буквы:
-+                // если после слова про текст идёт фон, ключ не наш.
-+                final String tail = name.substring(at);
-+                if (tail.contains("ackground") || tail.contains("election")
-+                        || tail.contains("ighlight") || tail.contains("hadow")) {
++                if (at < 0 || has(low.substring(at), NOT_AFTER) || has(low, NOT_AT_ALL)) {
 +                    continue;
 +                }
 +                table[i] = true;
@@ -1241,6 +1285,15 @@ index 00000000..dfd4d60d
 +            textKeys = table;
 +        }
 +        return key >= 0 && key < textKeys.length && textKeys[key];
++    }
++
++    private static boolean has(String where, String[] what) {
++        for (String s : what) {
++            if (where.contains(s)) {
++                return true;
++            }
++        }
++        return false;
 +    }
 +
 +    /** Цвет для ключа или ноль, если этот ключ трогать не надо. */

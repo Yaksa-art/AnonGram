@@ -31,6 +31,12 @@ import java.net.URLEncoder;
  * Считаем нажатия подряд: семь штук, между соседними не больше секунды. Порог
  * такой, чтобы обычный человек, переключающий вкладки, на него не наткнулся, а
  * тот, кто именно долбит, — наткнулся сразу.
+ *
+ * Отсюда же две меры против собственного открытия. Подпись висит сверху, а не
+ * снизу: снизу ровно то место, по которому человек только что долбил пальцем.
+ * И первые полсекунды окно нажатий не принимает вовсе — палец после седьмого
+ * тапа успевает опуститься восьмой раз, и без этой задержки кошка закрывалась
+ * или уводила в переписку с владельцем раньше, чем её успевали увидеть.
  */
 public class MargeletCats {
 
@@ -42,6 +48,9 @@ public class MargeletCats {
     private static final int[] NAMES = {R.string.MargeletCatOne, R.string.MargeletCatTwo};
 
     private static final String OWNER = "narezany";
+
+    /** Сколько окно не принимает нажатий после открытия. */
+    private static final long DEAF_MS = 500;
 
     private static int taps;
     private static long lastTap;
@@ -62,6 +71,7 @@ public class MargeletCats {
         }
         try {
             final int index = (int) (Math.random() * PHOTOS.length);
+            final long openedAt = System.currentTimeMillis();
 
             final FrameLayout root = new FrameLayout(activity);
             root.setBackgroundColor(0xFF000000);
@@ -71,28 +81,33 @@ public class MargeletCats {
             photo.setImageResource(PHOTOS[index]);
             root.addView(photo, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
 
-            final LinearLayout bottom = new LinearLayout(activity);
-            bottom.setOrientation(LinearLayout.VERTICAL);
-            bottom.setBackgroundColor(0xB0000000);
-            bottom.setPadding(dp(20), dp(16), dp(20), dp(24));
+            final LinearLayout caption = new LinearLayout(activity);
+            caption.setOrientation(LinearLayout.VERTICAL);
+            caption.setBackgroundColor(0xB0000000);
+            caption.setPadding(dp(20), dp(16) + AndroidUtilities.statusBarHeight, dp(20), dp(18));
 
             final TextView name = new TextView(activity);
             name.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 22);
             name.setTypeface(AndroidUtilities.bold());
             name.setTextColor(Color.WHITE);
             name.setText(LocaleController.getString(NAMES[index]));
-            bottom.addView(name, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+            caption.addView(name, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
             final TextView invite = new TextView(activity);
             invite.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
             invite.setTextColor(0xFF8DD1B0);
             invite.setText(LocaleController.getString(R.string.MargeletCatAddYours));
             invite.setPadding(0, dp(10), 0, 0);
-            invite.setOnClickListener(v -> writeToOwner(activity));
-            bottom.addView(invite, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+            invite.setOnClickListener(v -> {
+                if (System.currentTimeMillis() - openedAt < DEAF_MS) {
+                    return;
+                }
+                writeToOwner(activity);
+            });
+            caption.addView(invite, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
-            root.addView(bottom, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT,
-                    LayoutHelper.WRAP_CONTENT, Gravity.BOTTOM));
+            root.addView(caption, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT,
+                    LayoutHelper.WRAP_CONTENT, Gravity.TOP));
 
             final Dialog dialog = new Dialog(activity);
             dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
@@ -103,9 +118,14 @@ public class MargeletCats {
                 window.setBackgroundDrawable(new ColorDrawable(Color.BLACK));
                 window.setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT);
             }
-            // По кошке — закрыть. По надписи снизу — написать владельцу; она
+            // По кошке — закрыть. По надписи сверху — написать владельцу; она
             // ловит нажатие сама и до этого обработчика не доходит.
-            photo.setOnClickListener(v -> dialog.dismiss());
+            photo.setOnClickListener(v -> {
+                if (System.currentTimeMillis() - openedAt < DEAF_MS) {
+                    return;
+                }
+                dialog.dismiss();
+            });
             dialog.show();
         } catch (Exception ignored) {
             // Пасхалка не то, ради чего можно ронять приложение.

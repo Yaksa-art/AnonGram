@@ -66,30 +66,57 @@ public class MargeletSeizure {
     }
 
     /**
-     * Отвечает ли ключ темы за текст. Список строится по названиям ключей: их
-     * больше тысячи, и перечислять руками — гарантированно что-нибудь забыть.
+     * Слова, по которым ключ темы опознаётся как текстовый. Ключей больше
+     * восьмисот, перечислять их руками — гарантированно что-нибудь забыть.
+     */
+    private static final String[] WORDS = {
+            "text", "title", "subtitle", "name", "link", "hint", "message",
+            "date", "status", "time", "placeholder", "header", "caption", "label"
+    };
+
+    /**
+     * Что стоит в названии ПОСЛЕ слова про текст и означает, что красится не
+     * текст, а подложка под ним, значок или полоска.
+     */
+    private static final String[] NOT_AFTER = {
+            "background", "selection", "highlight", "shadow", "icon",
+            "gradient", "cursor", "arrow", "progress", "line", "panel"
+    };
+
+    /** Немногие исключения, которые правилом не ловятся. */
+    private static final String[] NOT_AT_ALL = {
+            "emptylist", "photoplaceholder", "locationplaceholder",
+            "sharedmedia_linkplaceholder", "panelvoice", "panelsend", "panelcancel"
+    };
+
+    /**
+     * Отвечает ли ключ темы за текст.
+     *
+     * Первая версия правила смотрела на названия с учётом регистра и знала
+     * шесть слов. Из-за этого мимо прошли chats_name, chats_message, chats_date
+     * — то есть весь список чатов целиком, самый видный экран приложения.
+     * Владелец посмотрел и сказал: «меняется очень мало, большинство остаётся
+     * белым». Так и было.
+     *
+     * Отдельная ловушка — слово «background» в названии: у половины текстовых
+     * ключей оно стоит в начале (windowBackgroundWhiteBlackText — это цвет
+     * букв, а не фона). Поэтому подложка отсекается по хвосту после слова про
+     * текст, а не по всему названию.
      */
     private static boolean isTextKey(int key) {
         if (textKeys == null) {
-            final String[] words = {"Text", "Title", "Subtitle", "Name", "Link", "Hint"};
             final boolean[] table = new boolean[Theme.colorsCount];
             for (int i = 0; i < Theme.colorsCount; i++) {
                 final String name = ThemeColors.getStringName(i);
                 if (name == null) {
                     continue;
                 }
+                final String low = name.toLowerCase();
                 int at = -1;
-                for (String word : words) {
-                    at = Math.max(at, name.lastIndexOf(word));
+                for (String word : WORDS) {
+                    at = Math.max(at, low.lastIndexOf(word));
                 }
-                if (at < 0) {
-                    continue;
-                }
-                // «...TextSelectionBackground» — это подложка, а не буквы:
-                // если после слова про текст идёт фон, ключ не наш.
-                final String tail = name.substring(at);
-                if (tail.contains("ackground") || tail.contains("election")
-                        || tail.contains("ighlight") || tail.contains("hadow")) {
+                if (at < 0 || has(low.substring(at), NOT_AFTER) || has(low, NOT_AT_ALL)) {
                     continue;
                 }
                 table[i] = true;
@@ -97,6 +124,15 @@ public class MargeletSeizure {
             textKeys = table;
         }
         return key >= 0 && key < textKeys.length && textKeys[key];
+    }
+
+    private static boolean has(String where, String[] what) {
+        for (String s : what) {
+            if (where.contains(s)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Цвет для ключа или ноль, если этот ключ трогать не надо. */

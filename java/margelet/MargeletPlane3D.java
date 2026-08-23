@@ -9,7 +9,6 @@ import android.view.MotionEvent;
 import android.view.View;
 
 import java.util.ArrayList;
-import java.util.Collections;
 
 /**
  * Иконка Margelet в объёме: тот же скруглённый квадрат с самолётиком, только
@@ -24,9 +23,17 @@ import java.util.Collections;
  * и в диалоге, и в шапке списка, по которому ездят строки. Треугольников тут
  * меньше сотни — рисовать их кистью дешевле, чем разбираться с порядком слоёв.
  *
- * Тело выпуклое, поэтому весь «трёхмерный движок» помещается в две вещи:
- * отбросить грани, отвёрнутые от зрителя, и рисовать оставшиеся от дальних к
- * ближним. Наклейки самолёта приподняты над гранью и потому ложатся поверх неё.
+ * Тело выпуклое, и это сильно упрощает дело: у выпуклой фигуры видимые грани
+ * между собой не перекрываются вовсе. Значит, хватает отсечения отвёрнутых
+ * граней, а сортировать тело не нужно. Наклейки самолёта рисуются после тела —
+ * они лежат на грани, вместе с ней видны и вместе с ней пропадают.
+ *
+ * Сортировка по глубине тут была и оказалась неправильной: у плашки середина в
+ * центре, у наклейки поднята вверх, а наклон фигуры уводит верх от зрителя
+ * сильнее, чем наклейку поднимает её отступ от грани. Самолёт уходил «глубже»
+ * плашки и закрашивался ею — в лоб не было видно ничего, вполоборота оставалось
+ * одно крыло. Владелец это увидел, а я — нет, потому что на собственный рисунок
+ * не посмотрел ни разу.
  */
 public class MargeletPlane3D extends View {
 
@@ -51,12 +58,14 @@ public class MargeletPlane3D extends View {
         final float[][] points;
         final float[] normal;
         final int color;
-        float depth;
+        /** Наклейка на грани: рисуется после тела, иначе тонет в нём. */
+        final boolean decal;
 
-        Piece(float[][] points, float[] normal, int color) {
+        Piece(float[][] points, float[] normal, int color, boolean decal) {
             this.points = points;
             this.normal = normal;
             this.color = color;
+            this.decal = decal;
         }
     }
 
@@ -136,8 +145,8 @@ public class MargeletPlane3D extends View {
             front[i] = new float[]{p[0], p[1], HALF_DEPTH};
             back[n - 1 - i] = new float[]{p[0], p[1], -HALF_DEPTH};
         }
-        pieces.add(new Piece(front, new float[]{0, 0, 1}, GREEN));
-        pieces.add(new Piece(back, new float[]{0, 0, -1}, GREEN));
+        pieces.add(new Piece(front, new float[]{0, 0, 1}, GREEN, false));
+        pieces.add(new Piece(back, new float[]{0, 0, -1}, GREEN, false));
 
         // Рёбра: по четырёхугольнику на отрезок контура. Своя нормаль наружу —
         // она и делает толщину видимой.
@@ -155,7 +164,7 @@ public class MargeletPlane3D extends View {
                     {p2[0], p2[1], HALF_DEPTH},
                     {p2[0], p2[1], -HALF_DEPTH},
                     {p1[0], p1[1], -HALF_DEPTH}
-            }, normal, GREEN_SIDE));
+            }, normal, GREEN_SIDE, false));
         }
 
         // Самолётик на обеих гранях, приподнятый над поверхностью.
@@ -176,10 +185,10 @@ public class MargeletPlane3D extends View {
 
         // Крылья и ребро сгиба разной светлоты — иначе плоскости сливаются.
         pieces.add(new Piece(new float[][]{nose, left, keelL}, normal,
-                mirror ? WING_RIGHT : WING_LEFT));
+                mirror ? WING_RIGHT : WING_LEFT, true));
         pieces.add(new Piece(new float[][]{nose, keelR, right}, normal,
-                mirror ? WING_LEFT : WING_RIGHT));
-        pieces.add(new Piece(new float[][]{nose, keelL, tail, keelR}, normal, KEEL));
+                mirror ? WING_LEFT : WING_RIGHT, true));
+        pieces.add(new Piece(new float[][]{nose, keelL, tail, keelR}, normal, KEEL, true));
     }
 
     // ------------------------------------------------------------------ рисунок
@@ -224,52 +233,40 @@ public class MargeletPlane3D extends View {
         final float sinA = (float) Math.sin(a), cosA = (float) Math.cos(a);
         final float sinT = (float) Math.sin(t), cosT = (float) Math.cos(t);
 
-        final ArrayList<Piece> visible = new ArrayList<>(pieces.size());
-        for (int i = 0; i < pieces.size(); i++) {
-            final Piece piece = pieces.get(i);
-            rotate(piece.normal[0], piece.normal[1], piece.normal[2],
-                    sinA, cosA, sinT, cosT, tmp);
-            final float nx = tmp[0], ny = tmp[1], nz = tmp[2];
-
-            float sumZ = 0f;
-            float toCamera = 0f;
-            for (float[] p : piece.points) {
-                rotate(p[0], p[1], p[2], sinA, cosA, sinT, cosT, tmp);
-                sumZ += tmp[2];
-                toCamera += nx * -tmp[0] + ny * -tmp[1] + nz * (CAM_Z - tmp[2]);
-            }
-            if (toCamera <= 0) {
-                continue;   // грань отвёрнута от зрителя
-            }
-            piece.depth = sumZ / piece.points.length;
-            visible.add(piece);
-        }
-
-        // От дальних к ближним. Тело выпуклое, наклейки лежат на гранях —
-        // этого порядка достаточно, глубина попиксельно не нужна.
-        Collections.sort(visible, (p1, p2) -> Float.compare(p1.depth, p2.depth));
-
-        for (int i = 0; i < visible.size(); i++) {
-            final Piece piece = visible.get(i);
-            rotate(piece.normal[0], piece.normal[1], piece.normal[2],
-                    sinA, cosA, sinT, cosT, tmp);
-            paint.setColor(shade(piece.color, tmp[0], tmp[1], tmp[2]));
-
-            path.reset();
-            for (int j = 0; j < piece.points.length; j++) {
-                final float[] p = piece.points[j];
-                rotate(p[0], p[1], p[2], sinA, cosA, sinT, cosT, tmp);
-                final float denom = Math.max(CAM_Z - tmp[2], 0.1f);
-                final float sx = cx + tmp[0] * focal / denom;
-                final float sy = cy - tmp[1] * focal / denom;
-                if (j == 0) {
-                    path.moveTo(sx, sy);
-                } else {
-                    path.lineTo(sx, sy);
+        // Два прохода: сначала тело, потом наклейки. Порядка внутри прохода
+        // не нужно — видимые грани выпуклой фигуры не перекрываются.
+        for (int pass = 0; pass < 2; pass++) {
+            for (int i = 0; i < pieces.size(); i++) {
+                final Piece piece = pieces.get(i);
+                if (piece.decal != (pass == 1)) {
+                    continue;
                 }
+                rotate(piece.normal[0], piece.normal[1], piece.normal[2],
+                        sinA, cosA, sinT, cosT, tmp);
+                final float nx = tmp[0], ny = tmp[1], nz = tmp[2];
+
+                float toCamera = 0f;
+                path.reset();
+                for (int j = 0; j < piece.points.length; j++) {
+                    final float[] p = piece.points[j];
+                    rotate(p[0], p[1], p[2], sinA, cosA, sinT, cosT, tmp);
+                    toCamera += nx * -tmp[0] + ny * -tmp[1] + nz * (CAM_Z - tmp[2]);
+                    final float denom = Math.max(CAM_Z - tmp[2], 0.1f);
+                    final float sx = cx + tmp[0] * focal / denom;
+                    final float sy = cy - tmp[1] * focal / denom;
+                    if (j == 0) {
+                        path.moveTo(sx, sy);
+                    } else {
+                        path.lineTo(sx, sy);
+                    }
+                }
+                if (toCamera <= 0) {
+                    continue;   // грань отвёрнута от зрителя
+                }
+                path.close();
+                paint.setColor(shade(piece.color, nx, ny, nz));
+                canvas.drawPath(path, paint);
             }
-            path.close();
-            canvas.drawPath(path, paint);
         }
 
         postInvalidateOnAnimation();
