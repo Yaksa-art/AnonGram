@@ -158,6 +158,22 @@ before you turn it on anyway.
 Somewhere. Want yours in the app? Write to [@narezany](https://t.me/narezany).
 </details>
 
+<details>
+<summary><b>Python plugins</b></summary>
+
+Settings → Margelet → Plugins. A plugin is a `.marp` archive: a manifest,
+`main.py`, and anything else it needs. Install from a file, a list, a console
+with errors.
+
+There is no sandbox. A plugin runs inside the app and can do anything the app
+can; the permissions in the manifest are the author's word, the app does not
+check them. The install dialog says exactly that. In exchange the forum rule
+applies: **plugin code is not obfuscated**, anyone must be able to read it.
+
+Plugins are off entirely by default, and a new one is installed disabled.
+Documentation for authors: [docs/plugins.md](docs/plugins.md) (in Russian).
+</details>
+
 ## Building it yourself
 
 You need SDK 35 with build-tools 35.0.0, NDK 27.2.12479018 and JDK 21.
@@ -198,6 +214,8 @@ the patch is now generated after `git add -N`.)
 | `patch/UPSTREAM` | the Telegram commit the patch applies to |
 | `FEATURES.md` | **every change, where it lives and why** — the porting document |
 | `java/`, `res/` | files the fork adds whole |
+| `python/` | the layer between the app and its plugins |
+| `docs/` | plugin documentation and an example plugin |
 | `tools/` | scripts: draw the icon, install it, synthesise a sound |
 | `assets/` | the logo, in svg and png |
 | `ATTRIBUTION.md` | the things in here that someone else made |

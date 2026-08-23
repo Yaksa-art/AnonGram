@@ -30,8 +30,17 @@ public class MargeletConfig {
     public static final long DONATE_GIFT_USER = 7826361017L;
     public static final String DONATE_GIFT_USERNAME = "narezany";
 
+    /** Свой набор стикеров: ставится обычной кнопкой, как любой другой набор. */
+    public static final String STICKERS_URL = "https://t.me/addstickers/MargeletPackMargeletter";
+
     public static final String SOURCE_URL = "https://github.com/narezany/Margelet";
     public static final String FORUM_URL = "https://t.me/margeletforum";
+    /**
+     * Документация по плагинам. Ведёт на файл в репозитории, а не на страницу
+     * сайта: страницы гитхаба у репозитория пока не включены, и ссылка на
+     * несуществующий сайт — просто обман.
+     */
+    public static final String PLUGINS_DOCS_URL = "https://github.com/narezany/Margelet/blob/main/docs/plugins.md";
 
     private static SharedPreferences prefs() {
         return ApplicationLoader.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
@@ -148,15 +157,6 @@ public class MargeletConfig {
 
     public static void setWatermarkOnSend(boolean on) {
         prefs().edit().putBoolean("watermark_send", on).apply();
-    }
-
-    /** Свой набор стикеров первым в панели. Клиентски, на аккаунт не ставится. */
-    public static boolean stickersEnabled() {
-        return prefs().getBoolean("stickers", true);
-    }
-
-    public static void setStickersEnabled(boolean on) {
-        prefs().edit().putBoolean("stickers", on).apply();
     }
 
     /** Премиум-значки без премиума: видны только в форке. */
@@ -308,6 +308,40 @@ public class MargeletConfig {
             return false;
         }
         prefs().edit().putBoolean("first_launch_done", true).apply();
+        return true;
+    }
+
+    /**
+     * Главный выключатель плагинов. По умолчанию выключен: плагин выполняется
+     * внутри приложения и может всё, что может приложение, — такое не
+     * включают за человека.
+     */
+    public static boolean pluginsEnabled() {
+        return prefs().getBoolean("plugins_enabled", false);
+    }
+
+    public static void setPluginsEnabled(boolean on) {
+        prefs().edit().putBoolean("plugins_enabled", on).apply();
+    }
+
+    /** Включён ли отдельный плагин. Новый плагин всегда выключен. */
+    public static boolean pluginEnabled(String id) {
+        return prefs().getBoolean("plugin_" + id, false);
+    }
+
+    public static void setPluginEnabled(String id, boolean on) {
+        prefs().edit().putBoolean("plugin_" + id, on).apply();
+    }
+
+    /**
+     * Пример плагина кладётся в папку один раз. Если человек его удалил,
+     * второй раз он не появится: удаление — это ответ, а не случайность.
+     */
+    public static boolean claimExamplePlugin() {
+        if (prefs().getBoolean("plugin_example_done", false)) {
+            return false;
+        }
+        prefs().edit().putBoolean("plugin_example_done", true).apply();
         return true;
     }
 }

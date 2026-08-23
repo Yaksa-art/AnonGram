@@ -1,0 +1,78 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Плагины Margelet</title>
+<style>
+:root { color-scheme: light dark; --bg:#fff; --fg:#1c1c1e; --dim:#6e6e73;
+        --line:#e3e3e6; --code:#f5f5f7; --link:#1b7f4c; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#131417; --fg:#e9e9ec; --dim:#9a9aa0;
+          --line:#2a2c31; --code:#1c1e22; --link:#54c98a; }
+}
+* { box-sizing: border-box; }
+body { margin:0 auto; padding:32px 20px 80px; max-width:720px; background:var(--bg);
+       color:var(--fg); font:16px/1.6 -apple-system, "Segoe UI", Roboto, sans-serif; }
+h1 { font-size:30px; margin:0 0 24px; letter-spacing:-.02em; }
+h2 { font-size:20px; margin:40px 0 12px; letter-spacing:-.01em; }
+p, li { color:var(--fg); }
+a { color:var(--link); }
+code { background:var(--code); padding:2px 5px; border-radius:5px;
+       font:14px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+pre { background:var(--code); padding:14px 16px; border-radius:10px; overflow-x:auto; }
+pre code { background:none; padding:0; }
+table { border-collapse:collapse; width:100%; margin:16px 0; display:block; overflow-x:auto; }
+td, th { border-bottom:1px solid var(--line); padding:8px 10px; text-align:left;
+         vertical-align:top; }
+th { color:var(--dim); font-weight:600; font-size:14px; }
+blockquote { margin:0; padding-left:14px; border-left:3px solid var(--line); color:var(--dim); }
+footer { margin-top:56px; color:var(--dim); font-size:14px; }
+</style>
+<h1>Плагины Margelet</h1>
+<p>Плагин — это код на питоне, который выполняется внутри форка. Не отдельная программа, не бот со стороны: он живёт в том же приложении, что и переписка.</p>
+<h2>Правило форума</h2>
+<p><strong>Код плагина не обфусцируется.</strong> Он едет исходником, и открыть его должен мочь любой. Обфускация — бан на форуме.</p>
+<p>Причина простая: песочницы здесь нет. Проверить, что плагин делает, можно только одним способом — прочитать его. Спрятанный код лишает этой возможности всех сразу.</p>
+<h2>Честно про безопасность</h2>
+<p>Плагин может всё, что может само приложение: читать переписку, писать от вашего имени, лезть в файлы. Разрешения в манифесте — <strong>заявление автора</strong>, а не ограничение; приложение их не проверяет и проверить не может.</p>
+<p>Ставьте только то, что прочитали сами или чему доверяете.</p>
+<h2>Формат .marp</h2>
+<p>Обычный zip, переименованный в <code>.marp</code>:</p>
+<pre><code>margelet_example.marp
+├── manifest.json   обязательно
+├── main.py         обязательно
+├── icon.png        по желанию
+└── ...             всё остальное, что нужно плагину</code></pre>
+<h2>manifest.json</h2>
+<pre><code>{
+  &quot;id&quot;: &quot;margelet.example&quot;,
+  &quot;name&quot;: &quot;Пример&quot;,
+  &quot;version&quot;: &quot;1.0&quot;,
+  &quot;author&quot;: &quot;narezany&quot;,
+  &quot;description&quot;: &quot;Здоровается в консоли.&quot;,
+  &quot;permissions&quot;: [&quot;ui&quot;]
+}</code></pre>
+<table><tr><th>Поле</th><th>Что это</th></tr><tr><td><code>id</code></td><td>Номер плагина. Латиницей, с точками. По нему плагин обновляется и хранит настройки — менять нельзя.</td></tr><tr><td><code>name</code></td><td>Имя в списке.</td></tr><tr><td><code>version</code></td><td>Версия, строкой.</td></tr><tr><td><code>author</code></td><td>Кто написал.</td></tr><tr><td><code>description</code></td><td>Одна-две строки: что делает.</td></tr><tr><td><code>permissions</code></td><td>Что плагин о себе заявляет. Список ниже.</td></tr></table>
+<p>Разрешения: <code>read_chats</code>, <code>send_messages</code>, <code>edit_messages</code>, <code>delete_messages</code>, <code>change_profile</code>, <code>ui</code>. Своё имя тоже можно — оно покажется как есть.</p>
+<h2>main.py</h2>
+<pre><code>def on_start():
+    margelet.log(&quot;привет из плагина&quot;, margelet.name)</code></pre>
+<p><code>on_start()</code> вызывается при запуске плагина. Если его нет, плагин просто выполняется сверху вниз.</p>
+<p>Объект <code>margelet</code> доступен без импорта:</p>
+<table><tr><th></th><th></th></tr><tr><td><code>margelet.id</code></td><td>номер из манифеста</td></tr><tr><td><code>margelet.name</code></td><td>имя из манифеста</td></tr><tr><td><code>margelet.folder</code></td><td>папка плагина на телефоне</td></tr><tr><td><code>margelet.log(*части)</code></td><td>строка в консоль</td></tr><tr><td><code>margelet.error(*части)</code></td><td>то же, но красным</td></tr></table>
+<p><code>print()</code> тоже уходит в консоль — перехвачен.</p>
+<h2>Что доступно кроме этого</h2>
+<p>Питон здесь настоящий, с доступом к java-классам приложения:</p>
+<pre><code>from java import jclass
+
+Config = jclass(&quot;org.telegram.margelet.MargeletConfig&quot;)
+margelet.log(&quot;ватермарка:&quot;, Config.watermarkOnSend())</code></pre>
+<p>Отсюда достаётся всё остальное приложение. Это и есть «плагин может всё» — не оборот речи.</p>
+<h2>Консоль</h2>
+<p>Настройки → Margelet → Плагины → Консоль. Туда уходит вся печать плагинов и их ошибки, ошибки красным. Питон падает молча, так что без консоли о своей опечатке автор узнаёт только по тому, что «ничего не работает».</p>
+<h2>Установка</h2>
+<p>Настройки → Margelet → Плагины → Установить из файла. На окне установки видно автора и заявленные разрешения.</p>
+<p>Новый плагин ставится выключенным. Включается нажатием на строку, долгое нажатие — карточка и удаление.</p>
+<p>Выключение значит «больше не запускать». Уже работающий питоновский код остановить нечем — он доживёт до перезапуска приложения.</p>
+<h2>Пример</h2>
+<p><a href="margelet_example.marp">margelet_example.marp</a> — тот же, что лежит в приложении с самого начала. Внутри две строки, начать можно с них.</p>
+<h2>Куда с вопросами</h2>
+<p><a href="https://t.me/margeletforum">Форум</a> · <a href="https://t.me/margeletter">Канал</a></p>

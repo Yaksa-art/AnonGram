@@ -138,6 +138,20 @@ Margelet 的频道和论坛也各有一枚。那里的徽章回答的是「这�
 在某处。想让自己的猫进入应用，请联系 [@narezany](https://t.me/narezany)。
 </details>
 
+<details>
+<summary><b>Python 插件</b></summary>
+
+设置 → Margelet → 插件。插件就是 `.marp` 压缩包：清单、`main.py`，以及它需要的
+其它文件。可从文件安装，有列表，有带错误的控制台。
+
+没有沙箱。插件在应用内部运行，应用能做的它都能做；清单里的权限只是作者的说法，
+应用无法核实。安装窗口上写的正是这句话。作为交换，论坛的规矩是：**插件代码不得
+混淆**，任何人都应能读到它。
+
+插件默认整体关闭，新装的插件也是关闭状态。作者文档：
+[docs/plugins.md](docs/plugins.md)（俄文）。
+</details>
+
 ## 自行构建
 
 需要 SDK 35 与 build-tools 35.0.0、NDK 27.2.12479018、JDK 21。
@@ -174,6 +188,8 @@ gradle :TMessagesProj_AppStandalone:assembleAfatStandalone
 | `patch/UPSTREAM` | 补丁所对应的 Telegram 提交 |
 | `FEATURES.md` | **每项改动的位置与原因**——移植时要读的文件 |
 | `java/`、`res/` | 分支整体新增的文件 |
+| `python/` | 应用与插件之间的中间层 |
+| `docs/` | 插件文档与示例插件 |
 | `tools/` | 脚本：绘制图标、写入资源、合成声音 |
 | `assets/` | 徽标，svg 与 png |
 | `ATTRIBUTION.md` | 其中并非我们所作的部分 |

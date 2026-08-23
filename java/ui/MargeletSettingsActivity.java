@@ -45,6 +45,7 @@ public class MargeletSettingsActivity extends UniversalFragment {
     private static final int ID_MARKUP = 12;
     private static final int ID_HELP = 13;
     private static final int ID_STICKERS = 14;
+    private static final int ID_PLUGINS = 15;
 
     /** Объёмный значок в шапке. Пользы ноль, и в этом вся мысль. */
     private FrameLayout header;
@@ -96,9 +97,13 @@ public class MargeletSettingsActivity extends UniversalFragment {
                 IconBackgroundColors.ORANGE.top, IconBackgroundColors.ORANGE.bottom,
                 R.drawable.settings_gift, LocaleController.getString(R.string.MargeletGifts),
                 LocaleController.getString(R.string.MargeletGiftsInfo)));
+        items.add(SettingsActivity.SettingCell.Factory.of(ID_PLUGINS,
+                IconBackgroundColors.BLUE_ALT.top, IconBackgroundColors.BLUE_ALT.bottom,
+                R.drawable.settings_devices, LocaleController.getString(R.string.MargeletPlugins),
+                LocaleController.getString(R.string.MargeletPluginsInfo)));
         items.add(UItem.asShadow(null));
-        items.add(UItem.asCheck(ID_STICKERS, LocaleController.getString(R.string.MargeletStickers))
-                .setChecked(MargeletConfig.stickersEnabled()));
+        items.add(UItem.asButton(ID_STICKERS, LocaleController.getString(R.string.MargeletStickers),
+                LocaleController.getString(R.string.MargeletStickersAdd)));
         items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletStickersAbout)));
         items.add(UItem.asCheck(ID_SEIZURE, LocaleController.getString(R.string.MargeletSeizure))
                 .setChecked(MargeletSeizure.enabled()));
@@ -152,8 +157,9 @@ public class MargeletSettingsActivity extends UniversalFragment {
     @Override
     protected void onClick(UItem item, View view, int position, float x, float y) {
         if (item.id == ID_STICKERS) {
-            MargeletConfig.setStickersEnabled(!MargeletConfig.stickersEnabled());
-            listView.adapter.update(true);
+            Browser.openUrl(getContext(), MargeletConfig.STICKERS_URL);
+        } else if (item.id == ID_PLUGINS) {
+            presentFragment(new MargeletPluginsActivity());
         } else if (item.id == ID_MARKUP) {
             presentFragment(new MargeletMarkupActivity());
         } else if (item.id == ID_DONATE) {
