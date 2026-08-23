@@ -288,6 +288,40 @@ public class MargeletMarkup {
         text.setSpan(new MargeletSpans.Hidden(), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
     }
 
+    /**
+     * Убирает метки и строку со ссылкой на форк.
+     *
+     * Нужно при обычном копировании: человек копирует текст, а не наши
+     * служебные знаки. Оформление уносит отдельный пункт «копировать с
+     * оформлением» — там знаки как раз нужны.
+     */
+    public static CharSequence strip(CharSequence text) {
+        if (text == null || text.length() == 0) {
+            return text;
+        }
+        final SpannableStringBuilder out = new SpannableStringBuilder(text);
+        int at = indexOf(out, HEADER);
+        if (at >= 0) {
+            int start = at;
+            if (start > 0 && out.charAt(start - 1) == '\n') {
+                start--;
+            }
+            int end = at + HEADER.length();
+            if (end < out.length() && out.charAt(end) == '\n') {
+                end++;
+            }
+            out.delete(start, end);
+        }
+        // Идём с конца: удаление сдвигает всё, что правее.
+        for (int i = out.length() - 1; i >= 0; i--) {
+            final char c = out.charAt(i);
+            if (c == OPEN || c == CLOSE || isTrit(c)) {
+                out.delete(i, i + 1);
+            }
+        }
+        return out;
+    }
+
     private static int indexOf(CharSequence text, String what) {
         final int limit = text.length() - what.length();
         outer:

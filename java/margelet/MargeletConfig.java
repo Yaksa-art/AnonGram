@@ -116,6 +116,15 @@ public class MargeletConfig {
         prefs().edit().putBoolean("watermarks", on).apply();
     }
 
+    /** Пункт «Копировать с оформлением» в меню сообщения. */
+    public static boolean copyFormatting() {
+        return prefs().getBoolean("copy_formatting", true);
+    }
+
+    public static void setCopyFormatting(boolean on) {
+        prefs().edit().putBoolean("copy_formatting", on).apply();
+    }
+
     /** Показывали ли предупреждение о своём оформлении. Один раз за всё время. */
     public static boolean markupWarned() {
         return prefs().getBoolean("markup_warned", false);

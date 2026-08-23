@@ -4,9 +4,8 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.text.TextPaint;
-import android.text.style.CharacterStyle;
+import android.text.style.MetricAffectingSpan;
 import android.text.style.ReplacementSpan;
-import android.text.style.UpdateAppearance;
 
 import androidx.annotation.NonNull;
 
@@ -18,11 +17,24 @@ import androidx.annotation.NonNull;
  */
 public class MargeletSpans {
 
-    /** Общий предок: знает свой вид и своё значение. */
-    public abstract static class Base extends CharacterStyle implements UpdateAppearance {
+    /**
+     * Общий предок: знает свой вид и своё значение.
+     *
+     * Наследует MetricAffectingSpan, а не просто CharacterStyle. Разница важная
+     * и я её сначала не увидел: CharacterStyle меняет только отрисовку, а
+     * ширину и высоту строки считают отдельно и до неё. Из-за этого крупный
+     * текст рисовался поверх пузыря сообщения, выходя за его края, — пузырь
+     * мерился по обычному размеру. Владелец это увидел сразу.
+     */
+    public abstract static class Base extends MetricAffectingSpan {
         public abstract int kind();
 
         public abstract int value();
+
+        @Override
+        public void updateMeasureState(@NonNull TextPaint paint) {
+            // По умолчанию оформление на размеры не влияет.
+        }
     }
 
     public static Object create(int kind, int value) {
@@ -58,6 +70,17 @@ public class MargeletSpans {
 
         @Override
         public void updateDrawState(TextPaint paint) {
+            resize(paint);
+        }
+
+        @Override
+        public void updateMeasureState(@NonNull TextPaint paint) {
+            // То же самое и при измерении: иначе пузырь останется прежним, а
+            // буквы вылезут за него.
+            resize(paint);
+        }
+
+        private void resize(TextPaint paint) {
             paint.setTextSize(paint.getTextSize() * MargeletMarkup.sizeOf(value));
         }
     }

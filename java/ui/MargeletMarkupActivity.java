@@ -24,6 +24,7 @@ public class MargeletMarkupActivity extends UniversalFragment {
     private static final int ID_DIM = 2;
     private static final int ID_RAINBOW = 3;
     private static final int ID_WATERMARKS = 4;
+    private static final int ID_COPY = 5;
 
     @Override
     protected CharSequence getTitle() {
@@ -49,12 +50,17 @@ public class MargeletMarkupActivity extends UniversalFragment {
         items.add(UItem.asCheck(ID_WATERMARKS, LocaleController.getString(R.string.MargeletWatermarks))
                 .setChecked(MargeletConfig.showWatermarks()));
         items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletWatermarksAbout)));
+        items.add(UItem.asCheck(ID_COPY, LocaleController.getString(R.string.MargeletCopyFormatted))
+                .setChecked(MargeletConfig.copyFormatting()));
+        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletCopyFormattedAbout)));
     }
 
     @Override
     protected void onClick(UItem item, View view, int position, float x, float y) {
         if (item.id == ID_WATERMARKS) {
             MargeletConfig.setShowWatermarks(!MargeletConfig.showWatermarks());
+        } else if (item.id == ID_COPY) {
+            MargeletConfig.setCopyFormatting(!MargeletConfig.copyFormatting());
         } else {
             final int kind = item.id == ID_SIZE ? MargeletMarkup.KIND_SIZE
                     : item.id == ID_DIM ? MargeletMarkup.KIND_DIM

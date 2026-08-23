@@ -101,6 +101,22 @@ none of them behind Premium.
 </details>
 
 <details>
+<summary><b>Text formatting of its own</b></summary>
+
+Select a word and the menu gains "Size", "Dim" and "Rainbow" next to bold and
+italic. Size is bounded both ways: neither two pixels nor full screen.
+
+Telegram's list of formatting types is closed and lives on the server, so nothing
+can be added to it. The formatting therefore travels inside the message text as
+invisible characters and is decoded by the fork itself. Without the fork you see
+plain text and a link line at the end of the message.
+
+Each type can be turned off separately. Next to it, "Copy with formatting": a
+plain copy in Telegram gives bare text, this keeps bold, italics, links and our
+own formatting.
+</details>
+
+<details>
 <summary><b>Donate</b></summary>
 
 Its own row in the fork menu: the author's details, tap to copy.

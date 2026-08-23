@@ -390,10 +390,10 @@ index 00000000..3c8132c5
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
 new file mode 100644
-index 00000000..f9fcc895
+index 00000000..c2906181
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
-@@ -0,0 +1,244 @@
+@@ -0,0 +1,253 @@
 +package org.telegram.margelet;
 +
 +import android.content.Context;
@@ -510,6 +510,15 @@ index 00000000..f9fcc895
 +
 +    public static void setShowWatermarks(boolean on) {
 +        prefs().edit().putBoolean("watermarks", on).apply();
++    }
++
++    /** Пункт «Копировать с оформлением» в меню сообщения. */
++    public static boolean copyFormatting() {
++        return prefs().getBoolean("copy_formatting", true);
++    }
++
++    public static void setCopyFormatting(boolean on) {
++        prefs().edit().putBoolean("copy_formatting", on).apply();
 +    }
 +
 +    /** Показывали ли предупреждение о своём оформлении. Один раз за всё время. */
@@ -636,6 +645,155 @@ index 00000000..f9fcc895
 +        }
 +        prefs().edit().putBoolean("first_launch_done", true).apply();
 +        return true;
++    }
++}
+diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletCopy.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletCopy.java
+new file mode 100644
+index 00000000..f46e3560
+--- /dev/null
++++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletCopy.java
+@@ -0,0 +1,143 @@
++package org.telegram.margelet;
++
++import android.text.TextUtils;
++
++import org.telegram.messenger.AndroidUtilities;
++import org.telegram.messenger.MessageObject;
++import org.telegram.tgnet.TLRPC;
++
++import java.util.ArrayList;
++import java.util.Collections;
++import java.util.List;
++
++/**
++ * Копирование сообщения вместе с оформлением.
++ *
++ * Обычное копирование в телеграме кладёт в буфер голый текст: жирный, курсив и
++ * ссылки теряются по дороге. Здесь в буфер кладётся два представления сразу —
++ * обычный текст и то же самое разметкой HTML. Кто вставит в блокнот, получит
++ * текст; кто вставит туда, где разметку понимают, получит оформление.
++ *
++ * Своё оформление форка остаётся в тексте невидимыми метками: вставишь такое
++ * обратно в Margelet — оно снова заиграет.
++ */
++public class MargeletCopy {
++
++    /** Открывающая или закрывающая метка HTML для этого вида разметки. */
++    private static String tag(TLRPC.MessageEntity entity, boolean open) {
++        final String name;
++        if (entity instanceof TLRPC.TL_messageEntityBold) {
++            name = "b";
++        } else if (entity instanceof TLRPC.TL_messageEntityItalic) {
++            name = "i";
++        } else if (entity instanceof TLRPC.TL_messageEntityUnderline) {
++            name = "u";
++        } else if (entity instanceof TLRPC.TL_messageEntityStrike) {
++            name = "s";
++        } else if (entity instanceof TLRPC.TL_messageEntityCode
++                || entity instanceof TLRPC.TL_messageEntityPre) {
++            name = "code";
++        } else if (entity instanceof TLRPC.TL_messageEntityBlockquote) {
++            name = "blockquote";
++        } else if (entity instanceof TLRPC.TL_messageEntitySpoiler) {
++            // Пары для спойлера в HTML нет. Ближе всего текст цветом фона: он
++            // так же не читается, пока не выделишь.
++            return open ? "<span style=\"color:transparent;background:#555\">" : "</span>";
++        } else if (entity instanceof TLRPC.TL_messageEntityTextUrl) {
++            return open ? "<a href=\"" + escape(((TLRPC.TL_messageEntityTextUrl) entity).url) + "\">" : "</a>";
++        } else {
++            return null;
++        }
++        return open ? "<" + name + ">" : "</" + name + ">";
++    }
++
++    private static String escape(String text) {
++        if (text == null) {
++            return "";
++        }
++        return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
++    }
++
++    /**
++     * Собирает HTML по разметке сообщения.
++     *
++     * Идём по тексту один раз и на каждой границе выписываем метки: сначала
++     * закрывающие, потом открывающие. Порядок внутри границы важен так же, как
++     * в своём формате: среди открывающих первым идёт длинный кусок, среди
++     * закрывающих — внутренний, иначе вложенность собирается наизнанку.
++     */
++    public static String html(CharSequence text, ArrayList<TLRPC.MessageEntity> entities) {
++        if (text == null) {
++            return null;
++        }
++        final List<TLRPC.MessageEntity> usable = new ArrayList<>();
++        if (entities != null) {
++            for (TLRPC.MessageEntity entity : entities) {
++                if (tag(entity, true) != null && entity.offset >= 0 && entity.length > 0
++                        && entity.offset + entity.length <= text.length()) {
++                    usable.add(entity);
++                }
++            }
++        }
++        final List<TLRPC.MessageEntity> opening = new ArrayList<>(usable);
++        // Длинный кусок открывается раньше короткого.
++        Collections.sort(opening, (a, b) -> a.offset != b.offset
++                ? Integer.compare(a.offset, b.offset)
++                : Integer.compare(b.length, a.length));
++        final List<TLRPC.MessageEntity> closing = new ArrayList<>(usable);
++        // Внутренний кусок закрывается раньше внешнего.
++        Collections.sort(closing, (a, b) -> {
++            final int ae = a.offset + a.length, be = b.offset + b.length;
++            return ae != be ? Integer.compare(ae, be) : Integer.compare(b.offset, a.offset);
++        });
++
++        final StringBuilder out = new StringBuilder();
++        for (int i = 0; i <= text.length(); i++) {
++            for (TLRPC.MessageEntity entity : closing) {
++                if (entity.offset + entity.length == i) {
++                    out.append(tag(entity, false));
++                }
++            }
++            for (TLRPC.MessageEntity entity : opening) {
++                if (entity.offset == i) {
++                    out.append(tag(entity, true));
++                }
++            }
++            if (i == text.length()) {
++                break;
++            }
++            final char c = text.charAt(i);
++            if (c == '&') {
++                out.append("&amp;");
++            } else if (c == '<') {
++                out.append("&lt;");
++            } else if (c == '>') {
++                out.append("&gt;");
++            } else if (c == '\n') {
++                out.append("<br>");
++            } else {
++                out.append(c);
++            }
++        }
++        return out.toString();
++    }
++
++    /** Кладёт сообщение в буфер вместе с оформлением. */
++    public static void copy(MessageObject message) {
++        if (message == null || message.messageOwner == null) {
++            return;
++        }
++        final CharSequence plain = message.messageOwner.message;
++        if (TextUtils.isEmpty(plain)) {
++            return;
++        }
++        final String asHtml = html(plain, message.messageOwner.entities);
++        if (TextUtils.isEmpty(asHtml)) {
++            AndroidUtilities.addToClipboard(plain);
++        } else {
++            // Через двухдоводный addToClipboard: он не чистит текст, а
++            // одинарный нарочно вычищает наши метки — здесь они и есть смысл.
++            AndroidUtilities.addToClipboard(plain, asHtml);
++        }
 +    }
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletGifts.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletGifts.java
@@ -835,10 +993,10 @@ index 00000000..33ff716b
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletMarkup.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletMarkup.java
 new file mode 100644
-index 00000000..a06024c2
+index 00000000..0053e6b4
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletMarkup.java
-@@ -0,0 +1,304 @@
+@@ -0,0 +1,338 @@
 +package org.telegram.margelet;
 +
 +import android.text.Spannable;
@@ -1127,6 +1285,40 @@ index 00000000..a06024c2
 +            end++;
 +        }
 +        text.setSpan(new MargeletSpans.Hidden(), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
++    }
++
++    /**
++     * Убирает метки и строку со ссылкой на форк.
++     *
++     * Нужно при обычном копировании: человек копирует текст, а не наши
++     * служебные знаки. Оформление уносит отдельный пункт «копировать с
++     * оформлением» — там знаки как раз нужны.
++     */
++    public static CharSequence strip(CharSequence text) {
++        if (text == null || text.length() == 0) {
++            return text;
++        }
++        final SpannableStringBuilder out = new SpannableStringBuilder(text);
++        int at = indexOf(out, HEADER);
++        if (at >= 0) {
++            int start = at;
++            if (start > 0 && out.charAt(start - 1) == '\n') {
++                start--;
++            }
++            int end = at + HEADER.length();
++            if (end < out.length() && out.charAt(end) == '\n') {
++                end++;
++            }
++            out.delete(start, end);
++        }
++        // Идём с конца: удаление сдвигает всё, что правее.
++        for (int i = out.length() - 1; i >= 0; i--) {
++            final char c = out.charAt(i);
++            if (c == OPEN || c == CLOSE || isTrit(c)) {
++                out.delete(i, i + 1);
++            }
++        }
++        return out;
 +    }
 +
 +    private static int indexOf(CharSequence text, String what) {
@@ -1915,19 +2107,18 @@ index 00000000..8a3b8ef8
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletSpans.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletSpans.java
 new file mode 100644
-index 00000000..3e1ce99c
+index 00000000..499d4b76
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletSpans.java
-@@ -0,0 +1,159 @@
+@@ -0,0 +1,182 @@
 +package org.telegram.margelet;
 +
 +import android.graphics.Canvas;
 +import android.graphics.Color;
 +import android.graphics.Paint;
 +import android.text.TextPaint;
-+import android.text.style.CharacterStyle;
++import android.text.style.MetricAffectingSpan;
 +import android.text.style.ReplacementSpan;
-+import android.text.style.UpdateAppearance;
 +
 +import androidx.annotation.NonNull;
 +
@@ -1939,11 +2130,24 @@ index 00000000..3e1ce99c
 + */
 +public class MargeletSpans {
 +
-+    /** Общий предок: знает свой вид и своё значение. */
-+    public abstract static class Base extends CharacterStyle implements UpdateAppearance {
++    /**
++     * Общий предок: знает свой вид и своё значение.
++     *
++     * Наследует MetricAffectingSpan, а не просто CharacterStyle. Разница важная
++     * и я её сначала не увидел: CharacterStyle меняет только отрисовку, а
++     * ширину и высоту строки считают отдельно и до неё. Из-за этого крупный
++     * текст рисовался поверх пузыря сообщения, выходя за его края, — пузырь
++     * мерился по обычному размеру. Владелец это увидел сразу.
++     */
++    public abstract static class Base extends MetricAffectingSpan {
 +        public abstract int kind();
 +
 +        public abstract int value();
++
++        @Override
++        public void updateMeasureState(@NonNull TextPaint paint) {
++            // По умолчанию оформление на размеры не влияет.
++        }
 +    }
 +
 +    public static Object create(int kind, int value) {
@@ -1979,6 +2183,17 @@ index 00000000..3e1ce99c
 +
 +        @Override
 +        public void updateDrawState(TextPaint paint) {
++            resize(paint);
++        }
++
++        @Override
++        public void updateMeasureState(@NonNull TextPaint paint) {
++            // То же самое и при измерении: иначе пузырь останется прежним, а
++            // буквы вылезут за него.
++            resize(paint);
++        }
++
++        private void resize(TextPaint paint) {
 +            paint.setTextSize(paint.getTextSize() * MargeletMarkup.sizeOf(value));
 +        }
 +    }
@@ -2430,6 +2645,21 @@ index 00000000..c77ddf9b
 +        return PixelFormat.TRANSLUCENT;
 +    }
 +}
+diff --git a/TMessagesProj/src/main/java/org/telegram/messenger/AndroidUtilities.java b/TMessagesProj/src/main/java/org/telegram/messenger/AndroidUtilities.java
+index b8239d97..e3ffeb27 100644
+--- a/TMessagesProj/src/main/java/org/telegram/messenger/AndroidUtilities.java
++++ b/TMessagesProj/src/main/java/org/telegram/messenger/AndroidUtilities.java
+@@ -3614,6 +3614,10 @@ public class AndroidUtilities {
+     }
+ 
+     public static boolean addToClipboard(CharSequence str) {
++        // Служебные знаки своего оформления и строку со ссылкой на форк в
++        // буфер не кладём: человек копирует текст, а не нашу разметку.
++        // Оформление уносит отдельный пункт «Копировать с оформлением».
++        str = org.telegram.margelet.MargeletMarkup.strip(str);
+         try {
+             android.content.ClipboardManager clipboard = (android.content.ClipboardManager) ApplicationLoader.applicationContext.getSystemService(Context.CLIPBOARD_SERVICE);
+ 
 diff --git a/TMessagesProj/src/main/java/org/telegram/messenger/LocaleController.java b/TMessagesProj/src/main/java/org/telegram/messenger/LocaleController.java
 index df646cf4..b25e5001 100644
 --- a/TMessagesProj/src/main/java/org/telegram/messenger/LocaleController.java
@@ -2662,19 +2892,20 @@ index af32ccff..165ea0bb 100644
                  nameString = getString(R.string.HiddenName);
              }
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
-index 6b8cddfe..99f59bda 100644
+index 6b8cddfe..884517a1 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
-@@ -1199,6 +1199,8 @@ public class ChatActivity extends BaseFragment implements
+@@ -1199,6 +1199,9 @@ public class ChatActivity extends BaseFragment implements
      public final static int OPTION_DELETE = 1;
      public final static int OPTION_FORWARD = 2;
      public final static int OPTION_COPY = 3;
 +    /** Свой пункт меню. Номер с запасом от чужих: они нумеруются подряд. */
 +    public final static int OPTION_MARGELET_TAGS = 1001;
++    public final static int OPTION_MARGELET_COPY = 1002;
      public final static int OPTION_SAVE_TO_GALLERY = 4;
      public final static int OPTION_APPLY_LOCALIZATION_OR_THEME = 5;
      public final static int OPTION_SHARE = 6;
-@@ -10880,18 +10882,33 @@ public class ChatActivity extends BaseFragment implements
+@@ -10880,18 +10883,33 @@ public class ChatActivity extends BaseFragment implements
      }
  
      private void updatePagedownButtonsPosition() {
@@ -2712,7 +2943,7 @@ index 6b8cddfe..99f59bda 100644
          }
      }
  
-@@ -12018,13 +12035,23 @@ public class ChatActivity extends BaseFragment implements
+@@ -12018,13 +12036,23 @@ public class ChatActivity extends BaseFragment implements
          if (isInsideContainer && parentChatActivity == null) {
              paddingBottom = AndroidUtilities.navigationBarHeight;
          } else {
@@ -2738,7 +2969,7 @@ index 6b8cddfe..99f59bda 100644
          if (topicsTabs != null) {
              topicsTabs.setSideMenuBackgroundMarginTop(0);//Math.max(0, paddingTop - blurredViewTopOffset - dp(5)));
          }
-@@ -19520,7 +19547,7 @@ public class ChatActivity extends BaseFragment implements
+@@ -19520,7 +19548,7 @@ public class ChatActivity extends BaseFragment implements
                  avatarContainer.setTitle(LocaleController.getString(R.string.SavedMessages));
              } else if (!MessagesController.isSupportUser(currentUser) && getContactsController().contactsDict.get(currentUser.id) == null && (getContactsController().contactsDict.size() != 0 || !getContactsController().isLoadingContacts())) {
                  if (!TextUtils.isEmpty(currentUser.phone)) {
@@ -2747,7 +2978,7 @@ index 6b8cddfe..99f59bda 100644
                  } else {
                      avatarContainer.setTitle(AndroidUtilities.removeRTL(AndroidUtilities.removeDiacritics(UserObject.getUserName(currentUser))), currentUser.scam, currentUser.fake, currentUser.verified, getMessagesController().isPremiumUser(currentUser), currentUser.emoji_status, animated);
                  }
-@@ -27588,6 +27615,11 @@ public class ChatActivity extends BaseFragment implements
+@@ -27588,6 +27616,11 @@ public class ChatActivity extends BaseFragment implements
          if (includeSpoilers) {
              menu.add(R.id.menu_groupbolditalic, R.id.menu_spoiler, order++, LocaleController.getString(R.string.Spoiler));
          }
@@ -2759,7 +2990,7 @@ index 6b8cddfe..99f59bda 100644
  
          SpannableStringBuilder stringBuilder = new SpannableStringBuilder(LocaleController.getString(R.string.Bold));
          stringBuilder.setSpan(new TypefaceSpan(AndroidUtilities.bold()), 0, stringBuilder.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-@@ -33379,6 +33411,10 @@ public class ChatActivity extends BaseFragment implements
+@@ -33379,6 +33412,19 @@ public class ChatActivity extends BaseFragment implements
                  undoView.showWithAction(0, UndoView.ACTION_MESSAGE_COPIED, null);
                  break;
              }
@@ -2767,10 +2998,19 @@ index 6b8cddfe..99f59bda 100644
 +                MargeletTagsAlert.show(this, selectedObject);
 +                break;
 +            }
++            case OPTION_MARGELET_COPY: {
++                org.telegram.margelet.MargeletCopy.copy(selectedObject);
++                createUndoView();
++                if (undoView == null) {
++                    return;
++                }
++                undoView.showWithAction(0, UndoView.ACTION_MESSAGE_COPIED, null);
++                break;
++            }
              case OPTION_SAVE_TO_GALLERY: {
                  if (Build.VERSION.SDK_INT >= 23 && (Build.VERSION.SDK_INT <= 28 || BuildVars.NO_SCOPED_STORAGE) && getParentActivity().checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
                      getParentActivity().requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 4);
-@@ -46097,6 +46133,21 @@ public class ChatActivity extends BaseFragment implements
+@@ -46097,6 +46143,33 @@ public class ChatActivity extends BaseFragment implements
                      }
                  }
  
@@ -2787,6 +3027,18 @@ index 6b8cddfe..99f59bda 100644
 +                    items.add(LocaleController.getString(R.string.MargeletTrackTags));
 +                    options.add(OPTION_MARGELET_TAGS);
 +                    icons.add(R.drawable.msg_edit);
++                }
++
++                // Копирование с оформлением. Тут же, после всей цепочки по
++                // типам, и по тому же правилу: условие явное, а не «рядом с
++                // похожей строкой».
++                if (options.contains(OPTION_COPY) && !noforwardsOrPaidMedia
++                        && selectedObject.messageOwner != null
++                        && !TextUtils.isEmpty(selectedObject.messageOwner.message)
++                        && org.telegram.margelet.MargeletConfig.copyFormatting()) {
++                    items.add(LocaleController.getString(R.string.MargeletCopyFormatted));
++                    options.add(OPTION_MARGELET_COPY);
++                    icons.add(R.drawable.msg_copy);
 +                }
 +
                  final boolean canForward = !selectedObject.isSponsored()
@@ -3399,10 +3651,10 @@ index 00000000..1d675319
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletMarkupActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletMarkupActivity.java
 new file mode 100644
-index 00000000..0e53ef94
+index 00000000..1aba0adb
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletMarkupActivity.java
-@@ -0,0 +1,71 @@
+@@ -0,0 +1,77 @@
 +package org.telegram.ui;
 +
 +import android.view.View;
@@ -3429,6 +3681,7 @@ index 00000000..0e53ef94
 +    private static final int ID_DIM = 2;
 +    private static final int ID_RAINBOW = 3;
 +    private static final int ID_WATERMARKS = 4;
++    private static final int ID_COPY = 5;
 +
 +    @Override
 +    protected CharSequence getTitle() {
@@ -3454,12 +3707,17 @@ index 00000000..0e53ef94
 +        items.add(UItem.asCheck(ID_WATERMARKS, LocaleController.getString(R.string.MargeletWatermarks))
 +                .setChecked(MargeletConfig.showWatermarks()));
 +        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletWatermarksAbout)));
++        items.add(UItem.asCheck(ID_COPY, LocaleController.getString(R.string.MargeletCopyFormatted))
++                .setChecked(MargeletConfig.copyFormatting()));
++        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletCopyFormattedAbout)));
 +    }
 +
 +    @Override
 +    protected void onClick(UItem item, View view, int position, float x, float y) {
 +        if (item.id == ID_WATERMARKS) {
 +            MargeletConfig.setShowWatermarks(!MargeletConfig.showWatermarks());
++        } else if (item.id == ID_COPY) {
++            MargeletConfig.setCopyFormatting(!MargeletConfig.copyFormatting());
 +        } else {
 +            final int kind = item.id == ID_SIZE ? MargeletMarkup.KIND_SIZE
 +                    : item.id == ID_DIM ? MargeletMarkup.KIND_DIM
@@ -13039,7 +13297,7 @@ index 03d0ba33..17f98fa6 100644
      <string name="English">Inglês</string>
      <string name="LanguageNameInEnglish">Portuguese (Brazil)</string>
 diff --git a/TMessagesProj/src/main/res/values-ru/strings.xml b/TMessagesProj/src/main/res/values-ru/strings.xml
-index 24c56292..14fac853 100644
+index 24c56292..bfe511e3 100644
 --- a/TMessagesProj/src/main/res/values-ru/strings.xml
 +++ b/TMessagesProj/src/main/res/values-ru/strings.xml
 @@ -1,7 +1,7 @@
@@ -13052,7 +13310,7 @@ index 24c56292..14fac853 100644
      <string name="LanguageName">Русский</string>
      <string name="English">Английский</string>
      <string name="LanguageNameInEnglish">Russian</string>
-@@ -263,4 +263,105 @@
+@@ -263,4 +263,107 @@
      <string name="RemindTodayAt">\'Отправить сегодня в\' HH:mm</string>
      <string name="RemindDayAt">\'Отправить\' d MMM \'в\' HH:mm</string>
      <string name="RemindDayYearAt">\'Напомнить\' d MMM yyyy \'в\' HH:mm</string>
@@ -13141,6 +13399,8 @@ index 24c56292..14fac853 100644
 +    <string name="MargeletMarkupAbout">Что показывать в чужих сообщениях. Отправлять можно в любом случае.</string>
 +    <string name="MargeletWatermarks">Показывать ватермарки</string>
 +    <string name="MargeletWatermarksAbout">Строка со ссылкой на форк в конце оформленных сообщений. Её видят те, у кого форка нет.</string>
++    <string name="MargeletCopyFormatted">Копировать с оформлением</string>
++    <string name="MargeletCopyFormattedAbout">Пункт в меню сообщения. Обычное копирование кладёт голый текст, этот — с жирным, курсивом, ссылками и нашим оформлением.</string>
 +    <string name="MargeletAboutTitle">Что это</string>
 +    <string name="MargeletAboutText">Margelet — форк телеграма с кучей своего: оформление текста, теги у музыки, режим стримера, удалённые подарки и прочее.\n\nСделал @narezany.\n\nИ да: никогда не нажимай на название на главном экране и никогда не долби по кнопке «Чаты».</string>
 +    <string name="MargeletMarkupWarnTitle">Своё оформление</string>
@@ -13188,7 +13448,7 @@ index cc49d135..8c6e02b7 100644
      <item name="menu_regular" type="id"/>
      <item name="menu_bold" type="id"/>
 diff --git a/TMessagesProj/src/main/res/values/strings.xml b/TMessagesProj/src/main/res/values/strings.xml
-index ffa4d566..c6dc89a7 100644
+index ffa4d566..bf79f09b 100644
 --- a/TMessagesProj/src/main/res/values/strings.xml
 +++ b/TMessagesProj/src/main/res/values/strings.xml
 @@ -1,7 +1,7 @@
@@ -13201,7 +13461,7 @@ index ffa4d566..c6dc89a7 100644
      <string name="LanguageName">English</string>
      <string name="English">English</string>
      <string name="LanguageNameInEnglish">English</string>
-@@ -11221,4 +11221,105 @@
+@@ -11221,4 +11221,107 @@
      <string name="UnsupportedMessageTitle">Unsupported Message</string>
      <string name="UnsupportedMessageMessage">Update Telegram to view this message</string>
      <string name="UnsupportedUpdate">Update</string>
@@ -13290,6 +13550,8 @@ index ffa4d566..c6dc89a7 100644
 +    <string name="MargeletMarkupAbout">What to show in other people\u0027s messages. Sending is always allowed.</string>
 +    <string name="MargeletWatermarks">Show watermarks</string>
 +    <string name="MargeletWatermarksAbout">The line linking to the fork at the end of formatted messages. People without the fork see it.</string>
++    <string name="MargeletCopyFormatted">Copy with formatting</string>
++    <string name="MargeletCopyFormattedAbout">An item in the message menu. A plain copy gives bare text, this one keeps bold, italics, links and our own formatting.</string>
 +    <string name="MargeletAboutTitle">What this is</string>
 +    <string name="MargeletAboutText">Margelet is a Telegram fork with a pile of its own: text formatting, music tags, streamer mode, delisted gifts and more.\n\nMade by @narezany.\n\nAlso: never tap the title on the main screen, and never spam the Chats button.</string>
 +    <string name="MargeletMarkupWarnTitle">Custom formatting</string>
