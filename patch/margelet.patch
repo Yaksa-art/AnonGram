@@ -31,10 +31,10 @@ index 7cc3a8e3..533927ca 100644
              buildConfigField "String", "BETA_URL", "\"" + getProps("BETA_PRIVATE_URL") + "\""
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletBadge.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletBadge.java
 new file mode 100644
-index 00000000..3cda300e
+index 00000000..dbbaf49b
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletBadge.java
-@@ -0,0 +1,84 @@
+@@ -0,0 +1,89 @@
 +package org.telegram.margelet;
 +
 +import static org.telegram.messenger.AndroidUtilities.dp;
@@ -85,19 +85,24 @@ index 00000000..3cda300e
 +            layout.setOrientation(LinearLayout.VERTICAL);
 +            layout.setGravity(Gravity.CENTER_HORIZONTAL);
 +
-+            final ImageView icon = new ImageView(context);
-+            icon.setImageResource(R.drawable.margelet_badge);
-+            layout.addView(icon, LayoutHelper.createLinear(72, 72, Gravity.CENTER_HORIZONTAL, 0, 6, 0, 14));
-+
-+            // Вращение вокруг вертикальной оси нарисовать нечем без трёхмерной
-+            // сцены, поэтому знак крутится в плоскости — честная анимация
-+            // вместо изображения трёхмерности, которой нет.
-+            final RotateAnimation spin = new RotateAnimation(0, 360,
-+                    Animation.RELATIVE_TO_SELF, 0.5f, Animation.RELATIVE_TO_SELF, 0.5f);
-+            spin.setDuration(2600);
-+            spin.setRepeatCount(Animation.INFINITE);
-+            spin.setInterpolator(new LinearInterpolator());
-+            icon.startAnimation(spin);
++            // Трёхмерный самолётик: сам крутится, можно крутить пальцем.
++            // Если по какой-то причине не заведётся — покажем плоский значок,
++            // окно не должно превращаться в чёрный квадрат.
++            View spinner;
++            try {
++                spinner = new MargeletPlane3D(context);
++            } catch (Throwable t) {
++                final ImageView icon = new ImageView(context);
++                icon.setImageResource(R.drawable.margelet_badge);
++                final RotateAnimation spin = new RotateAnimation(0, 360,
++                        Animation.RELATIVE_TO_SELF, 0.5f, Animation.RELATIVE_TO_SELF, 0.5f);
++                spin.setDuration(2600);
++                spin.setRepeatCount(Animation.INFINITE);
++                spin.setInterpolator(new LinearInterpolator());
++                icon.startAnimation(spin);
++                spinner = icon;
++            }
++            layout.addView(spinner, LayoutHelper.createLinear(120, 120, Gravity.CENTER_HORIZONTAL, 0, 6, 0, 14));
 +
 +            final TextView text = new TextView(context);
 +            text.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
@@ -748,6 +753,268 @@ index 00000000..f3d81a4d
 +            MargeletConfig.setMeowHeard();
 +        } catch (Exception ignored) {
 +            // Звук — украшение. Не дала система — экран должен жить дальше.
++        }
++    }
++}
+diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletPlane3D.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletPlane3D.java
+new file mode 100644
+index 00000000..6e03c082
+--- /dev/null
++++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletPlane3D.java
+@@ -0,0 +1,256 @@
++package org.telegram.margelet;
++
++import android.content.Context;
++import android.opengl.GLES20;
++import android.opengl.GLSurfaceView;
++import android.opengl.Matrix;
++import android.view.MotionEvent;
++
++import java.nio.ByteBuffer;
++import java.nio.ByteOrder;
++import java.nio.FloatBuffer;
++
++import javax.microedition.khronos.egl.EGLConfig;
++import javax.microedition.khronos.opengles.GL10;
++
++/**
++ * Самолётик Margelet, настоящий трёхмерный: сам крутится и крутится пальцем.
++ *
++ * Своя вьюшка, а не телеграмовская GLIcon: у той модель лежит в assets в своём
++ * двоичном формате и жёстко привязана к типам «звезда», «монета», «алмаз».
++ * Дописывать туда свой тип значило бы лезть в чужой renderer ради одной фигуры;
++ * здесь же вся сцена — пять точек и восемь треугольников, и она целиком тут.
++ *
++ * Цвет задаётся вершинами, а не текстурой: у бумажного самолётика всего три
++ * оттенка — две плоскости крыльев и ребро сгиба, — и текстура для этого лишняя.
++ *
++ * Владелец был прав, что трёхмерное тут возможно: в самом телеграме крутится
++ * звезда премиума. Я до этого сказал, что «нечем нарисовать», не посмотрев.
++ */
++public class MargeletPlane3D extends GLSurfaceView {
++
++    public MargeletPlane3D(Context context) {
++        super(context);
++        setEGLContextClientVersion(2);
++        setEGLConfigChooser(8, 8, 8, 8, 16, 0);
++        getHolder().setFormat(android.graphics.PixelFormat.TRANSLUCENT);
++        setZOrderOnTop(true);
++        renderer = new Renderer();
++        setRenderer(renderer);
++        setRenderMode(RENDERMODE_CONTINUOUSLY);
++    }
++
++    private final Renderer renderer;
++    private float lastX;
++    private boolean dragging;
++
++    @Override
++    public boolean onTouchEvent(MotionEvent event) {
++        switch (event.getActionMasked()) {
++            case MotionEvent.ACTION_DOWN:
++                lastX = event.getX();
++                dragging = true;
++                renderer.spinning = false;
++                return true;
++            case MotionEvent.ACTION_MOVE:
++                if (dragging) {
++                    // Полградуса на точку экрана: так вращение поспевает за
++                    // пальцем и при этом не срывается в юлу от дрожи руки.
++                    renderer.angle += (event.getX() - lastX) * 0.5f;
++                    lastX = event.getX();
++                }
++                return true;
++            default:
++                dragging = false;
++                renderer.spinning = true;
++                return true;
++        }
++    }
++
++    /** Пять точек: нос, два конца крыльев, ребро сгиба и хвост. */
++    private static final float[] V = {
++            0f, 1f, 0f,          // 0 нос
++            -0.85f, -0.65f, -0.18f,  // 1 левый конец
++            0.85f, -0.65f, -0.18f,   // 2 правый конец
++            0f, -0.30f, 0.30f,       // 3 ребро сгиба
++            0f, -0.78f, 0.10f        // 4 хвост
++    };
++
++    private static final int[][] FACES = {
++            {0, 3, 1}, {0, 2, 3},   // верх крыльев
++            {1, 3, 4}, {3, 2, 4}    // задние скосы
++    };
++
++    private static final float[][] COLORS = {
++            {1f, 1f, 1f}, {0.93f, 0.95f, 0.98f},
++            {0.86f, 0.89f, 0.95f}, {0.80f, 0.84f, 0.92f}
++    };
++
++    private static class Renderer implements GLSurfaceView.Renderer {
++
++        volatile float angle;
++        volatile boolean spinning = true;
++
++        private FloatBuffer vertices;
++        private FloatBuffer normals;
++        private FloatBuffer colors;
++        private int program;
++        private int count;
++
++        private final float[] mvp = new float[16];
++        private final float[] model = new float[16];
++        private final float[] view = new float[16];
++        private final float[] projection = new float[16];
++        private long lastFrame;
++
++        private static final String VERTEX_SHADER =
++                "uniform mat4 uMVP;\n" +
++                "uniform mat4 uModel;\n" +
++                "attribute vec4 aPos;\n" +
++                "attribute vec3 aNormal;\n" +
++                "attribute vec3 aColor;\n" +
++                "varying vec3 vColor;\n" +
++                "varying vec3 vNormal;\n" +
++                "void main() {\n" +
++                "  vColor = aColor;\n" +
++                "  vNormal = mat3(uModel) * aNormal;\n" +
++                "  gl_Position = uMVP * aPos;\n" +
++                "}";
++
++        private static final String FRAGMENT_SHADER =
++                "precision mediump float;\n" +
++                "varying vec3 vColor;\n" +
++                "varying vec3 vNormal;\n" +
++                "void main() {\n" +
++                // Свет сверху и чуть спереди, плюс подсветка снизу, чтобы
++                // отвёрнутая сторона не проваливалась в чёрное.
++                "  vec3 n = normalize(vNormal);\n" +
++                "  float top = max(dot(n, normalize(vec3(0.3, 0.9, 0.5))), 0.0);\n" +
++                "  float fill = max(dot(n, normalize(vec3(-0.3, -0.9, -0.5))), 0.0);\n" +
++                "  float light = 0.45 + 0.55 * top + 0.18 * fill;\n" +
++                "  gl_FragColor = vec4(vColor * light, 1.0);\n" +
++                "}";
++
++        private static int compile(int type, String source) {
++            final int shader = GLES20.glCreateShader(type);
++            GLES20.glShaderSource(shader, source);
++            GLES20.glCompileShader(shader);
++            return shader;
++        }
++
++        private static float[] normal(float[] a, float[] b, float[] c) {
++            final float[] u = {b[0] - a[0], b[1] - a[1], b[2] - a[2]};
++            final float[] v = {c[0] - a[0], c[1] - a[1], c[2] - a[2]};
++            final float[] n = {
++                    u[1] * v[2] - u[2] * v[1],
++                    u[2] * v[0] - u[0] * v[2],
++                    u[0] * v[1] - u[1] * v[0]
++            };
++            final float len = (float) Math.sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
++            if (len > 0) {
++                n[0] /= len;
++                n[1] /= len;
++                n[2] /= len;
++            }
++            return n;
++        }
++
++        private void build() {
++            // Каждый треугольник кладём дважды, вторым — с обратным обходом:
++            // самолётик плоский, и без задних граней он исчезал бы наполовину
++            // оборота.
++            final int triangles = FACES.length * 2;
++            count = triangles * 3;
++            final float[] pos = new float[count * 3];
++            final float[] nor = new float[count * 3];
++            final float[] col = new float[count * 3];
++            int p = 0, q = 0, r = 0;
++            for (int side = 0; side < 2; side++) {
++                for (int f = 0; f < FACES.length; f++) {
++                    final int[] face = FACES[f];
++                    final int i0 = face[0], i1 = side == 0 ? face[1] : face[2], i2 = side == 0 ? face[2] : face[1];
++                    final float[] a = {V[i0 * 3], V[i0 * 3 + 1], V[i0 * 3 + 2]};
++                    final float[] b = {V[i1 * 3], V[i1 * 3 + 1], V[i1 * 3 + 2]};
++                    final float[] c = {V[i2 * 3], V[i2 * 3 + 1], V[i2 * 3 + 2]};
++                    final float[] n = normal(a, b, c);
++                    for (float[] vertex : new float[][]{a, b, c}) {
++                        pos[p++] = vertex[0];
++                        pos[p++] = vertex[1];
++                        pos[p++] = vertex[2];
++                        nor[q++] = n[0];
++                        nor[q++] = n[1];
++                        nor[q++] = n[2];
++                        col[r++] = COLORS[f][0];
++                        col[r++] = COLORS[f][1];
++                        col[r++] = COLORS[f][2];
++                    }
++                }
++            }
++            vertices = buffer(pos);
++            normals = buffer(nor);
++            colors = buffer(col);
++        }
++
++        private static FloatBuffer buffer(float[] data) {
++            final FloatBuffer b = ByteBuffer.allocateDirect(data.length * 4)
++                    .order(ByteOrder.nativeOrder()).asFloatBuffer();
++            b.put(data).position(0);
++            return b;
++        }
++
++        @Override
++        public void onSurfaceCreated(GL10 gl, EGLConfig config) {
++            GLES20.glClearColor(0f, 0f, 0f, 0f);
++            GLES20.glEnable(GLES20.GL_DEPTH_TEST);
++            build();
++            program = GLES20.glCreateProgram();
++            GLES20.glAttachShader(program, compile(GLES20.GL_VERTEX_SHADER, VERTEX_SHADER));
++            GLES20.glAttachShader(program, compile(GLES20.GL_FRAGMENT_SHADER, FRAGMENT_SHADER));
++            GLES20.glLinkProgram(program);
++        }
++
++        @Override
++        public void onSurfaceChanged(GL10 gl, int width, int height) {
++            GLES20.glViewport(0, 0, width, height);
++            final float ratio = height == 0 ? 1f : (float) width / height;
++            Matrix.frustumM(projection, 0, -ratio * 0.6f, ratio * 0.6f, -0.6f, 0.6f, 1.6f, 8f);
++            Matrix.setLookAtM(view, 0, 0f, 0.15f, 3.2f, 0f, 0f, 0f, 0f, 1f, 0f);
++        }
++
++        @Override
++        public void onDrawFrame(GL10 gl) {
++            final long now = System.currentTimeMillis();
++            if (lastFrame != 0 && spinning) {
++                angle += (now - lastFrame) * 0.045f;
++            }
++            lastFrame = now;
++
++            GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT | GLES20.GL_DEPTH_BUFFER_BIT);
++            GLES20.glUseProgram(program);
++
++            Matrix.setIdentityM(model, 0);
++            Matrix.rotateM(model, 0, angle, 0f, 1f, 0f);
++            Matrix.rotateM(model, 0, -14f, 1f, 0f, 0f);
++            Matrix.multiplyMM(mvp, 0, view, 0, model, 0);
++            Matrix.multiplyMM(mvp, 0, projection, 0, mvp, 0);
++
++            final int pos = GLES20.glGetAttribLocation(program, "aPos");
++            final int nor = GLES20.glGetAttribLocation(program, "aNormal");
++            final int col = GLES20.glGetAttribLocation(program, "aColor");
++            GLES20.glVertexAttribPointer(pos, 3, GLES20.GL_FLOAT, false, 0, vertices);
++            GLES20.glVertexAttribPointer(nor, 3, GLES20.GL_FLOAT, false, 0, normals);
++            GLES20.glVertexAttribPointer(col, 3, GLES20.GL_FLOAT, false, 0, colors);
++            GLES20.glEnableVertexAttribArray(pos);
++            GLES20.glEnableVertexAttribArray(nor);
++            GLES20.glEnableVertexAttribArray(col);
++
++            GLES20.glUniformMatrix4fv(GLES20.glGetUniformLocation(program, "uMVP"), 1, false, mvp, 0);
++            GLES20.glUniformMatrix4fv(GLES20.glGetUniformLocation(program, "uModel"), 1, false, model, 0);
++            GLES20.glDrawArrays(GLES20.GL_TRIANGLES, 0, count);
++
++            GLES20.glDisableVertexAttribArray(pos);
++            GLES20.glDisableVertexAttribArray(nor);
++            GLES20.glDisableVertexAttribArray(col);
 +        }
 +    }
 +}
@@ -2367,7 +2634,7 @@ index 00000000..60a2f81f
 +    }
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java
-index 40634647..7a2fb71f 100644
+index 40634647..2139551e 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java
 @@ -626,6 +626,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
@@ -2461,7 +2728,24 @@ index 40634647..7a2fb71f 100644
                      }
                      if (user != null/* && !getMessagesController().premiumFeaturesBlocked()*/ && !MessagesController.isSupportUser(user) && DialogObject.getEmojiStatusDocumentId(user.emoji_status) != 0) {
                          rightIconIsStatus = true;
-@@ -13456,7 +13486,12 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -11482,8 +11512,16 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+                         nameTextView[a].setRightDrawable2(getScamDrawable(user.scam ? 0 : 1));
+                     } else if (user.verified) {
+                         nameTextView[a].setRightDrawable2(getVerifiedCrossfadeDrawable(a));
++                    } else if (org.telegram.margelet.MargeletBadge.isCreator(user.id)) {
++                        // Второй заголовок — тот, что виден на развёрнутой шапке
++                        // профиля. В первый раз я поправил только первый, и
++                        // владелец у себя значка не увидел.
++                        nameTextView[a].setRightDrawable2(ContextCompat.getDrawable(getContext(), R.drawable.margelet_badge));
++                        nameTextView[a].setOnClickListener(v -> org.telegram.margelet.MargeletBadge.show(getContext()));
+                     } else {
+                         nameTextView[a].setRightDrawable2(null);
++                        nameTextView[a].setOnClickListener(null);
++                        nameTextView[a].setClickable(false);
+                     }
+                     if (/*!getMessagesController().premiumFeaturesBlocked() && */user != null && !MessagesController.isSupportUser(user) && DialogObject.getEmojiStatusDocumentId(user.emoji_status) != 0) {
+                         rightIconIsStatus = true;
+@@ -13456,7 +13494,12 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                      TextDetailCell detailCell = (TextDetailCell) holder.itemView;
                      boolean containsQr = false;
                      boolean containsGift = false;
@@ -2475,7 +2759,7 @@ index 40634647..7a2fb71f 100644
                          TLRPC.UserFull userFull = getMessagesController().getUserFull(userId);
                          if (userFull != null && userFull.birthday != null) {
                              final boolean today = BirthdayController.isToday(userFull);
-@@ -13491,7 +13526,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -13491,7 +13534,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                              text = PhoneFormat.getInstance().format("+" + vcardPhone);
                              phoneNumber = vcardPhone;
                          } else if (user != null && !TextUtils.isEmpty(user.phone)) {
@@ -2484,7 +2768,7 @@ index 40634647..7a2fb71f 100644
                              phoneNumber = user.phone;
                          } else {
                              text = LocaleController.getString(R.string.PhoneHidden);
-@@ -13585,7 +13620,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -13585,7 +13628,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                          TLRPC.User user = UserConfig.getInstance(currentAccount).getCurrentUser();
                          String value;
                          if (user != null && user.phone != null && user.phone.length() != 0) {
@@ -2493,7 +2777,7 @@ index 40634647..7a2fb71f 100644
                          } else {
                              value = LocaleController.getString(R.string.NumberUnknown);
                          }
-@@ -13610,13 +13645,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -13610,13 +13653,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                              if (username == null || TextUtils.isEmpty(username)) {
                                  text = LocaleController.getString(R.string.UsernameEmpty);
                              } else {
@@ -2509,7 +2793,7 @@ index 40634647..7a2fb71f 100644
                              } else {
                                  text = LocaleController.getString(R.string.UsernameEmpty);
                              }
-@@ -13839,6 +13874,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -13839,6 +13882,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                          textCell.setTextAndIcon(LocaleController.getString(R.string.PrivacySettings), R.drawable.msg2_secret, true);
                      } else if (position == dataRow) {
                          textCell.setTextAndIcon(LocaleController.getString(R.string.DataSettings), R.drawable.msg2_data, true);
@@ -2518,7 +2802,7 @@ index 40634647..7a2fb71f 100644
                      } else if (position == chatRow) {
                          textCell.setTextAndIcon(LocaleController.getString(R.string.ChatSettings), R.drawable.msg2_discussion, true);
                      } else if (position == filtersRow) {
-@@ -14286,7 +14323,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -14286,7 +14331,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                          position == clearLogsRow || position == switchBackendRow || position == setAvatarRow ||
                          position == addToGroupButtonRow || position == premiumRow || position == premiumGiftingRow ||
                          position == businessRow || position == liteModeRow || position == birthdayRow || position == channelRow ||
@@ -2528,7 +2812,7 @@ index 40634647..7a2fb71f 100644
              }
              if (holder.itemView instanceof UserCell) {
                  UserCell userCell = (UserCell) holder.itemView;
-@@ -14314,7 +14352,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -14314,7 +14360,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
              if (position == infoHeaderRow || position == membersHeaderRow || position == settingsSectionRow2 ||
                      position == numberSectionRow || position == helpHeaderRow || position == debugHeaderRow || position == botPermissionsHeader) {
                  return VIEW_TYPE_HEADER;
@@ -2537,7 +2821,7 @@ index 40634647..7a2fb71f 100644
                  return VIEW_TYPE_TEXT_DETAIL;
              } else if (position == usernameRow || position == setUsernameRow) {
                  return VIEW_TYPE_TEXT_DETAIL_MULTILINE;
-@@ -14332,7 +14370,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -14332,7 +14378,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                      position == clearLogsRow || position == switchBackendRow || position == setAvatarRow || position == addToGroupButtonRow ||
                      position == addToContactsRow || position == liteModeRow || position == premiumGiftingRow || position == businessRow ||
                      position == botStarsBalanceRow || position == botTonBalanceRow || position == channelBalanceRow || position == botPermissionLocation ||
@@ -10840,7 +11124,7 @@ index 03d0ba33..17f98fa6 100644
      <string name="English">Inglês</string>
      <string name="LanguageNameInEnglish">Portuguese (Brazil)</string>
 diff --git a/TMessagesProj/src/main/res/values-ru/strings.xml b/TMessagesProj/src/main/res/values-ru/strings.xml
-index 24c56292..fbc52a42 100644
+index 24c56292..f85b7b77 100644
 --- a/TMessagesProj/src/main/res/values-ru/strings.xml
 +++ b/TMessagesProj/src/main/res/values-ru/strings.xml
 @@ -1,7 +1,7 @@
@@ -10912,7 +11196,7 @@ index 24c56292..fbc52a42 100644
 +    <string name="MargeletGiftsInfo">Подарки, убранные телеграмом из каталога</string>
 +    <string name="MargeletGiftsOn">Показывать удалённые подарки</string>
 +    <string name="MargeletGiftsAbout">Они дописываются в конец каталога подарков. Покупку всё равно подтверждает сервер: если подарок закрыт по-настоящему, отправка просто не пройдёт — это не поломка форка.\n\nСписок берётся из открытого репозитория, поэтому новый подарок появляется без обновления приложения.</string>
-+    <string name="MargeletGiftsAuthor">Приём и перечень — @binbash_0, нажми, чтобы открыть профиль</string>
++    <string name="MargeletGiftsAuthor">Автор приёма: @binbash_0</string>
 +    <string name="MargeletSource">Исходный код</string>
 +    <string name="MargeletSourceInfo">github.com/narezany/Margelet</string>
 +    <string name="MargeletProfiles">Профили</string>
@@ -10939,7 +11223,7 @@ index d4683443..57d10109 100644
      <string name="English">Англійська</string>
      <string name="LanguageNameInEnglish">Ukrainian</string>
 diff --git a/TMessagesProj/src/main/res/values/strings.xml b/TMessagesProj/src/main/res/values/strings.xml
-index ffa4d566..75d5cdf9 100644
+index ffa4d566..e339bab7 100644
 --- a/TMessagesProj/src/main/res/values/strings.xml
 +++ b/TMessagesProj/src/main/res/values/strings.xml
 @@ -1,7 +1,7 @@
@@ -11011,7 +11295,7 @@ index ffa4d566..75d5cdf9 100644
 +    <string name="MargeletGiftsInfo">Gifts Telegram took out of the catalog</string>
 +    <string name="MargeletGiftsOn">Show deleted gifts</string>
 +    <string name="MargeletGiftsAbout">They are added to the end of the gift catalog. The purchase is still confirmed by the server: if a gift is really closed, sending it will simply fail, and that is not a bug of the fork.\n\nThe list is loaded from an open repository, so a new gift appears without updating the app.</string>
-+    <string name="MargeletGiftsAuthor">The trick and the list are by @binbash_0 — tap to open the profile</string>
++    <string name="MargeletGiftsAuthor">Author of the trick: @binbash_0</string>
 +    <string name="MargeletSource">Source code</string>
 +    <string name="MargeletSourceInfo">github.com/narezany/Margelet</string>
 +    <string name="MargeletProfiles">Profiles</string>

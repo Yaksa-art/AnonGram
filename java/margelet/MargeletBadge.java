@@ -48,19 +48,24 @@ public class MargeletBadge {
             layout.setOrientation(LinearLayout.VERTICAL);
             layout.setGravity(Gravity.CENTER_HORIZONTAL);
 
-            final ImageView icon = new ImageView(context);
-            icon.setImageResource(R.drawable.margelet_badge);
-            layout.addView(icon, LayoutHelper.createLinear(72, 72, Gravity.CENTER_HORIZONTAL, 0, 6, 0, 14));
-
-            // Вращение вокруг вертикальной оси нарисовать нечем без трёхмерной
-            // сцены, поэтому знак крутится в плоскости — честная анимация
-            // вместо изображения трёхмерности, которой нет.
-            final RotateAnimation spin = new RotateAnimation(0, 360,
-                    Animation.RELATIVE_TO_SELF, 0.5f, Animation.RELATIVE_TO_SELF, 0.5f);
-            spin.setDuration(2600);
-            spin.setRepeatCount(Animation.INFINITE);
-            spin.setInterpolator(new LinearInterpolator());
-            icon.startAnimation(spin);
+            // Трёхмерный самолётик: сам крутится, можно крутить пальцем.
+            // Если по какой-то причине не заведётся — покажем плоский значок,
+            // окно не должно превращаться в чёрный квадрат.
+            View spinner;
+            try {
+                spinner = new MargeletPlane3D(context);
+            } catch (Throwable t) {
+                final ImageView icon = new ImageView(context);
+                icon.setImageResource(R.drawable.margelet_badge);
+                final RotateAnimation spin = new RotateAnimation(0, 360,
+                        Animation.RELATIVE_TO_SELF, 0.5f, Animation.RELATIVE_TO_SELF, 0.5f);
+                spin.setDuration(2600);
+                spin.setRepeatCount(Animation.INFINITE);
+                spin.setInterpolator(new LinearInterpolator());
+                icon.startAnimation(spin);
+                spinner = icon;
+            }
+            layout.addView(spinner, LayoutHelper.createLinear(120, 120, Gravity.CENTER_HORIZONTAL, 0, 6, 0, 14));
 
             final TextView text = new TextView(context);
             text.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
