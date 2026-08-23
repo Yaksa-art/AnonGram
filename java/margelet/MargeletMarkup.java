@@ -35,12 +35,26 @@ import java.util.List;
  */
 public class MargeletMarkup {
 
-    /** Начало метки. */
-    public static final char OPEN = '\uFE00';
-    /** Конец куска. */
-    public static final char CLOSE = '\uFE01';
-    /** Цифры значения: FE02 + n, n от 0 до 13. */
-    private static final char DIGIT = '\uFE02';
+    /**
+     * Знаки меток. Все пять — невидимые служебные знаки из одного места:
+     * U+2060 «склейка слов» и четыре невидимых математических знака за ним.
+     *
+     * Сначала я взял под метки селекторы начертания U+FE00…U+FE0F. Это была
+     * ошибка, и нашёл её владелец: чужие сообщения приходили без оформления,
+     * хотя своё оставалось. Причина в разборе эмодзи — он этот диапазон
+     * <b>съедает</b> целиком, считая его частью значка (Emoji.java, ветки
+     * «c >= 0xFE00 && c <= 0xFE0F»). Своё сообщение выживало потому, что у
+     * него разметка оставалась в поле ввода и заново не разбиралась.
+     */
+    public static final char OPEN = '\u2060';
+    public static final char CLOSE = '\u2061';
+    private static final char TRIT = '\u2062';
+    private static final int TRITS = 3;
+
+    /** Вид — два троичных разряда, значение — три. Итого шесть знаков на метку. */
+    private static final int KIND_TRITS = 2;
+    private static final int VALUE_TRITS = 3;
+    private static final int MARK_LEN = 1 + KIND_TRITS + VALUE_TRITS;
     private static final int DIGITS = 14;
 
     public static final int KIND_SIZE = 0;
@@ -68,17 +82,35 @@ public class MargeletMarkup {
         return Math.round((clamped - SIZE_MIN) * (DIGITS - 1) / (SIZE_MAX - SIZE_MIN));
     }
 
-    private static boolean isDigit(char c) {
-        return c >= DIGIT && c < DIGIT + DIGITS;
+    private static boolean isTrit(char c) {
+        return c >= TRIT && c < TRIT + TRITS;
     }
 
-    private static char digit(int value) {
-        return (char) (DIGIT + Math.max(0, Math.min(DIGITS - 1, value)));
+    /** Число троичными разрядами, младший первым. */
+    private static void number(StringBuilder out, int value, int count) {
+        int left = Math.max(0, value);
+        for (int i = 0; i < count; i++) {
+            out.append((char) (TRIT + left % TRITS));
+            left /= TRITS;
+        }
+    }
+
+    private static int number(CharSequence text, int at, int count) {
+        int value = 0, mul = 1;
+        for (int i = 0; i < count; i++) {
+            value += (text.charAt(at + i) - TRIT) * mul;
+            mul *= TRITS;
+        }
+        return value;
     }
 
     /** Открывающая метка как строка. */
     public static String open(int kind, int value) {
-        return "" + OPEN + digit(kind) + digit(value);
+        final StringBuilder out = new StringBuilder();
+        out.append(OPEN);
+        number(out, kind, KIND_TRITS);
+        number(out, value, VALUE_TRITS);
+        return out.toString();
     }
 
     public static String close() {
@@ -118,10 +150,12 @@ public class MargeletMarkup {
         final ArrayList<int[]> open = new ArrayList<>();
         for (int i = 0; i < text.length(); i++) {
             final char c = text.charAt(i);
-            if (c == OPEN && i + 2 < text.length()
-                    && isDigit(text.charAt(i + 1)) && isDigit(text.charAt(i + 2))) {
-                open.add(new int[]{text.charAt(i + 1) - DIGIT, text.charAt(i + 2) - DIGIT, i + 3});
-                i += 2;
+            if (c == OPEN && i + MARK_LEN <= text.length() && allTrits(text, i + 1)) {
+                open.add(new int[]{
+                        number(text, i + 1, KIND_TRITS),
+                        number(text, i + 1 + KIND_TRITS, VALUE_TRITS),
+                        i + MARK_LEN});
+                i += MARK_LEN - 1;
             } else if (c == CLOSE && !open.isEmpty()) {
                 final int[] top = open.remove(open.size() - 1);
                 if (i > top[2]) {
@@ -130,6 +164,15 @@ public class MargeletMarkup {
             }
         }
         return runs;
+    }
+
+    private static boolean allTrits(CharSequence text, int at) {
+        for (int i = 0; i < MARK_LEN - 1; i++) {
+            if (!isTrit(text.charAt(at + i))) {
+                return false;
+            }
+        }
+        return true;
     }
 
     public static boolean has(CharSequence text) {
@@ -162,30 +205,43 @@ public class MargeletMarkup {
         final SpannableStringBuilder out = new SpannableStringBuilder(text);
         // Сначала все границы, потом вставка — иначе порядок вставок зависит
         // от того, в каком порядке система вернула разметку.
-        final ArrayList<int[]> marks = new ArrayList<>();   // позиция, вид, значение, открыть?
+        // Метка: позиция, открывающая?, начало куска, конец куска, вид, значение.
+        final ArrayList<int[]> marks = new ArrayList<>();
         for (MargeletSpans.Base span : spans) {
             final int start = spanned.getSpanStart(span);
             final int end = spanned.getSpanEnd(span);
             if (start < 0 || end <= start) {
                 continue;
             }
-            marks.add(new int[]{start, span.kind(), span.value(), 1});
-            marks.add(new int[]{end, 0, 0, 0});
+            marks.add(new int[]{start, 1, start, end, span.kind(), span.value()});
+            marks.add(new int[]{end, 0, start, end, span.kind(), span.value()});
         }
-        // По убыванию позиции, а на равных позициях — сначала открывающие.
+        // Порядок вставки тут не «как удобнее», а единственно верный, и обе
+        // тонкости я сначала сделал наоборот. Обе поймала отдельная модель
+        // формата на питоне (tools/markup_model.py) до сборки.
         //
-        // Порядок тут не «как удобнее», а единственный правильный, и я сначала
-        // взял обратный. Вставка в одну и ту же точку переворачивает порядок:
-        // вставишь закрывающий, потом открывающий — в тексте они окажутся
-        // наоборот, и два куска встык («жирный конец» одного и начало другого)
-        // склеятся в один. Поймано отдельной моделью формата на питоне
-        // (tools/markup_model.py) до первой сборки.
-        Collections.sort(marks, (a, b) ->
-                a[0] != b[0] ? Integer.compare(b[0], a[0]) : Integer.compare(b[3], a[3]));
+        // Идём с конца текста, чтобы не пересчитывать отсчёты. Вставка в одну и
+        // ту же точку переворачивает порядок, отсюда всё остальное:
+        //   — открывающие раньше закрывающих, иначе два куска встык склеятся;
+        //   — среди открывающих в одной точке первым идёт короткий кусок: он
+        //     ляжет внутрь длинного, а не наоборот;
+        //   — среди закрывающих в одной точке первым идёт внешний, тогда
+        //     внутренний закроется раньше него.
+        Collections.sort(marks, (a, b) -> {
+            if (a[0] != b[0]) {
+                return Integer.compare(b[0], a[0]);
+            }
+            if (a[1] != b[1]) {
+                return Integer.compare(b[1], a[1]);
+            }
+            return a[1] == 1 ? Integer.compare(a[3], b[3]) : Integer.compare(a[2], b[2]);
+        });
         for (int[] mark : marks) {
-            out.insert(mark[0], mark[3] == 1 ? open(mark[1], mark[2]) : close());
+            out.insert(mark[0], mark[1] == 1 ? open(mark[4], mark[5]) : close());
         }
-        return HEADER + "\n" + out;
+        // Заголовок стоит в конце, а не в начале: из начала он лезет в
+        // уведомления и в список чатов, где от сообщения видна одна строка.
+        return out.append("\n").append(HEADER);
     }
 
     /** Вешает оформление по меткам. Текст не меняется, меняется только вид. */
@@ -194,12 +250,17 @@ public class MargeletMarkup {
             return;
         }
         for (Run run : parse(text)) {
+            if (!MargeletConfig.markupEnabled(run.kind)) {
+                continue;   // этот вид оформления человек выключил у себя
+            }
             final Object span = MargeletSpans.create(run.kind, run.value);
             if (span != null) {
                 text.setSpan(span, run.start, run.end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
             }
         }
-        hideHeader(text);
+        if (!MargeletConfig.showWatermarks()) {
+            hideHeader(text);
+        }
     }
 
     /**
@@ -214,11 +275,17 @@ public class MargeletMarkup {
         if (at < 0) {
             return;
         }
+        // Перевод строки перед заголовком прячем вместе с ним, иначе от
+        // спрятанной строки останется пустая.
+        int start = at;
+        if (start > 0 && text.charAt(start - 1) == '\n') {
+            start--;
+        }
         int end = at + HEADER.length();
         if (end < text.length() && text.charAt(end) == '\n') {
             end++;
         }
-        text.setSpan(new MargeletSpans.Hidden(), at, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        text.setSpan(new MargeletSpans.Hidden(), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
     }
 
     private static int indexOf(CharSequence text, String what) {

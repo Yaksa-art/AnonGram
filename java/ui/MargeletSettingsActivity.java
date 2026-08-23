@@ -10,6 +10,7 @@ import org.telegram.margelet.MargeletSeizure;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.R;
 import org.telegram.messenger.browser.Browser;
+import org.telegram.ui.ActionBar.ActionBar;
 import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.Components.IconBackgroundColors;
 import org.telegram.ui.Components.LayoutHelper;
@@ -41,6 +42,8 @@ public class MargeletSettingsActivity extends UniversalFragment {
     private static final int ID_PROFILES = 9;
     private static final int ID_SEIZURE = 10;
     private static final int ID_DONATE = 11;
+    private static final int ID_MARKUP = 12;
+    private static final int ID_HELP = 13;
 
     /** Объёмный значок в шапке. Пользы ноль, и в этом вся мысль. */
     private FrameLayout header;
@@ -80,6 +83,10 @@ public class MargeletSettingsActivity extends UniversalFragment {
                 IconBackgroundColors.PURPLE.top, IconBackgroundColors.PURPLE.bottom,
                 R.drawable.settings_folders, LocaleController.getString(R.string.MargeletTracks),
                 LocaleController.getString(R.string.MargeletTracksInfo)));
+        items.add(SettingsActivity.SettingCell.Factory.of(ID_MARKUP,
+                IconBackgroundColors.CYAN.top, IconBackgroundColors.CYAN.bottom,
+                R.drawable.settings_language, LocaleController.getString(R.string.MargeletMarkup),
+                LocaleController.getString(R.string.MargeletMarkupInfo)));
         items.add(SettingsActivity.SettingCell.Factory.of(ID_PROFILES,
                 IconBackgroundColors.BLUE_DEEP.top, IconBackgroundColors.BLUE_DEEP.bottom,
                 R.drawable.settings_account, LocaleController.getString(R.string.MargeletProfiles),
@@ -113,6 +120,24 @@ public class MargeletSettingsActivity extends UniversalFragment {
     public View createView(android.content.Context context) {
         header = null;      // прошлый экран уносит с собой своё окно
         final View view = super.createView(context);
+        // Знак вопроса в шапке: короткий рассказ о том, что это вообще такое.
+        // Свой обработчик ставится после родительского и потому заменяет его —
+        // значит, «назад» надо обслужить самому.
+        actionBar.createMenu().addItem(ID_HELP, R.drawable.outline_question_mark);
+        actionBar.setActionBarMenuOnItemClick(new ActionBar.ActionBarMenuOnItemClick() {
+            @Override
+            public void onItemClick(int id) {
+                if (id == -1) {
+                    finishFragment();
+                } else if (id == ID_HELP) {
+                    new AlertDialog.Builder(getContext())
+                            .setTitle(LocaleController.getString(R.string.MargeletAboutTitle))
+                            .setMessage(LocaleController.getString(R.string.MargeletAboutText))
+                            .setPositiveButton(LocaleController.getString(R.string.Close), null)
+                            .show();
+                }
+            }
+        });
         // Скруглённые карточки — так выглядят нынешние экраны настроек.
         // Без этой строки список рисуется сплошной лентой, как в прошлой
         // версии приложения: владелец это заметил сразу.
@@ -122,7 +147,9 @@ public class MargeletSettingsActivity extends UniversalFragment {
 
     @Override
     protected void onClick(UItem item, View view, int position, float x, float y) {
-        if (item.id == ID_DONATE) {
+        if (item.id == ID_MARKUP) {
+            presentFragment(new MargeletMarkupActivity());
+        } else if (item.id == ID_DONATE) {
             presentFragment(new MargeletDonateActivity());
         } else if (item.id == ID_SEIZURE) {
             toggleSeizure();
@@ -173,4 +200,5 @@ public class MargeletSettingsActivity extends UniversalFragment {
     protected boolean onLongClick(UItem item, View view, int position, float x, float y) {
         return false;
     }
+
 }

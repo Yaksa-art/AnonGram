@@ -23,9 +23,15 @@ import org.telegram.ui.Components.LayoutHelper;
  */
 public class MargeletMarkupAlert {
 
-    /** Ползунок размера с живым примером: цифры тут ничего не говорят. */
-    public static void showSize(Context context, EditTextCaption editText) {
-        if (context == null || editText == null) {
+    /**
+     * Ползунок размера с живым примером: цифры тут ничего не говорят.
+     *
+     * Отрезок текста приходит снаружи и запоминается до открытия окна. Пока
+     * окно открыто, выделение в поле уже снято вместе с меню — из-за этого
+     * первая версия не применяла размер вообще ни разу.
+     */
+    public static void showSize(Context context, EditTextCaption editText, int start, int end) {
+        if (context == null || editText == null || start < 0 || end <= start) {
             return;
         }
         final int[] chosen = {MargeletMarkup.sizeValue(1.4f)};
@@ -65,7 +71,7 @@ public class MargeletMarkupAlert {
                 .setTitle(LocaleController.getString(R.string.MargeletMarkupSize))
                 .setView(layout)
                 .setPositiveButton(LocaleController.getString(R.string.Done),
-                        (d, w) -> editText.makeSelectedMargelet(MargeletMarkup.KIND_SIZE, chosen[0]))
+                        (d, w) -> editText.makeSelectedMargelet(MargeletMarkup.KIND_SIZE, chosen[0], start, end))
                 .setNegativeButton(LocaleController.getString(R.string.Cancel), null)
                 .show();
     }

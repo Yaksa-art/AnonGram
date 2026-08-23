@@ -390,10 +390,10 @@ index 00000000..3c8132c5
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
 new file mode 100644
-index 00000000..51c655d5
+index 00000000..f9fcc895
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
-@@ -0,0 +1,220 @@
+@@ -0,0 +1,244 @@
 +package org.telegram.margelet;
 +
 +import android.content.Context;
@@ -486,6 +486,30 @@ index 00000000..51c655d5
 +
 +    public static void setGiftsEnabled(boolean on) {
 +        prefs().edit().putBoolean("gifts", on).apply();
++    }
++
++    /**
++     * Виды своего оформления по отдельности. Всё включено по умолчанию:
++     * выключение — это про «мне мешает», а не про «покажите сначала».
++     */
++    public static boolean markupEnabled(int kind) {
++        return prefs().getBoolean("markup_" + kind, true);
++    }
++
++    public static void setMarkupEnabled(int kind, boolean on) {
++        prefs().edit().putBoolean("markup_" + kind, on).apply();
++    }
++
++    /**
++     * Показывать ли строку со ссылкой на форк в чужих сообщениях. По умолчанию
++     * нет: внутри форка она и так ни к чему, она для тех, у кого форка нет.
++     */
++    public static boolean showWatermarks() {
++        return prefs().getBoolean("watermarks", false);
++    }
++
++    public static void setShowWatermarks(boolean on) {
++        prefs().edit().putBoolean("watermarks", on).apply();
 +    }
 +
 +    /** Показывали ли предупреждение о своём оформлении. Один раз за всё время. */
@@ -811,10 +835,10 @@ index 00000000..33ff716b
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletMarkup.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletMarkup.java
 new file mode 100644
-index 00000000..c65fdc9a
+index 00000000..a06024c2
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletMarkup.java
-@@ -0,0 +1,237 @@
+@@ -0,0 +1,304 @@
 +package org.telegram.margelet;
 +
 +import android.text.Spannable;
@@ -852,12 +876,26 @@ index 00000000..c65fdc9a
 + */
 +public class MargeletMarkup {
 +
-+    /** Начало метки. */
-+    public static final char OPEN = '\uFE00';
-+    /** Конец куска. */
-+    public static final char CLOSE = '\uFE01';
-+    /** Цифры значения: FE02 + n, n от 0 до 13. */
-+    private static final char DIGIT = '\uFE02';
++    /**
++     * Знаки меток. Все пять — невидимые служебные знаки из одного места:
++     * U+2060 «склейка слов» и четыре невидимых математических знака за ним.
++     *
++     * Сначала я взял под метки селекторы начертания U+FE00…U+FE0F. Это была
++     * ошибка, и нашёл её владелец: чужие сообщения приходили без оформления,
++     * хотя своё оставалось. Причина в разборе эмодзи — он этот диапазон
++     * <b>съедает</b> целиком, считая его частью значка (Emoji.java, ветки
++     * «c >= 0xFE00 && c <= 0xFE0F»). Своё сообщение выживало потому, что у
++     * него разметка оставалась в поле ввода и заново не разбиралась.
++     */
++    public static final char OPEN = '\u2060';
++    public static final char CLOSE = '\u2061';
++    private static final char TRIT = '\u2062';
++    private static final int TRITS = 3;
++
++    /** Вид — два троичных разряда, значение — три. Итого шесть знаков на метку. */
++    private static final int KIND_TRITS = 2;
++    private static final int VALUE_TRITS = 3;
++    private static final int MARK_LEN = 1 + KIND_TRITS + VALUE_TRITS;
 +    private static final int DIGITS = 14;
 +
 +    public static final int KIND_SIZE = 0;
@@ -885,17 +923,35 @@ index 00000000..c65fdc9a
 +        return Math.round((clamped - SIZE_MIN) * (DIGITS - 1) / (SIZE_MAX - SIZE_MIN));
 +    }
 +
-+    private static boolean isDigit(char c) {
-+        return c >= DIGIT && c < DIGIT + DIGITS;
++    private static boolean isTrit(char c) {
++        return c >= TRIT && c < TRIT + TRITS;
 +    }
 +
-+    private static char digit(int value) {
-+        return (char) (DIGIT + Math.max(0, Math.min(DIGITS - 1, value)));
++    /** Число троичными разрядами, младший первым. */
++    private static void number(StringBuilder out, int value, int count) {
++        int left = Math.max(0, value);
++        for (int i = 0; i < count; i++) {
++            out.append((char) (TRIT + left % TRITS));
++            left /= TRITS;
++        }
++    }
++
++    private static int number(CharSequence text, int at, int count) {
++        int value = 0, mul = 1;
++        for (int i = 0; i < count; i++) {
++            value += (text.charAt(at + i) - TRIT) * mul;
++            mul *= TRITS;
++        }
++        return value;
 +    }
 +
 +    /** Открывающая метка как строка. */
 +    public static String open(int kind, int value) {
-+        return "" + OPEN + digit(kind) + digit(value);
++        final StringBuilder out = new StringBuilder();
++        out.append(OPEN);
++        number(out, kind, KIND_TRITS);
++        number(out, value, VALUE_TRITS);
++        return out.toString();
 +    }
 +
 +    public static String close() {
@@ -935,10 +991,12 @@ index 00000000..c65fdc9a
 +        final ArrayList<int[]> open = new ArrayList<>();
 +        for (int i = 0; i < text.length(); i++) {
 +            final char c = text.charAt(i);
-+            if (c == OPEN && i + 2 < text.length()
-+                    && isDigit(text.charAt(i + 1)) && isDigit(text.charAt(i + 2))) {
-+                open.add(new int[]{text.charAt(i + 1) - DIGIT, text.charAt(i + 2) - DIGIT, i + 3});
-+                i += 2;
++            if (c == OPEN && i + MARK_LEN <= text.length() && allTrits(text, i + 1)) {
++                open.add(new int[]{
++                        number(text, i + 1, KIND_TRITS),
++                        number(text, i + 1 + KIND_TRITS, VALUE_TRITS),
++                        i + MARK_LEN});
++                i += MARK_LEN - 1;
 +            } else if (c == CLOSE && !open.isEmpty()) {
 +                final int[] top = open.remove(open.size() - 1);
 +                if (i > top[2]) {
@@ -947,6 +1005,15 @@ index 00000000..c65fdc9a
 +            }
 +        }
 +        return runs;
++    }
++
++    private static boolean allTrits(CharSequence text, int at) {
++        for (int i = 0; i < MARK_LEN - 1; i++) {
++            if (!isTrit(text.charAt(at + i))) {
++                return false;
++            }
++        }
++        return true;
 +    }
 +
 +    public static boolean has(CharSequence text) {
@@ -979,30 +1046,43 @@ index 00000000..c65fdc9a
 +        final SpannableStringBuilder out = new SpannableStringBuilder(text);
 +        // Сначала все границы, потом вставка — иначе порядок вставок зависит
 +        // от того, в каком порядке система вернула разметку.
-+        final ArrayList<int[]> marks = new ArrayList<>();   // позиция, вид, значение, открыть?
++        // Метка: позиция, открывающая?, начало куска, конец куска, вид, значение.
++        final ArrayList<int[]> marks = new ArrayList<>();
 +        for (MargeletSpans.Base span : spans) {
 +            final int start = spanned.getSpanStart(span);
 +            final int end = spanned.getSpanEnd(span);
 +            if (start < 0 || end <= start) {
 +                continue;
 +            }
-+            marks.add(new int[]{start, span.kind(), span.value(), 1});
-+            marks.add(new int[]{end, 0, 0, 0});
++            marks.add(new int[]{start, 1, start, end, span.kind(), span.value()});
++            marks.add(new int[]{end, 0, start, end, span.kind(), span.value()});
 +        }
-+        // По убыванию позиции, а на равных позициях — сначала открывающие.
++        // Порядок вставки тут не «как удобнее», а единственно верный, и обе
++        // тонкости я сначала сделал наоборот. Обе поймала отдельная модель
++        // формата на питоне (tools/markup_model.py) до сборки.
 +        //
-+        // Порядок тут не «как удобнее», а единственный правильный, и я сначала
-+        // взял обратный. Вставка в одну и ту же точку переворачивает порядок:
-+        // вставишь закрывающий, потом открывающий — в тексте они окажутся
-+        // наоборот, и два куска встык («жирный конец» одного и начало другого)
-+        // склеятся в один. Поймано отдельной моделью формата на питоне
-+        // (tools/markup_model.py) до первой сборки.
-+        Collections.sort(marks, (a, b) ->
-+                a[0] != b[0] ? Integer.compare(b[0], a[0]) : Integer.compare(b[3], a[3]));
++        // Идём с конца текста, чтобы не пересчитывать отсчёты. Вставка в одну и
++        // ту же точку переворачивает порядок, отсюда всё остальное:
++        //   — открывающие раньше закрывающих, иначе два куска встык склеятся;
++        //   — среди открывающих в одной точке первым идёт короткий кусок: он
++        //     ляжет внутрь длинного, а не наоборот;
++        //   — среди закрывающих в одной точке первым идёт внешний, тогда
++        //     внутренний закроется раньше него.
++        Collections.sort(marks, (a, b) -> {
++            if (a[0] != b[0]) {
++                return Integer.compare(b[0], a[0]);
++            }
++            if (a[1] != b[1]) {
++                return Integer.compare(b[1], a[1]);
++            }
++            return a[1] == 1 ? Integer.compare(a[3], b[3]) : Integer.compare(a[2], b[2]);
++        });
 +        for (int[] mark : marks) {
-+            out.insert(mark[0], mark[3] == 1 ? open(mark[1], mark[2]) : close());
++            out.insert(mark[0], mark[1] == 1 ? open(mark[4], mark[5]) : close());
 +        }
-+        return HEADER + "\n" + out;
++        // Заголовок стоит в конце, а не в начале: из начала он лезет в
++        // уведомления и в список чатов, где от сообщения видна одна строка.
++        return out.append("\n").append(HEADER);
 +    }
 +
 +    /** Вешает оформление по меткам. Текст не меняется, меняется только вид. */
@@ -1011,12 +1091,17 @@ index 00000000..c65fdc9a
 +            return;
 +        }
 +        for (Run run : parse(text)) {
++            if (!MargeletConfig.markupEnabled(run.kind)) {
++                continue;   // этот вид оформления человек выключил у себя
++            }
 +            final Object span = MargeletSpans.create(run.kind, run.value);
 +            if (span != null) {
 +                text.setSpan(span, run.start, run.end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
 +            }
 +        }
-+        hideHeader(text);
++        if (!MargeletConfig.showWatermarks()) {
++            hideHeader(text);
++        }
 +    }
 +
 +    /**
@@ -1031,11 +1116,17 @@ index 00000000..c65fdc9a
 +        if (at < 0) {
 +            return;
 +        }
++        // Перевод строки перед заголовком прячем вместе с ним, иначе от
++        // спрятанной строки останется пустая.
++        int start = at;
++        if (start > 0 && text.charAt(start - 1) == '\n') {
++            start--;
++        }
 +        int end = at + HEADER.length();
 +        if (end < text.length() && text.charAt(end) == '\n') {
 +            end++;
 +        }
-+        text.setSpan(new MargeletSpans.Hidden(), at, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
++        text.setSpan(new MargeletSpans.Hidden(), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
 +    }
 +
 +    private static int indexOf(CharSequence text, String what) {
@@ -2728,10 +2819,10 @@ index ac402db5..0c8731f1 100644
              parentFragment.showQuoteMessageUpdate();
              return false;
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/Components/EditTextCaption.java b/TMessagesProj/src/main/java/org/telegram/ui/Components/EditTextCaption.java
-index 6a21a20e..a5e2f1bf 100644
+index 6a21a20e..3c395f3f 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/Components/EditTextCaption.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/Components/EditTextCaption.java
-@@ -157,6 +157,43 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
+@@ -157,6 +157,46 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
          applyTextStyleToSelection(new TextStyleSpan(run));
      }
  
@@ -2743,17 +2834,20 @@ index 6a21a20e..a5e2f1bf 100644
 +     * только в тексте, поэтому вешается на выделение напрямую. Прежнее
 +     * оформление того же вида снимается — иначе они копятся друг на друге.
 +     */
++    public int margeletSelectionStart() {
++        return selectionStart >= 0 ? selectionStart : getSelectionStart();
++    }
++
++    public int margeletSelectionEnd() {
++        return selectionEnd >= 0 ? selectionEnd : getSelectionEnd();
++    }
++
 +    public void makeSelectedMargelet(int kind, int value) {
-+        int start;
-+        int end;
-+        if (selectionStart >= 0 && selectionEnd >= 0) {
-+            start = selectionStart;
-+            end = selectionEnd;
-+            selectionStart = selectionEnd = -1;
-+        } else {
-+            start = getSelectionStart();
-+            end = getSelectionEnd();
-+        }
++        makeSelectedMargelet(kind, value, margeletSelectionStart(), margeletSelectionEnd());
++        selectionStart = selectionEnd = -1;
++    }
++
++    public void makeSelectedMargelet(int kind, int value, int start, int end) {
 +        final android.text.Editable editable = getText();
 +        if (editable == null || start < 0 || end <= start) {
 +            return;
@@ -2775,12 +2869,16 @@ index 6a21a20e..a5e2f1bf 100644
      public void makeSelectedSpoiler() {
          TextStyleSpan.TextStyleRun run = new TextStyleSpan.TextStyleRun();
          run.flags |= TextStyleSpan.FLAG_STYLE_SPOILER;
-@@ -809,6 +846,15 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
+@@ -809,6 +849,19 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
          } else if (itemId == R.id.menu_spoiler) {
              makeSelectedSpoiler();
              return true;
 +        } else if (itemId == R.id.menu_margelet_size) {
-+            org.telegram.ui.MargeletMarkupAlert.showSize(getContext(), this);
++            // Отрезок запоминаем прямо сейчас. Пока открыт диалог, выделение
++            // снимается вместе с меню, и к нажатию «Готово» его уже нет —
++            // именно поэтому размер не применялся вовсе.
++            org.telegram.ui.MargeletMarkupAlert.showSize(getContext(), this,
++                    margeletSelectionStart(), margeletSelectionEnd());
 +            return true;
 +        } else if (itemId == R.id.menu_margelet_dim) {
 +            makeSelectedMargelet(org.telegram.margelet.MargeletMarkup.KIND_DIM, 7);
@@ -3299,12 +3397,89 @@ index 00000000..1d675319
 +        return false;
 +    }
 +}
+diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletMarkupActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletMarkupActivity.java
+new file mode 100644
+index 00000000..0e53ef94
+--- /dev/null
++++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletMarkupActivity.java
+@@ -0,0 +1,71 @@
++package org.telegram.ui;
++
++import android.view.View;
++
++import org.telegram.margelet.MargeletConfig;
++import org.telegram.margelet.MargeletMarkup;
++import org.telegram.messenger.LocaleController;
++import org.telegram.messenger.R;
++import org.telegram.ui.Components.UItem;
++import org.telegram.ui.Components.UniversalAdapter;
++import org.telegram.ui.Components.UniversalFragment;
++
++import java.util.ArrayList;
++
++/**
++ * Ветка «Оформление»: что из своего оформления показывать у себя.
++ *
++ * Выключатели тут не про отправку, а про показ. Отправить оформленное можно
++ * всегда — а вот принимать чужую радугу человек может и не хотеть.
++ */
++public class MargeletMarkupActivity extends UniversalFragment {
++
++    private static final int ID_SIZE = 1;
++    private static final int ID_DIM = 2;
++    private static final int ID_RAINBOW = 3;
++    private static final int ID_WATERMARKS = 4;
++
++    @Override
++    protected CharSequence getTitle() {
++        return LocaleController.getString(R.string.MargeletMarkup);
++    }
++
++    @Override
++    public View createView(android.content.Context context) {
++        final View view = super.createView(context);
++        listView.setSections();
++        return view;
++    }
++
++    @Override
++    protected void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
++        items.add(UItem.asCheck(ID_SIZE, LocaleController.getString(R.string.MargeletMarkupSize))
++                .setChecked(MargeletConfig.markupEnabled(MargeletMarkup.KIND_SIZE)));
++        items.add(UItem.asCheck(ID_DIM, LocaleController.getString(R.string.MargeletMarkupDim))
++                .setChecked(MargeletConfig.markupEnabled(MargeletMarkup.KIND_DIM)));
++        items.add(UItem.asCheck(ID_RAINBOW, LocaleController.getString(R.string.MargeletMarkupRainbow))
++                .setChecked(MargeletConfig.markupEnabled(MargeletMarkup.KIND_RAINBOW)));
++        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletMarkupAbout)));
++        items.add(UItem.asCheck(ID_WATERMARKS, LocaleController.getString(R.string.MargeletWatermarks))
++                .setChecked(MargeletConfig.showWatermarks()));
++        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletWatermarksAbout)));
++    }
++
++    @Override
++    protected void onClick(UItem item, View view, int position, float x, float y) {
++        if (item.id == ID_WATERMARKS) {
++            MargeletConfig.setShowWatermarks(!MargeletConfig.showWatermarks());
++        } else {
++            final int kind = item.id == ID_SIZE ? MargeletMarkup.KIND_SIZE
++                    : item.id == ID_DIM ? MargeletMarkup.KIND_DIM
++                    : MargeletMarkup.KIND_RAINBOW;
++            MargeletConfig.setMarkupEnabled(kind, !MargeletConfig.markupEnabled(kind));
++        }
++        listView.adapter.update(true);
++    }
++
++    @Override
++    protected boolean onLongClick(UItem item, View view, int position, float x, float y) {
++        return false;
++    }
++}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletMarkupAlert.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletMarkupAlert.java
 new file mode 100644
-index 00000000..3746d972
+index 00000000..0cbb68c1
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletMarkupAlert.java
-@@ -0,0 +1,95 @@
+@@ -0,0 +1,101 @@
 +package org.telegram.ui;
 +
 +import static org.telegram.messenger.AndroidUtilities.dp;
@@ -3330,9 +3505,15 @@ index 00000000..3746d972
 + */
 +public class MargeletMarkupAlert {
 +
-+    /** Ползунок размера с живым примером: цифры тут ничего не говорят. */
-+    public static void showSize(Context context, EditTextCaption editText) {
-+        if (context == null || editText == null) {
++    /**
++     * Ползунок размера с живым примером: цифры тут ничего не говорят.
++     *
++     * Отрезок текста приходит снаружи и запоминается до открытия окна. Пока
++     * окно открыто, выделение в поле уже снято вместе с меню — из-за этого
++     * первая версия не применяла размер вообще ни разу.
++     */
++    public static void showSize(Context context, EditTextCaption editText, int start, int end) {
++        if (context == null || editText == null || start < 0 || end <= start) {
 +            return;
 +        }
 +        final int[] chosen = {MargeletMarkup.sizeValue(1.4f)};
@@ -3372,7 +3553,7 @@ index 00000000..3746d972
 +                .setTitle(LocaleController.getString(R.string.MargeletMarkupSize))
 +                .setView(layout)
 +                .setPositiveButton(LocaleController.getString(R.string.Done),
-+                        (d, w) -> editText.makeSelectedMargelet(MargeletMarkup.KIND_SIZE, chosen[0]))
++                        (d, w) -> editText.makeSelectedMargelet(MargeletMarkup.KIND_SIZE, chosen[0], start, end))
 +                .setNegativeButton(LocaleController.getString(R.string.Cancel), null)
 +                .show();
 +    }
@@ -3465,10 +3646,10 @@ index 00000000..60faa7cf
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletSettingsActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletSettingsActivity.java
 new file mode 100644
-index 00000000..59459f7a
+index 00000000..2af0158f
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletSettingsActivity.java
-@@ -0,0 +1,176 @@
+@@ -0,0 +1,204 @@
 +package org.telegram.ui;
 +
 +import android.view.Gravity;
@@ -3481,6 +3662,7 @@ index 00000000..59459f7a
 +import org.telegram.messenger.LocaleController;
 +import org.telegram.messenger.R;
 +import org.telegram.messenger.browser.Browser;
++import org.telegram.ui.ActionBar.ActionBar;
 +import org.telegram.ui.ActionBar.AlertDialog;
 +import org.telegram.ui.Components.IconBackgroundColors;
 +import org.telegram.ui.Components.LayoutHelper;
@@ -3512,6 +3694,8 @@ index 00000000..59459f7a
 +    private static final int ID_PROFILES = 9;
 +    private static final int ID_SEIZURE = 10;
 +    private static final int ID_DONATE = 11;
++    private static final int ID_MARKUP = 12;
++    private static final int ID_HELP = 13;
 +
 +    /** Объёмный значок в шапке. Пользы ноль, и в этом вся мысль. */
 +    private FrameLayout header;
@@ -3551,6 +3735,10 @@ index 00000000..59459f7a
 +                IconBackgroundColors.PURPLE.top, IconBackgroundColors.PURPLE.bottom,
 +                R.drawable.settings_folders, LocaleController.getString(R.string.MargeletTracks),
 +                LocaleController.getString(R.string.MargeletTracksInfo)));
++        items.add(SettingsActivity.SettingCell.Factory.of(ID_MARKUP,
++                IconBackgroundColors.CYAN.top, IconBackgroundColors.CYAN.bottom,
++                R.drawable.settings_language, LocaleController.getString(R.string.MargeletMarkup),
++                LocaleController.getString(R.string.MargeletMarkupInfo)));
 +        items.add(SettingsActivity.SettingCell.Factory.of(ID_PROFILES,
 +                IconBackgroundColors.BLUE_DEEP.top, IconBackgroundColors.BLUE_DEEP.bottom,
 +                R.drawable.settings_account, LocaleController.getString(R.string.MargeletProfiles),
@@ -3584,6 +3772,24 @@ index 00000000..59459f7a
 +    public View createView(android.content.Context context) {
 +        header = null;      // прошлый экран уносит с собой своё окно
 +        final View view = super.createView(context);
++        // Знак вопроса в шапке: короткий рассказ о том, что это вообще такое.
++        // Свой обработчик ставится после родительского и потому заменяет его —
++        // значит, «назад» надо обслужить самому.
++        actionBar.createMenu().addItem(ID_HELP, R.drawable.outline_question_mark);
++        actionBar.setActionBarMenuOnItemClick(new ActionBar.ActionBarMenuOnItemClick() {
++            @Override
++            public void onItemClick(int id) {
++                if (id == -1) {
++                    finishFragment();
++                } else if (id == ID_HELP) {
++                    new AlertDialog.Builder(getContext())
++                            .setTitle(LocaleController.getString(R.string.MargeletAboutTitle))
++                            .setMessage(LocaleController.getString(R.string.MargeletAboutText))
++                            .setPositiveButton(LocaleController.getString(R.string.Close), null)
++                            .show();
++                }
++            }
++        });
 +        // Скруглённые карточки — так выглядят нынешние экраны настроек.
 +        // Без этой строки список рисуется сплошной лентой, как в прошлой
 +        // версии приложения: владелец это заметил сразу.
@@ -3593,7 +3799,9 @@ index 00000000..59459f7a
 +
 +    @Override
 +    protected void onClick(UItem item, View view, int position, float x, float y) {
-+        if (item.id == ID_DONATE) {
++        if (item.id == ID_MARKUP) {
++            presentFragment(new MargeletMarkupActivity());
++        } else if (item.id == ID_DONATE) {
 +            presentFragment(new MargeletDonateActivity());
 +        } else if (item.id == ID_SEIZURE) {
 +            toggleSeizure();
@@ -3644,6 +3852,7 @@ index 00000000..59459f7a
 +    protected boolean onLongClick(UItem item, View view, int position, float x, float y) {
 +        return false;
 +    }
++
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletSoundActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletSoundActivity.java
 new file mode 100644
@@ -12830,7 +13039,7 @@ index 03d0ba33..17f98fa6 100644
      <string name="English">Inglês</string>
      <string name="LanguageNameInEnglish">Portuguese (Brazil)</string>
 diff --git a/TMessagesProj/src/main/res/values-ru/strings.xml b/TMessagesProj/src/main/res/values-ru/strings.xml
-index 24c56292..d80e4a2d 100644
+index 24c56292..14fac853 100644
 --- a/TMessagesProj/src/main/res/values-ru/strings.xml
 +++ b/TMessagesProj/src/main/res/values-ru/strings.xml
 @@ -1,7 +1,7 @@
@@ -12843,7 +13052,7 @@ index 24c56292..d80e4a2d 100644
      <string name="LanguageName">Русский</string>
      <string name="English">Английский</string>
      <string name="LanguageNameInEnglish">Russian</string>
-@@ -263,4 +263,98 @@
+@@ -263,4 +263,105 @@
      <string name="RemindTodayAt">\'Отправить сегодня в\' HH:mm</string>
      <string name="RemindDayAt">\'Отправить\' d MMM \'в\' HH:mm</string>
      <string name="RemindDayYearAt">\'Напомнить\' d MMM yyyy \'в\' HH:mm</string>
@@ -12927,6 +13136,13 @@ index 24c56292..d80e4a2d 100644
 +    <string name="MargeletMarkupSizeExample">Вот такой</string>
 +    <string name="MargeletMarkupDim">Затемнение</string>
 +    <string name="MargeletMarkupRainbow">Радуга</string>
++    <string name="MargeletMarkup">Оформление</string>
++    <string name="MargeletMarkupInfo">Своё оформление текста</string>
++    <string name="MargeletMarkupAbout">Что показывать в чужих сообщениях. Отправлять можно в любом случае.</string>
++    <string name="MargeletWatermarks">Показывать ватермарки</string>
++    <string name="MargeletWatermarksAbout">Строка со ссылкой на форк в конце оформленных сообщений. Её видят те, у кого форка нет.</string>
++    <string name="MargeletAboutTitle">Что это</string>
++    <string name="MargeletAboutText">Margelet — форк телеграма с кучей своего: оформление текста, теги у музыки, режим стримера, удалённые подарки и прочее.\n\nСделал @narezany.\n\nИ да: никогда не нажимай на название на главном экране и никогда не долби по кнопке «Чаты».</string>
 +    <string name="MargeletMarkupWarnTitle">Своё оформление</string>
 +    <string name="MargeletMarkupWarnText">Это оформление понимает только Margelet. У остальных текст придёт обычным, без него, плюс строка со ссылкой на форк в начале сообщения.</string>
 +    <string name="MargeletDonate">Донат</string>
@@ -12972,7 +13188,7 @@ index cc49d135..8c6e02b7 100644
      <item name="menu_regular" type="id"/>
      <item name="menu_bold" type="id"/>
 diff --git a/TMessagesProj/src/main/res/values/strings.xml b/TMessagesProj/src/main/res/values/strings.xml
-index ffa4d566..08c09f14 100644
+index ffa4d566..c6dc89a7 100644
 --- a/TMessagesProj/src/main/res/values/strings.xml
 +++ b/TMessagesProj/src/main/res/values/strings.xml
 @@ -1,7 +1,7 @@
@@ -12985,7 +13201,7 @@ index ffa4d566..08c09f14 100644
      <string name="LanguageName">English</string>
      <string name="English">English</string>
      <string name="LanguageNameInEnglish">English</string>
-@@ -11221,4 +11221,98 @@
+@@ -11221,4 +11221,105 @@
      <string name="UnsupportedMessageTitle">Unsupported Message</string>
      <string name="UnsupportedMessageMessage">Update Telegram to view this message</string>
      <string name="UnsupportedUpdate">Update</string>
@@ -13069,6 +13285,13 @@ index ffa4d566..08c09f14 100644
 +    <string name="MargeletMarkupSizeExample">Like this</string>
 +    <string name="MargeletMarkupDim">Dim</string>
 +    <string name="MargeletMarkupRainbow">Rainbow</string>
++    <string name="MargeletMarkup">Formatting</string>
++    <string name="MargeletMarkupInfo">Text formatting of the fork</string>
++    <string name="MargeletMarkupAbout">What to show in other people\u0027s messages. Sending is always allowed.</string>
++    <string name="MargeletWatermarks">Show watermarks</string>
++    <string name="MargeletWatermarksAbout">The line linking to the fork at the end of formatted messages. People without the fork see it.</string>
++    <string name="MargeletAboutTitle">What this is</string>
++    <string name="MargeletAboutText">Margelet is a Telegram fork with a pile of its own: text formatting, music tags, streamer mode, delisted gifts and more.\n\nMade by @narezany.\n\nAlso: never tap the title on the main screen, and never spam the Chats button.</string>
 +    <string name="MargeletMarkupWarnTitle">Custom formatting</string>
 +    <string name="MargeletMarkupWarnText">Only Margelet understands this formatting. Everyone else gets plain text without it, plus a line linking to the fork at the start of the message.</string>
 +    <string name="MargeletDonate">Donate</string>

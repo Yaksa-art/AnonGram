@@ -92,6 +92,30 @@ public class MargeletConfig {
         prefs().edit().putBoolean("gifts", on).apply();
     }
 
+    /**
+     * Виды своего оформления по отдельности. Всё включено по умолчанию:
+     * выключение — это про «мне мешает», а не про «покажите сначала».
+     */
+    public static boolean markupEnabled(int kind) {
+        return prefs().getBoolean("markup_" + kind, true);
+    }
+
+    public static void setMarkupEnabled(int kind, boolean on) {
+        prefs().edit().putBoolean("markup_" + kind, on).apply();
+    }
+
+    /**
+     * Показывать ли строку со ссылкой на форк в чужих сообщениях. По умолчанию
+     * нет: внутри форка она и так ни к чему, она для тех, у кого форка нет.
+     */
+    public static boolean showWatermarks() {
+        return prefs().getBoolean("watermarks", false);
+    }
+
+    public static void setShowWatermarks(boolean on) {
+        prefs().edit().putBoolean("watermarks", on).apply();
+    }
+
     /** Показывали ли предупреждение о своём оформлении. Один раз за всё время. */
     public static boolean markupWarned() {
         return prefs().getBoolean("markup_warned", false);
