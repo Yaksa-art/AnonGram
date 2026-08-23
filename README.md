@@ -101,6 +101,16 @@ none of them behind Premium.
 </details>
 
 <details>
+<summary><b>Donate</b></summary>
+
+Its own row in the fork menu: the author's details, tap to copy.
+
+There are no payment buttons inside the app and there will not be any — a
+messenger fork is a bad place to type payment details into. And donating unlocks
+nothing: there are no paid features here.
+</details>
+
+<details>
 <summary><b>Badges</b></summary>
 
 The person who made the fork, and their best friend, get a badge next to their

@@ -345,10 +345,10 @@ index 00000000..6e9f58a9
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
 new file mode 100644
-index 00000000..da5922aa
+index 00000000..a8083fc2
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
-@@ -0,0 +1,192 @@
+@@ -0,0 +1,199 @@
 +package org.telegram.margelet;
 +
 +import android.content.Context;
@@ -371,6 +371,13 @@ index 00000000..da5922aa
 +    public static final String APP_NAME = "Margelet";
 +
 +    public static final String CHANNEL_URL = "https://t.me/margeletter";
++    /**
++     * Реквизиты для доната. Лежат здесь, а не в строках: это не перевод, а
++     * данные владельца форка, и в каждом языке они одни и те же.
++     */
++    public static final String DONATE_YOOMONEY = "2204120143055305";
++    public static final String DONATE_ROBLOX = "h4ru_456";
++
 +    public static final String SOURCE_URL = "https://github.com/narezany/Margelet";
 +    public static final String FORUM_URL = "https://t.me/margeletforum";
 +
@@ -2337,6 +2344,92 @@ index 18411328..d7a2f80e 100644
                  if (viewPager.isManualScrolling() || viewPager.isTouch()) {
                      return;
                  }
+diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletDonateActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletDonateActivity.java
+new file mode 100644
+index 00000000..f7e708df
+--- /dev/null
++++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletDonateActivity.java
+@@ -0,0 +1,80 @@
++package org.telegram.ui;
++
++import android.view.View;
++
++import org.telegram.margelet.MargeletConfig;
++import org.telegram.messenger.AndroidUtilities;
++import org.telegram.messenger.LocaleController;
++import org.telegram.messenger.R;
++import org.telegram.ui.Components.BulletinFactory;
++import org.telegram.ui.Components.UItem;
++import org.telegram.ui.Components.UniversalAdapter;
++import org.telegram.ui.Components.UniversalFragment;
++
++import java.util.ArrayList;
++
++/**
++ * Ветка «Донат»: куда можно отправить деньги автору форка.
++ *
++ * Кнопок оплаты внутри приложения нет намеренно. Форк мессенджера — последнее
++ * место, где стоит вводить платёжные данные, и просить об этом человека я не
++ * буду. Здесь только реквизиты, которые копируются нажатием; платит человек
++ * там, где обычно платит.
++ *
++ * Номер разбит по четыре цифры для глаза, а копируется сплошным: пробелы в
++ * поле перевода мешают.
++ */
++public class MargeletDonateActivity extends UniversalFragment {
++
++    private static final int ID_YOOMONEY = 1;
++    private static final int ID_ROBLOX = 2;
++
++    @Override
++    protected CharSequence getTitle() {
++        return LocaleController.getString(R.string.MargeletDonate);
++    }
++
++    @Override
++    public View createView(android.content.Context context) {
++        final View view = super.createView(context);
++        listView.setSections();
++        return view;
++    }
++
++    private static String spaced(String digits) {
++        final StringBuilder sb = new StringBuilder();
++        for (int i = 0; i < digits.length(); i++) {
++            if (i > 0 && i % 4 == 0) {
++                sb.append(' ');
++            }
++            sb.append(digits.charAt(i));
++        }
++        return sb.toString();
++    }
++
++    @Override
++    protected void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
++        items.add(UItem.asButton(ID_YOOMONEY, LocaleController.getString(R.string.MargeletDonateYoomoney),
++                spaced(MargeletConfig.DONATE_YOOMONEY)));
++        items.add(UItem.asButton(ID_ROBLOX, LocaleController.getString(R.string.MargeletDonateRoblox),
++                MargeletConfig.DONATE_ROBLOX));
++        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletDonateAbout)));
++    }
++
++    @Override
++    protected void onClick(UItem item, View view, int position, float x, float y) {
++        final String value = item.id == ID_YOOMONEY ? MargeletConfig.DONATE_YOOMONEY
++                : item.id == ID_ROBLOX ? MargeletConfig.DONATE_ROBLOX : null;
++        if (value == null) {
++            return;
++        }
++        AndroidUtilities.addToClipboard(value);
++        BulletinFactory.of(this).createCopyBulletin(
++                LocaleController.getString(R.string.MargeletDonateCopied)).show();
++    }
++
++    @Override
++    protected boolean onLongClick(UItem item, View view, int position, float x, float y) {
++        return false;
++    }
++}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletGiftsActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletGiftsActivity.java
 new file mode 100644
 index 00000000..b93997b9
@@ -2553,10 +2646,10 @@ index 00000000..82de6b0a
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletSettingsActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletSettingsActivity.java
 new file mode 100644
-index 00000000..dfd8c52f
+index 00000000..738c3971
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletSettingsActivity.java
-@@ -0,0 +1,169 @@
+@@ -0,0 +1,176 @@
 +package org.telegram.ui;
 +
 +import android.view.Gravity;
@@ -2599,6 +2692,7 @@ index 00000000..dfd8c52f
 +    private static final int ID_SOURCE = 8;
 +    private static final int ID_PROFILES = 9;
 +    private static final int ID_SEIZURE = 10;
++    private static final int ID_DONATE = 11;
 +
 +    /** Объёмный значок в шапке. Пользы ноль, и в этом вся мысль. */
 +    private FrameLayout header;
@@ -2650,6 +2744,10 @@ index 00000000..dfd8c52f
 +        items.add(UItem.asCheck(ID_SEIZURE, LocaleController.getString(R.string.MargeletSeizure))
 +                .setChecked(MargeletSeizure.enabled()));
 +        items.add(UItem.asShadow(null));
++        items.add(SettingsActivity.SettingCell.Factory.of(ID_DONATE,
++                IconBackgroundColors.GREEN.top, IconBackgroundColors.GREEN.bottom,
++                R.drawable.settings_wallet, LocaleController.getString(R.string.MargeletDonate),
++                LocaleController.getString(R.string.MargeletDonateInfo)));
 +        items.add(SettingsActivity.SettingCell.Factory.of(ID_CHANNEL,
 +                IconBackgroundColors.BLUE.top, IconBackgroundColors.BLUE.bottom,
 +                R.drawable.settings_channel, LocaleController.getString(R.string.MargeletChannel), "t.me/margeletter"));
@@ -2676,7 +2774,9 @@ index 00000000..dfd8c52f
 +
 +    @Override
 +    protected void onClick(UItem item, View view, int position, float x, float y) {
-+        if (item.id == ID_SEIZURE) {
++        if (item.id == ID_DONATE) {
++            presentFragment(new MargeletDonateActivity());
++        } else if (item.id == ID_SEIZURE) {
 +            toggleSeizure();
 +        } else if (item.id == ID_INPUT) {
 +            presentFragment(new MargeletInputActivity());
@@ -11838,7 +11938,7 @@ index 03d0ba33..17f98fa6 100644
      <string name="English">Inglês</string>
      <string name="LanguageNameInEnglish">Portuguese (Brazil)</string>
 diff --git a/TMessagesProj/src/main/res/values-ru/strings.xml b/TMessagesProj/src/main/res/values-ru/strings.xml
-index 24c56292..a40d9d98 100644
+index 24c56292..bafb8e07 100644
 --- a/TMessagesProj/src/main/res/values-ru/strings.xml
 +++ b/TMessagesProj/src/main/res/values-ru/strings.xml
 @@ -1,7 +1,7 @@
@@ -11851,7 +11951,7 @@ index 24c56292..a40d9d98 100644
      <string name="LanguageName">Русский</string>
      <string name="English">Английский</string>
      <string name="LanguageNameInEnglish">Russian</string>
-@@ -263,4 +263,80 @@
+@@ -263,4 +263,86 @@
      <string name="RemindTodayAt">\'Отправить сегодня в\' HH:mm</string>
      <string name="RemindDayAt">\'Отправить\' d MMM \'в\' HH:mm</string>
      <string name="RemindDayYearAt">\'Напомнить\' d MMM yyyy \'в\' HH:mm</string>
@@ -11917,7 +12017,7 @@ index 24c56292..a40d9d98 100644
 +    <string name="MargeletProfilesInfo">Что ещё показывать в профиле</string>
 +    <string name="MargeletShowIds">Показывать айди</string>
 +    <string name="MargeletShowIdsAbout">В профилях людей, ботов, групп и каналов появляется строка с числовым айди. Нажатие копирует его.</string>
-+    <string name="MargeletBadgeTitle">Значок Margelet</string>
++    <string name="MargeletBadgeTitle">Создатель Margelet</string>
 +    <string name="MargeletBadgeAbout">Нарезанный сделал Margelet, поэтому у него такой значок.</string>
 +    <string name="MargeletBadgeFriendTitle">Лучший друг нареза</string>
 +    <string name="MargeletBadgeFriendAbout">Лучший друг Нарезанного. Отсюда и значок.</string>
@@ -11926,6 +12026,12 @@ index 24c56292..a40d9d98 100644
 +    <string name="MargeletBadgeForumTitle">Форум Margelet</string>
 +    <string name="MargeletBadgeForumAbout">Единственный официальный форум Margelet. Всё остальное с таким названием — не он.</string>
 +    <string name="MargeletBadgeRow">Значок Margelet</string>
++    <string name="MargeletDonate">Донат</string>
++    <string name="MargeletDonateInfo">Если хочется поддержать форк</string>
++    <string name="MargeletDonateYoomoney">ЮMoney</string>
++    <string name="MargeletDonateRoblox">Роблокс, робуксами</string>
++    <string name="MargeletDonateAbout">Нажатие копирует. Никаких кнопок оплаты внутри приложения нет и не будет: платить надо там, где вы обычно платите, а не в форке мессенджера.\n\nДеньги идут автору форка. Ни на что в приложении они не влияют: платных возможностей тут нет, и появляться им незачем.</string>
++    <string name="MargeletDonateCopied">Скопировано</string>
 +    <string name="MargeletSeizure">Приступ</string>
 +    <string name="MargeletSeizureWarning">Предупреждение</string>
 +    <string name="MargeletSeizureWarningText">Весь текст в приложении начнёт непрерывно менять цвет.\n\nЯ сделал перелив плавным, без вспышек: мигание с частотой от трёх до тридцати раз в секунду — это то, от чего у людей со светочувствительной эпилепсией бывает приступ. Но если такое вам противопоказано или от подвижной картинки становится плохо — лучше не включайте.</string>
@@ -11948,7 +12054,7 @@ index d4683443..57d10109 100644
      <string name="English">Англійська</string>
      <string name="LanguageNameInEnglish">Ukrainian</string>
 diff --git a/TMessagesProj/src/main/res/values/strings.xml b/TMessagesProj/src/main/res/values/strings.xml
-index ffa4d566..f1604ea3 100644
+index ffa4d566..d4a2e3c4 100644
 --- a/TMessagesProj/src/main/res/values/strings.xml
 +++ b/TMessagesProj/src/main/res/values/strings.xml
 @@ -1,7 +1,7 @@
@@ -11961,7 +12067,7 @@ index ffa4d566..f1604ea3 100644
      <string name="LanguageName">English</string>
      <string name="English">English</string>
      <string name="LanguageNameInEnglish">English</string>
-@@ -11221,4 +11221,80 @@
+@@ -11221,4 +11221,86 @@
      <string name="UnsupportedMessageTitle">Unsupported Message</string>
      <string name="UnsupportedMessageMessage">Update Telegram to view this message</string>
      <string name="UnsupportedUpdate">Update</string>
@@ -12027,7 +12133,7 @@ index ffa4d566..f1604ea3 100644
 +    <string name="MargeletProfilesInfo">What else to show on a profile page</string>
 +    <string name="MargeletShowIds">Show ID</string>
 +    <string name="MargeletShowIdsAbout">A line with the numeric id appears in profiles of people, bots, groups and channels. Tap it to copy.</string>
-+    <string name="MargeletBadgeTitle">Margelet badge</string>
++    <string name="MargeletBadgeTitle">Margelet creator</string>
 +    <string name="MargeletBadgeAbout">Narezany made Margelet, that is why the badge is his.</string>
 +    <string name="MargeletBadgeFriendTitle">Narezany\'s best friend</string>
 +    <string name="MargeletBadgeFriendAbout">Narezany\'s best friend. Hence the badge.</string>
@@ -12036,6 +12142,12 @@ index ffa4d566..f1604ea3 100644
 +    <string name="MargeletBadgeForumTitle">Margelet forum</string>
 +    <string name="MargeletBadgeForumAbout">The one official Margelet forum. Anything else under that name is not it.</string>
 +    <string name="MargeletBadgeRow">Margelet badge</string>
++    <string name="MargeletDonate">Donate</string>
++    <string name="MargeletDonateInfo">If you feel like supporting the fork</string>
++    <string name="MargeletDonateYoomoney">YooMoney</string>
++    <string name="MargeletDonateRoblox">Roblox, in Robux</string>
++    <string name="MargeletDonateAbout">Tap to copy. There are no payment buttons inside the app and there will not be any: pay where you normally pay, not inside a messenger fork.\n\nThe money goes to the author of the fork. It unlocks nothing: there are no paid features here, and there is no reason for any.</string>
++    <string name="MargeletDonateCopied">Copied</string>
 +    <string name="MargeletSeizure">Seizure</string>
 +    <string name="MargeletSeizureWarning">Warning</string>
 +    <string name="MargeletSeizureWarningText">All text in the app will keep changing colour.\n\nThe cycle is smooth, without flashing: it is flicker between three and thirty times a second that triggers photosensitive seizures. Still, if that is a risk for you, or moving pictures make you feel unwell, better leave this off.</string>

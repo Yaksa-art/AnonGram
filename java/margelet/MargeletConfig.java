@@ -20,6 +20,13 @@ public class MargeletConfig {
     public static final String APP_NAME = "Margelet";
 
     public static final String CHANNEL_URL = "https://t.me/margeletter";
+    /**
+     * Реквизиты для доната. Лежат здесь, а не в строках: это не перевод, а
+     * данные владельца форка, и в каждом языке они одни и те же.
+     */
+    public static final String DONATE_YOOMONEY = "2204120143055305";
+    public static final String DONATE_ROBLOX = "h4ru_456";
+
     public static final String SOURCE_URL = "https://github.com/narezany/Margelet";
     public static final String FORUM_URL = "https://t.me/margeletforum";
 
