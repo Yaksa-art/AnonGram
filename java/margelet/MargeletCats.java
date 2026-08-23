@@ -46,6 +46,8 @@ public class MargeletCats {
     /** Кошки. Добавить свою может кто угодно — через владельца, см. ссылку внизу. */
     private static final int[] PHOTOS = {R.drawable.margelet_cat_1, R.drawable.margelet_cat_2};
     private static final int[] NAMES = {R.string.MargeletCatOne, R.string.MargeletCatTwo};
+    /** Кто принёс кота. Порядок тот же, что у фотографий. */
+    private static final String[] FROM = {"@narezany", "@egorkagds"};
 
     private static final String OWNER = "narezany";
 
@@ -92,6 +94,13 @@ public class MargeletCats {
             name.setTextColor(Color.WHITE);
             name.setText(LocaleController.getString(NAMES[index]));
             caption.addView(name, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+
+            final TextView from = new TextView(activity);
+            from.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
+            from.setTextColor(0xB3FFFFFF);
+            from.setText(LocaleController.formatString(R.string.MargeletCatFrom, FROM[index]));
+            from.setPadding(0, dp(4), 0, 0);
+            caption.addView(from, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
             final TextView invite = new TextView(activity);
             invite.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);

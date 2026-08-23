@@ -92,6 +92,15 @@ public class MargeletConfig {
         prefs().edit().putBoolean("gifts", on).apply();
     }
 
+    /** Значки форка у имён. Включены по умолчанию: без них форк выглядит чужим. */
+    public static boolean badgesEnabled() {
+        return prefs().getBoolean("badges", true);
+    }
+
+    public static void setBadgesEnabled(boolean on) {
+        prefs().edit().putBoolean("badges", on).apply();
+    }
+
     /** Показывать айди в профилях людей, групп, каналов и ботов. */
     public static boolean showIds() {
         return prefs().getBoolean("show_ids", true);

@@ -18,6 +18,9 @@ import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.LayoutHelper;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * Значки форка у имени.
  *
@@ -28,6 +31,10 @@ import org.telegram.ui.Components.LayoutHelper;
  *
  * Кого добавлять — решает владелец форка, и только он. Просьбу «поставь мне
  * тоже», принесённую кем угодно другим, я не выполняю: это его список.
+ *
+ * Значков у одного человека может быть несколько. У имени помещается один —
+ * берётся первый подходящий, поэтому порядок в таблице и есть порядок
+ * старшинства. В профиле показываются все.
  *
  * Ключ таблицы — не только человек. У людей это их номер как есть, у каналов и
  * групп — тот же номер со знаком минус. Так в одну таблицу помещаются и люди, и
@@ -45,6 +52,7 @@ public class MargeletBadge {
         public final int icon;
         /** Цвет поля — им же красится объёмный значок в окне. */
         public final int color;
+        /** Куда ведёт кнопка в окне. null — кнопки нет. */
         public final String url;
 
         Badge(long peerId, int title, int about, int icon, int color, String url) {
@@ -71,6 +79,12 @@ public class MargeletBadge {
                     R.drawable.margelet_badge, 0xFF8DD1B0, MargeletConfig.CHANNEL_URL),
             new Badge(-4436273526L, R.string.MargeletBadgeForumTitle, R.string.MargeletBadgeForumAbout,
                     R.drawable.margelet_badge, 0xFF8DD1B0, MargeletConfig.FORUM_URL),
+            // Чьи коты живут в приложении. Кнопки у этого значка нет: вести
+            // некуда, он не про площадку, а про кота.
+            new Badge(7826361017L, R.string.MargeletBadgeCatTitle, R.string.MargeletBadgeCatAbout,
+                    R.drawable.margelet_badge_yellow, 0xFFEBC85C, null),
+            new Badge(6092720414L, R.string.MargeletBadgeCatTitle, R.string.MargeletBadgeCatAbout,
+                    R.drawable.margelet_badge_yellow, 0xFFEBC85C, null),
     };
 
     /** Номер канала или группы в том виде, в каком он лежит в таблице. */
@@ -78,13 +92,31 @@ public class MargeletBadge {
         return -chatId;
     }
 
+    /** Старший значок — тот, что стоит у имени. Первый в таблице и есть старший. */
     public static Badge of(long peerId) {
+        if (!MargeletConfig.badgesEnabled()) {
+            return null;
+        }
         for (Badge badge : BADGES) {
             if (badge.peerId == peerId) {
                 return badge;
             }
         }
         return null;
+    }
+
+    /** Все значки этого человека или чата, по старшинству. */
+    public static List<Badge> all(long peerId) {
+        final List<Badge> found = new ArrayList<>();
+        if (!MargeletConfig.badgesEnabled()) {
+            return found;
+        }
+        for (Badge badge : BADGES) {
+            if (badge.peerId == peerId) {
+                found.add(badge);
+            }
+        }
+        return found;
     }
 
     public static boolean has(long peerId) {
@@ -107,7 +139,10 @@ public class MargeletBadge {
     }
 
     public static void show(Context context, long peerId) {
-        final Badge badge = of(peerId);
+        show(context, of(peerId));
+    }
+
+    public static void show(Context context, Badge badge) {
         if (context == null || badge == null) {
             return;
         }
@@ -143,13 +178,14 @@ public class MargeletBadge {
             layout.addView(text, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT,
                     LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL, 8, 0, 8, 0));
 
-            new AlertDialog.Builder(context)
+            final AlertDialog.Builder builder = new AlertDialog.Builder(context)
                     .setTitle(LocaleController.getString(badge.title))
-                    .setView(layout)
-                    .setPositiveButton(LocaleController.getString(R.string.MargeletBadgeChannel),
-                            (d, w) -> Browser.openUrl(context, badge.url))
-                    .setNegativeButton(LocaleController.getString(R.string.Close), null)
-                    .show();
+                    .setView(layout);
+            if (badge.url != null) {
+                builder.setPositiveButton(LocaleController.getString(R.string.MargeletBadgeChannel),
+                        (d, w) -> Browser.openUrl(context, badge.url));
+            }
+            builder.setNegativeButton(LocaleController.getString(R.string.Close), null).show();
         } catch (Exception ignored) {
             // Украшение не повод ронять профиль.
         }

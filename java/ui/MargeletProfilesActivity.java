@@ -15,6 +15,7 @@ import java.util.ArrayList;
 public class MargeletProfilesActivity extends UniversalFragment {
 
     private static final int ID_SHOW_IDS = 1;
+    private static final int ID_BADGES = 2;
 
     @Override
     protected CharSequence getTitle() {
@@ -33,12 +34,18 @@ public class MargeletProfilesActivity extends UniversalFragment {
         items.add(UItem.asCheck(ID_SHOW_IDS, LocaleController.getString(R.string.MargeletShowIds))
                 .setChecked(MargeletConfig.showIds()));
         items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletShowIdsAbout)));
+        items.add(UItem.asCheck(ID_BADGES, LocaleController.getString(R.string.MargeletBadges))
+                .setChecked(MargeletConfig.badgesEnabled()));
+        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletBadgesAbout)));
     }
 
     @Override
     protected void onClick(UItem item, View view, int position, float x, float y) {
         if (item.id == ID_SHOW_IDS) {
             MargeletConfig.setShowIds(!MargeletConfig.showIds());
+            listView.adapter.update(true);
+        } else if (item.id == ID_BADGES) {
+            MargeletConfig.setBadgesEnabled(!MargeletConfig.badgesEnabled());
             listView.adapter.update(true);
         }
     }
