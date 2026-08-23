@@ -390,10 +390,10 @@ index 00000000..3c8132c5
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
 new file mode 100644
-index 00000000..c2906181
+index 00000000..844100bf
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
-@@ -0,0 +1,253 @@
+@@ -0,0 +1,270 @@
 +package org.telegram.margelet;
 +
 +import android.content.Context;
@@ -510,6 +510,23 @@ index 00000000..c2906181
 +
 +    public static void setShowWatermarks(boolean on) {
 +        prefs().edit().putBoolean("watermarks", on).apply();
++    }
++
++    /** Премиум-значки без премиума: видны только в форке. */
++    public static boolean freeEmoji() {
++        return prefs().getBoolean("free_emoji", true);
++    }
++
++    public static void setFreeEmoji(boolean on) {
++        prefs().edit().putBoolean("free_emoji", on).apply();
++    }
++
++    public static boolean emojiWarned() {
++        return prefs().getBoolean("emoji_warned", false);
++    }
++
++    public static void setEmojiWarned(boolean value) {
++        prefs().edit().putBoolean("emoji_warned", value).apply();
 +    }
 +
 +    /** Пункт «Копировать с оформлением» в меню сообщения. */
@@ -649,10 +666,10 @@ index 00000000..c2906181
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletCopy.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletCopy.java
 new file mode 100644
-index 00000000..fb369f95
+index 00000000..ad6221e4
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletCopy.java
-@@ -0,0 +1,161 @@
+@@ -0,0 +1,252 @@
 +package org.telegram.margelet;
 +
 +import android.text.TextUtils;
@@ -795,6 +812,92 @@ index 00000000..fb369f95
 +        return out.toString();
 +    }
 +
++
++    /**
++     * Разметка телеграма значками, как её пишут руками.
++     *
++     * Это и есть то, что попадает в буфер обычным текстом. HTML понимают
++     * далеко не везде, а вот **жирный** телеграм разбирает обратно сам — я
++     * взял ровно те значки, которые он ищет при отправке (BOLD_PATTERN и
++     * соседние в MediaDataController), чтобы вставленное вернулось тем же
++     * оформлением, а не осталось звёздочками.
++     *
++     * Подчёркиванию значка в телеграме нет, поэтому оно теряется — честнее
++     * потерять, чем написать значок, который потом не разберётся.
++     */
++    private static String token(TLRPC.MessageEntity entity) {
++        if (entity instanceof TLRPC.TL_messageEntityBold) {
++            return "**";
++        } else if (entity instanceof TLRPC.TL_messageEntityItalic) {
++            return "__";
++        } else if (entity instanceof TLRPC.TL_messageEntityStrike) {
++            return "~~";
++        } else if (entity instanceof TLRPC.TL_messageEntitySpoiler) {
++            return "||";
++        } else if (entity instanceof TLRPC.TL_messageEntityCode) {
++            return "`";
++        } else if (entity instanceof TLRPC.TL_messageEntityPre) {
++            return "```";
++        }
++        return null;
++    }
++
++    /** То же разрезание по границам, что и в HTML, только значками телеграма. */
++    public static String markdown(CharSequence text, ArrayList<TLRPC.MessageEntity> entities) {
++        if (text == null) {
++            return null;
++        }
++        final List<TLRPC.MessageEntity> usable = new ArrayList<>();
++        final TreeSet<Integer> bounds = new TreeSet<>();
++        bounds.add(0);
++        bounds.add(text.length());
++        if (entities != null) {
++            for (TLRPC.MessageEntity entity : entities) {
++                if (token(entity) != null && entity.offset >= 0 && entity.length > 0
++                        && entity.offset + entity.length <= text.length()) {
++                    usable.add(entity);
++                    bounds.add(entity.offset);
++                    bounds.add(entity.offset + entity.length);
++                }
++            }
++        }
++        if (usable.isEmpty()) {
++            return text.toString();
++        }
++        Collections.sort(usable, (a, b) -> a.offset != b.offset
++                ? Integer.compare(a.offset, b.offset)
++                : Integer.compare(b.length, a.length));
++
++        final StringBuilder out = new StringBuilder();
++        final List<TLRPC.MessageEntity> stack = new ArrayList<>();
++        final List<Integer> points = new ArrayList<>(bounds);
++        for (int k = 0; k + 1 < points.size(); k++) {
++            final int from = points.get(k), to = points.get(k + 1);
++            final List<TLRPC.MessageEntity> want = new ArrayList<>();
++            for (TLRPC.MessageEntity entity : usable) {
++                if (entity.offset <= from && from < entity.offset + entity.length) {
++                    want.add(entity);
++                }
++            }
++            int same = 0;
++            while (same < stack.size() && same < want.size() && stack.get(same) == want.get(same)) {
++                same++;
++            }
++            while (stack.size() > same) {
++                out.append(token(stack.remove(stack.size() - 1)));
++            }
++            for (int i = same; i < want.size(); i++) {
++                out.append(token(want.get(i)));
++                stack.add(want.get(i));
++            }
++            out.append(text, from, to);
++        }
++        while (!stack.isEmpty()) {
++            out.append(token(stack.remove(stack.size() - 1)));
++        }
++        return out.toString();
++    }
++
 +    /** Кладёт сообщение в буфер вместе с оформлением. */
 +    public static void copy(MessageObject message) {
 +        if (message == null || message.messageOwner == null) {
@@ -804,13 +907,18 @@ index 00000000..fb369f95
 +        if (TextUtils.isEmpty(plain)) {
 +            return;
 +        }
++        // В буфер кладём два представления. Обычным текстом идёт разметка
++        // значками: её телеграм разбирает обратно сам, и вставленное снова
++        // становится жирным, а не остаётся звёздочками. Владелец на это и
++        // жаловался — HTML понимают далеко не везде.
++        final CharSequence asText = markdown(plain, message.messageOwner.entities);
 +        final String asHtml = html(plain, message.messageOwner.entities);
 +        if (TextUtils.isEmpty(asHtml)) {
-+            AndroidUtilities.addToClipboard(plain);
++            AndroidUtilities.addToClipboard(asText);
 +        } else {
 +            // Через двухдоводный addToClipboard: он не чистит текст, а
 +            // одинарный нарочно вычищает наши метки — здесь они и есть смысл.
-+            AndroidUtilities.addToClipboard(plain, asHtml);
++            AndroidUtilities.addToClipboard(asText, asHtml);
 +        }
 +    }
 +}
@@ -1011,10 +1119,10 @@ index 00000000..33ff716b
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletMarkup.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletMarkup.java
 new file mode 100644
-index 00000000..0053e6b4
+index 00000000..83a5f5a2
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletMarkup.java
-@@ -0,0 +1,338 @@
+@@ -0,0 +1,478 @@
 +package org.telegram.margelet;
 +
 +import android.text.Spannable;
@@ -1077,6 +1185,25 @@ index 00000000..0053e6b4
 +    public static final int KIND_SIZE = 0;
 +    public static final int KIND_DIM = 1;
 +    public static final int KIND_RAINBOW = 2;
++    /** Кнопка: подпись видна текстом, ссылка едет в нагрузке метки. */
++    public static final int KIND_BUTTON = 3;
++    /** Премиум-значок: в нагрузке номер документа. */
++    public static final int KIND_EMOJI = 4;
++
++    /**
++     * Длина нагрузки в разрядах и разрядов на байт.
++     *
++     * Нагрузка нужна не всем видам: у размера и радуги хватает значения, а
++     * кнопке нужна ссылка, значку — его номер. Поэтому у метки переменная
++     * длина: сначала пять разрядов длины, потом байты по шесть разрядов
++     * (три в шестой степени — 729, любой байт помещается).
++     */
++    private static final int LEN_TRITS = 5;
++    private static final int BYTE_TRITS = 6;
++
++    private static boolean hasPayload(int kind) {
++        return kind == KIND_BUTTON || kind == KIND_EMOJI;
++    }
 +
 +    /**
 +     * Заголовок, который форк дописывает в начало оформленного сообщения.
@@ -1123,11 +1250,54 @@ index 00000000..0053e6b4
 +
 +    /** Открывающая метка как строка. */
 +    public static String open(int kind, int value) {
++        return open(kind, value, null);
++    }
++
++    public static String open(int kind, int value, byte[] payload) {
 +        final StringBuilder out = new StringBuilder();
 +        out.append(OPEN);
 +        number(out, kind, KIND_TRITS);
 +        number(out, value, VALUE_TRITS);
++        if (hasPayload(kind)) {
++            final byte[] bytes = payload == null ? new byte[0] : payload;
++            final int length = Math.min(bytes.length, pow(TRITS, LEN_TRITS) - 1);
++            number(out, length, LEN_TRITS);
++            for (int i = 0; i < length; i++) {
++                number(out, bytes[i] & 0xFF, BYTE_TRITS);
++            }
++        }
 +        return out.toString();
++    }
++
++    private static int pow(int base, int power) {
++        int result = 1;
++        for (int i = 0; i < power; i++) {
++            result *= base;
++        }
++        return result;
++    }
++
++    /** Нагрузка как строка в UTF-8, или пусто. */
++    public static String payloadOf(byte[] payload) {
++        if (payload == null || payload.length == 0) {
++            return "";
++        }
++        try {
++            return new String(payload, "UTF-8");
++        } catch (Exception e) {
++            return "";
++        }
++    }
++
++    public static byte[] bytesOf(String text) {
++        if (text == null) {
++            return new byte[0];
++        }
++        try {
++            return text.getBytes("UTF-8");
++        } catch (Exception e) {
++            return new byte[0];
++        }
 +    }
 +
 +    public static String close() {
@@ -1140,12 +1310,19 @@ index 00000000..0053e6b4
 +        public final int value;
 +        public final int start;
 +        public final int end;
++        /** Ссылка у кнопки, номер документа у значка. Иначе пусто. */
++        public final byte[] payload;
 +
-+        Run(int kind, int value, int start, int end) {
++        Run(int kind, int value, int start, int end, byte[] payload) {
 +            this.kind = kind;
 +            this.value = value;
 +            this.start = start;
 +            this.end = end;
++            this.payload = payload;
++        }
++
++        public String text() {
++            return payloadOf(payload);
 +        }
 +    }
 +
@@ -1164,19 +1341,37 @@ index 00000000..0053e6b4
 +        }
 +        // Метки могут вкладываться друг в друга, поэтому открытые куски
 +        // держим стопкой: закрывающий знак закрывает последний открытый.
-+        final ArrayList<int[]> open = new ArrayList<>();
++        final ArrayList<Object[]> open = new ArrayList<>();
 +        for (int i = 0; i < text.length(); i++) {
 +            final char c = text.charAt(i);
 +            if (c == OPEN && i + MARK_LEN <= text.length() && allTrits(text, i + 1)) {
-+                open.add(new int[]{
-+                        number(text, i + 1, KIND_TRITS),
-+                        number(text, i + 1 + KIND_TRITS, VALUE_TRITS),
-+                        i + MARK_LEN});
-+                i += MARK_LEN - 1;
++                final int kind = number(text, i + 1, KIND_TRITS);
++                final int value = number(text, i + 1 + KIND_TRITS, VALUE_TRITS);
++                int after = i + MARK_LEN;
++                byte[] payload = new byte[0];
++                if (hasPayload(kind)) {
++                    if (after + LEN_TRITS > text.length() || !allTrits(text, after, LEN_TRITS)) {
++                        continue;   // метка обрезана — считаем её мусором
++                    }
++                    final int length = number(text, after, LEN_TRITS);
++                    after += LEN_TRITS;
++                    if (after + length * BYTE_TRITS > text.length()
++                            || !allTrits(text, after, length * BYTE_TRITS)) {
++                        continue;
++                    }
++                    payload = new byte[length];
++                    for (int b = 0; b < length; b++) {
++                        payload[b] = (byte) number(text, after + b * BYTE_TRITS, BYTE_TRITS);
++                    }
++                    after += length * BYTE_TRITS;
++                }
++                open.add(new Object[]{kind, value, after, payload});
++                i = after - 1;
 +            } else if (c == CLOSE && !open.isEmpty()) {
-+                final int[] top = open.remove(open.size() - 1);
-+                if (i > top[2]) {
-+                    runs.add(new Run(top[0], top[1], top[2], i));
++                final Object[] top = open.remove(open.size() - 1);
++                final int start = (Integer) top[2];
++                if (i > start) {
++                    runs.add(new Run((Integer) top[0], (Integer) top[1], start, i, (byte[]) top[3]));
 +                }
 +            }
 +        }
@@ -1184,7 +1379,14 @@ index 00000000..0053e6b4
 +    }
 +
 +    private static boolean allTrits(CharSequence text, int at) {
-+        for (int i = 0; i < MARK_LEN - 1; i++) {
++        return allTrits(text, at, MARK_LEN - 1);
++    }
++
++    private static boolean allTrits(CharSequence text, int at, int count) {
++        if (at + count > text.length()) {
++            return false;
++        }
++        for (int i = 0; i < count; i++) {
 +            if (!isTrit(text.charAt(at + i))) {
 +                return false;
 +            }
@@ -1216,7 +1418,9 @@ index 00000000..0053e6b4
 +        }
 +        final Spanned spanned = (Spanned) text;
 +        final MargeletSpans.Base[] spans = spanned.getSpans(0, spanned.length(), MargeletSpans.Base.class);
-+        if (spans.length == 0) {
++        final boolean hasEmoji = spanned.getSpans(0, spanned.length(),
++                org.telegram.ui.Components.AnimatedEmojiSpan.class).length > 0;
++        if (spans.length == 0 && !hasEmoji) {
 +            return text;
 +        }
 +        final SpannableStringBuilder out = new SpannableStringBuilder(text);
@@ -1224,14 +1428,34 @@ index 00000000..0053e6b4
 +        // от того, в каком порядке система вернула разметку.
 +        // Метка: позиция, открывающая?, начало куска, конец куска, вид, значение.
 +        final ArrayList<int[]> marks = new ArrayList<>();
++        final ArrayList<byte[]> payloads = new ArrayList<>();
 +        for (MargeletSpans.Base span : spans) {
 +            final int start = spanned.getSpanStart(span);
 +            final int end = spanned.getSpanEnd(span);
 +            if (start < 0 || end <= start) {
 +                continue;
 +            }
-+            marks.add(new int[]{start, 1, start, end, span.kind(), span.value()});
-+            marks.add(new int[]{end, 0, start, end, span.kind(), span.value()});
++            marks.add(new int[]{start, 1, start, end, span.kind(), span.value(), payloads.size()});
++            marks.add(new int[]{end, 0, start, end, span.kind(), span.value(), payloads.size()});
++            payloads.add(span.payload());
++        }
++
++        // Премиум-значки: у них своя разметка от телеграма, не наша. Меняем её
++        // на нашу метку с номером документа и убираем — иначе при отправке
++        // соберётся телеграмовская пометка, а сервер её у не-премиума не
++        // пропустит и не отправится вообще ничего.
++        final org.telegram.ui.Components.AnimatedEmojiSpan[] emoji =
++                out.getSpans(0, out.length(), org.telegram.ui.Components.AnimatedEmojiSpan.class);
++        for (org.telegram.ui.Components.AnimatedEmojiSpan span : emoji) {
++            final int start = out.getSpanStart(span);
++            final int end = out.getSpanEnd(span);
++            out.removeSpan(span);
++            if (start < 0 || end <= start) {
++                continue;
++            }
++            marks.add(new int[]{start, 1, start, end, KIND_EMOJI, 0, payloads.size()});
++            marks.add(new int[]{end, 0, start, end, KIND_EMOJI, 0, payloads.size()});
++            payloads.add(bytesOf(Long.toString(span.getDocumentId())));
 +        }
 +        // Порядок вставки тут не «как удобнее», а единственно верный, и обе
 +        // тонкости я сначала сделал наоборот. Обе поймала отдельная модель
@@ -1254,7 +1478,9 @@ index 00000000..0053e6b4
 +            return a[1] == 1 ? Integer.compare(a[3], b[3]) : Integer.compare(a[2], b[2]);
 +        });
 +        for (int[] mark : marks) {
-+            out.insert(mark[0], mark[1] == 1 ? open(mark[4], mark[5]) : close());
++            out.insert(mark[0], mark[1] == 1
++                    ? open(mark[4], mark[5], payloads.get(mark[6]))
++                    : close());
 +        }
 +        // Заголовок стоит в конце, а не в начале: из начала он лезет в
 +        // уведомления и в список чатов, где от сообщения видна одна строка.
@@ -1269,6 +1495,28 @@ index 00000000..0053e6b4
 +        for (Run run : parse(text)) {
 +            if (!MargeletConfig.markupEnabled(run.kind)) {
 +                continue;   // этот вид оформления человек выключил у себя
++            }
++            if (run.kind == KIND_BUTTON) {
++                final String url = run.text();
++                text.setSpan(new MargeletSpans.Button(run.value, url),
++                        run.start, run.end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
++                if (!url.isEmpty()) {
++                    // Нажатие отдаём обычной ссылочной разметке: её телеграм
++                    // ловит сам, своя обработка тут была бы лишней.
++                    text.setSpan(new org.telegram.ui.Components.URLSpanReplacement(url),
++                            run.start, run.end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
++                }
++                continue;
++            }
++            if (run.kind == KIND_EMOJI) {
++                try {
++                    final long id = Long.parseLong(run.text());
++                    text.setSpan(new org.telegram.ui.Components.AnimatedEmojiSpan(id, null),
++                            run.start, run.end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
++                } catch (Exception ignored) {
++                    // Номер не разобрался — оставляем запасной значок как есть.
++                }
++                continue;
 +            }
 +            final Object span = MargeletSpans.create(run.kind, run.value);
 +            if (span != null) {
@@ -2125,10 +2373,10 @@ index 00000000..8a3b8ef8
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletSpans.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletSpans.java
 new file mode 100644
-index 00000000..499d4b76
+index 00000000..a85d63c7
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletSpans.java
-@@ -0,0 +1,182 @@
+@@ -0,0 +1,288 @@
 +package org.telegram.margelet;
 +
 +import android.graphics.Canvas;
@@ -2162,10 +2410,26 @@ index 00000000..499d4b76
 +
 +        public abstract int value();
 +
++        /** Нагрузка метки: ссылка у кнопки. У остальных ничего. */
++        public byte[] payload() {
++            return null;
++        }
++
 +        @Override
 +        public void updateMeasureState(@NonNull TextPaint paint) {
 +            // По умолчанию оформление на размеры не влияет.
 +        }
++    }
++
++    /** Цвета кнопок. Значение метки — номер в этом списке. */
++    public static final int[] BUTTON_COLORS = {
++            0xFF4E9CF5, 0xFF34C759, 0xFFF0932B, 0xFFE74C3C, 0xFF9B59B6,
++            0xFF16A085, 0xFFE84393, 0xFF7F8C8D, 0xFF2C3E50, 0xFFD4AC0D,
++            0xFF00B8D9, 0xFF6C5CE7, 0xFF8DD1B0, 0xFFB7A8E0
++    };
++
++    public static int buttonColor(int value) {
++        return BUTTON_COLORS[Math.max(0, Math.min(BUTTON_COLORS.length - 1, value))];
 +    }
 +
 +    public static Object create(int kind, int value) {
@@ -2282,6 +2546,96 @@ index 00000000..499d4b76
 +            MargeletSeizure.poke();
 +            hsv[0] = (System.currentTimeMillis() % CYCLE_MS) * 360f / CYCLE_MS;
 +            paint.setColor(Color.HSVToColor(hsv));
++        }
++    }
++
++    /**
++     * Пометка кнопки: невидимая, нужна только чтобы отправка знала цвет и
++     * ссылку. Рисует кнопку отдельная разметка {@link Button}: одна и та же
++     * разметка не может и занимать место, и оставаться в списке наших меток.
++     */
++    public static class ButtonMark extends Base {
++        private final int value;
++        private final String url;
++
++        public ButtonMark(int value, String url) {
++            this.value = value;
++            this.url = url;
++        }
++
++        @Override
++        public int kind() {
++            return MargeletMarkup.KIND_BUTTON;
++        }
++
++        @Override
++        public int value() {
++            return value;
++        }
++
++        @Override
++        public byte[] payload() {
++            return MargeletMarkup.bytesOf(url);
++        }
++
++        @Override
++        public void updateDrawState(TextPaint paint) {
++            // Ничего: рисует Button.
++        }
++    }
++
++    /**
++     * Кнопка: подпись рисуется на цветной плашке, как у ботов.
++     *
++     * Рисование и нажатие разведены нарочно. Эта разметка занимает место и
++     * рисует плашку, а за нажатие отвечает обычная ссылочная разметка, которую
++     * телеграм уже умеет ловить, — свою обработку нажатий заводить незачем.
++     */
++    public static class Button extends ReplacementSpan {
++        private final int color;
++        private final String url;
++        private final android.graphics.RectF rect = new android.graphics.RectF();
++
++        public Button(int value, String url) {
++            this.color = buttonColor(value);
++            this.url = url;
++        }
++
++        public String url() {
++            return url;
++        }
++
++        private static int padding() {
++            return org.telegram.messenger.AndroidUtilities.dp(10);
++        }
++
++        @Override
++        public int getSize(@NonNull Paint paint, CharSequence text, int start, int end,
++                           Paint.FontMetricsInt fm) {
++            final int width = (int) paint.measureText(text, start, end) + padding() * 2;
++            if (fm != null) {
++                final Paint.FontMetricsInt source = paint.getFontMetricsInt();
++                final int extra = org.telegram.messenger.AndroidUtilities.dp(3);
++                fm.ascent = fm.top = source.ascent - extra;
++                fm.descent = fm.bottom = source.descent + extra;
++            }
++            return width;
++        }
++
++        @Override
++        public void draw(@NonNull Canvas canvas, CharSequence text, int start, int end,
++                         float x, int top, int y, int bottom, @NonNull Paint paint) {
++            final int extra = org.telegram.messenger.AndroidUtilities.dp(3);
++            final float width = paint.measureText(text, start, end) + padding() * 2;
++            rect.set(x, paint.getFontMetricsInt().ascent + y - extra,
++                    x + width, paint.getFontMetricsInt().descent + y + extra);
++            final int wasColor = paint.getColor();
++            paint.setColor(color);
++            canvas.drawRoundRect(rect, org.telegram.messenger.AndroidUtilities.dp(8),
++                    org.telegram.messenger.AndroidUtilities.dp(8), paint);
++            paint.setColor(0xFFFFFFFF);
++            canvas.drawText(text, start, end, x + padding(), y, paint);
++            paint.setColor(wasColor);
 +        }
 +    }
 +
@@ -2723,10 +3077,10 @@ index 77870805..18122c76 100644
          boolean hasUrls = spans != null && spans.length > 0;
          if (entities == null || entities.isEmpty()) {
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/ActionBar/FloatingToolbar.java b/TMessagesProj/src/main/java/org/telegram/ui/ActionBar/FloatingToolbar.java
-index 835dd7c1..de810e52 100644
+index 835dd7c1..305e16c0 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/ActionBar/FloatingToolbar.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/ActionBar/FloatingToolbar.java
-@@ -311,7 +311,10 @@ public final class FloatingToolbar {
+@@ -311,7 +311,11 @@ public final class FloatingToolbar {
          R.id.menu_spoiler,
          R.id.menu_link,
          R.id.menu_quote,
@@ -2734,7 +3088,8 @@ index 835dd7c1..de810e52 100644
 +        R.id.menu_date,
 +        R.id.menu_margelet_size,
 +        R.id.menu_margelet_dim,
-+        R.id.menu_margelet_rainbow
++        R.id.menu_margelet_rainbow,
++        R.id.menu_margelet_button
      );
      public static final List<Integer> premiumOptions = Arrays.asList(
          R.id.menu_bold,
@@ -2910,7 +3265,7 @@ index af32ccff..165ea0bb 100644
                  nameString = getString(R.string.HiddenName);
              }
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
-index 6b8cddfe..884517a1 100644
+index 6b8cddfe..808927a9 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
 @@ -1199,6 +1199,9 @@ public class ChatActivity extends BaseFragment implements
@@ -2996,7 +3351,7 @@ index 6b8cddfe..884517a1 100644
                  } else {
                      avatarContainer.setTitle(AndroidUtilities.removeRTL(AndroidUtilities.removeDiacritics(UserObject.getUserName(currentUser))), currentUser.scam, currentUser.fake, currentUser.verified, getMessagesController().isPremiumUser(currentUser), currentUser.emoji_status, animated);
                  }
-@@ -27588,6 +27616,11 @@ public class ChatActivity extends BaseFragment implements
+@@ -27588,6 +27616,12 @@ public class ChatActivity extends BaseFragment implements
          if (includeSpoilers) {
              menu.add(R.id.menu_groupbolditalic, R.id.menu_spoiler, order++, LocaleController.getString(R.string.Spoiler));
          }
@@ -3005,10 +3360,11 @@ index 6b8cddfe..884517a1 100644
 +        menu.add(R.id.menu_groupbolditalic, R.id.menu_margelet_size, order++, LocaleController.getString(R.string.MargeletMarkupSize));
 +        menu.add(R.id.menu_groupbolditalic, R.id.menu_margelet_dim, order++, LocaleController.getString(R.string.MargeletMarkupDim));
 +        menu.add(R.id.menu_groupbolditalic, R.id.menu_margelet_rainbow, order++, LocaleController.getString(R.string.MargeletMarkupRainbow));
++        menu.add(R.id.menu_groupbolditalic, R.id.menu_margelet_button, order++, LocaleController.getString(R.string.MargeletMarkupButton));
  
          SpannableStringBuilder stringBuilder = new SpannableStringBuilder(LocaleController.getString(R.string.Bold));
          stringBuilder.setSpan(new TypefaceSpan(AndroidUtilities.bold()), 0, stringBuilder.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-@@ -33379,6 +33412,19 @@ public class ChatActivity extends BaseFragment implements
+@@ -33379,6 +33413,19 @@ public class ChatActivity extends BaseFragment implements
                  undoView.showWithAction(0, UndoView.ACTION_MESSAGE_COPIED, null);
                  break;
              }
@@ -3028,7 +3384,7 @@ index 6b8cddfe..884517a1 100644
              case OPTION_SAVE_TO_GALLERY: {
                  if (Build.VERSION.SDK_INT >= 23 && (Build.VERSION.SDK_INT <= 28 || BuildVars.NO_SCOPED_STORAGE) && getParentActivity().checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
                      getParentActivity().requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 4);
-@@ -46097,6 +46143,33 @@ public class ChatActivity extends BaseFragment implements
+@@ -46097,6 +46144,33 @@ public class ChatActivity extends BaseFragment implements
                      }
                  }
  
@@ -3089,10 +3445,10 @@ index ac402db5..0c8731f1 100644
              parentFragment.showQuoteMessageUpdate();
              return false;
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/Components/EditTextCaption.java b/TMessagesProj/src/main/java/org/telegram/ui/Components/EditTextCaption.java
-index 6a21a20e..3c395f3f 100644
+index 6a21a20e..76e63b76 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/Components/EditTextCaption.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/Components/EditTextCaption.java
-@@ -157,6 +157,46 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
+@@ -157,6 +157,69 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
          applyTextStyleToSelection(new TextStyleSpan(run));
      }
  
@@ -3117,6 +3473,29 @@ index 6a21a20e..3c395f3f 100644
 +        selectionStart = selectionEnd = -1;
 +    }
 +
++    /** Кнопка: невидимая пометка для отправки плюс видимая плашка. */
++    public void makeSelectedButton(int value, String url, int start, int end) {
++        final android.text.Editable editable = getText();
++        if (editable == null || start < 0 || end <= start) {
++            return;
++        }
++        for (Object span : editable.getSpans(start, end, org.telegram.margelet.MargeletSpans.Button.class)) {
++            editable.removeSpan(span);
++        }
++        for (org.telegram.margelet.MargeletSpans.Base span :
++                editable.getSpans(start, end, org.telegram.margelet.MargeletSpans.Base.class)) {
++            if (span.kind() == org.telegram.margelet.MargeletMarkup.KIND_BUTTON) {
++                editable.removeSpan(span);
++            }
++        }
++        editable.setSpan(new org.telegram.margelet.MargeletSpans.ButtonMark(value, url),
++                start, end, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
++        editable.setSpan(new org.telegram.margelet.MargeletSpans.Button(value, url),
++                start, end, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
++        org.telegram.ui.MargeletMarkupAlert.warnOnce(getContext());
++        invalidate();
++    }
++
 +    public void makeSelectedMargelet(int kind, int value, int start, int end) {
 +        final android.text.Editable editable = getText();
 +        if (editable == null || start < 0 || end <= start) {
@@ -3139,7 +3518,7 @@ index 6a21a20e..3c395f3f 100644
      public void makeSelectedSpoiler() {
          TextStyleSpan.TextStyleRun run = new TextStyleSpan.TextStyleRun();
          run.flags |= TextStyleSpan.FLAG_STYLE_SPOILER;
-@@ -809,6 +849,19 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
+@@ -809,6 +872,24 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
          } else if (itemId == R.id.menu_spoiler) {
              makeSelectedSpoiler();
              return true;
@@ -3156,9 +3535,37 @@ index 6a21a20e..3c395f3f 100644
 +        } else if (itemId == R.id.menu_margelet_rainbow) {
 +            makeSelectedMargelet(org.telegram.margelet.MargeletMarkup.KIND_RAINBOW, 0);
 +            return true;
++        } else if (itemId == R.id.menu_margelet_button) {
++            // Отрезок запоминаем сразу: окно закроет меню вместе с выделением.
++            org.telegram.ui.MargeletMarkupAlert.showButton(getContext(), this,
++                    margeletSelectionStart(), margeletSelectionEnd());
++            return true;
          } else if (itemId == R.id.menu_quote) {
              makeSelectedQuote();
              return true;
+diff --git a/TMessagesProj/src/main/java/org/telegram/ui/Components/EmojiView.java b/TMessagesProj/src/main/java/org/telegram/ui/Components/EmojiView.java
+index 7d620f71..b6edbf22 100644
+--- a/TMessagesProj/src/main/java/org/telegram/ui/Components/EmojiView.java
++++ b/TMessagesProj/src/main/java/org/telegram/ui/Components/EmojiView.java
+@@ -1388,7 +1388,17 @@ public class EmojiView extends FrameLayout implements
+                 if (emoticon == null && document != null) {
+                     emoticon = MessageObject.findAnimatedEmojiEmoticon(document);
+                 }
+-                if (!MessageObject.isFreeEmoji(document) && !UserConfig.getInstance(currentAccount).isPremium() && !(delegate != null && delegate.isUserSelf()) && !allowEmojisForNonPremium && !isGroupEmojis) {
++                // Форк разрешает ставить премиум-значки без премиума. Что
++                // при этом происходит на самом деле: телеграмовская пометка на
++                // сервер не уедет (у не-премиума её не примут), вместо неё в
++                // текст встанет запасной символ и наша невидимая метка с
++                // номером значка. Значит анимацию увидят только в Margelet, а
++                // премиума ни у кого не появится — так и написано в
++                // предупреждении, которое показывается один раз.
++                if (org.telegram.margelet.MargeletConfig.freeEmoji()
++                        && !UserConfig.getInstance(currentAccount).isPremium()) {
++                    org.telegram.ui.MargeletMarkupAlert.warnEmojiOnce(getContext());
++                } else if (!MessageObject.isFreeEmoji(document) && !UserConfig.getInstance(currentAccount).isPremium() && !(delegate != null && delegate.isUserSelf()) && !allowEmojisForNonPremium && !isGroupEmojis) {
+                     showBottomTab(false, true);
+                     BulletinFactory factory = fragment != null ? BulletinFactory.of(fragment) : BulletinFactory.of(bulletinContainer, resourcesProvider);
+                     if (premiumBulletin || fragment == null) {
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/Components/chat/ChatInputViewsContainer.java b/TMessagesProj/src/main/java/org/telegram/ui/Components/chat/ChatInputViewsContainer.java
 index 78c3b9e1..b820c3eb 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/Components/chat/ChatInputViewsContainer.java
@@ -3669,10 +4076,10 @@ index 00000000..1d675319
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletMarkupActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletMarkupActivity.java
 new file mode 100644
-index 00000000..1aba0adb
+index 00000000..7713ce43
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletMarkupActivity.java
-@@ -0,0 +1,77 @@
+@@ -0,0 +1,89 @@
 +package org.telegram.ui;
 +
 +import android.view.View;
@@ -3700,6 +4107,8 @@ index 00000000..1aba0adb
 +    private static final int ID_RAINBOW = 3;
 +    private static final int ID_WATERMARKS = 4;
 +    private static final int ID_COPY = 5;
++    private static final int ID_BUTTON = 6;
++    private static final int ID_EMOJI = 7;
 +
 +    @Override
 +    protected CharSequence getTitle() {
@@ -3721,7 +4130,12 @@ index 00000000..1aba0adb
 +                .setChecked(MargeletConfig.markupEnabled(MargeletMarkup.KIND_DIM)));
 +        items.add(UItem.asCheck(ID_RAINBOW, LocaleController.getString(R.string.MargeletMarkupRainbow))
 +                .setChecked(MargeletConfig.markupEnabled(MargeletMarkup.KIND_RAINBOW)));
++        items.add(UItem.asCheck(ID_BUTTON, LocaleController.getString(R.string.MargeletMarkupButton))
++                .setChecked(MargeletConfig.markupEnabled(MargeletMarkup.KIND_BUTTON)));
 +        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletMarkupAbout)));
++        items.add(UItem.asCheck(ID_EMOJI, LocaleController.getString(R.string.MargeletFreeEmoji))
++                .setChecked(MargeletConfig.freeEmoji()));
++        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletFreeEmojiAbout)));
 +        items.add(UItem.asCheck(ID_WATERMARKS, LocaleController.getString(R.string.MargeletWatermarks))
 +                .setChecked(MargeletConfig.showWatermarks()));
 +        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletWatermarksAbout)));
@@ -3736,6 +4150,11 @@ index 00000000..1aba0adb
 +            MargeletConfig.setShowWatermarks(!MargeletConfig.showWatermarks());
 +        } else if (item.id == ID_COPY) {
 +            MargeletConfig.setCopyFormatting(!MargeletConfig.copyFormatting());
++        } else if (item.id == ID_EMOJI) {
++            MargeletConfig.setFreeEmoji(!MargeletConfig.freeEmoji());
++        } else if (item.id == ID_BUTTON) {
++            MargeletConfig.setMarkupEnabled(MargeletMarkup.KIND_BUTTON,
++                    !MargeletConfig.markupEnabled(MargeletMarkup.KIND_BUTTON));
 +        } else {
 +            final int kind = item.id == ID_SIZE ? MargeletMarkup.KIND_SIZE
 +                    : item.id == ID_DIM ? MargeletMarkup.KIND_DIM
@@ -3752,10 +4171,10 @@ index 00000000..1aba0adb
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletMarkupAlert.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletMarkupAlert.java
 new file mode 100644
-index 00000000..0cbb68c1
+index 00000000..8d19cbb8
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletMarkupAlert.java
-@@ -0,0 +1,101 @@
+@@ -0,0 +1,179 @@
 +package org.telegram.ui;
 +
 +import static org.telegram.messenger.AndroidUtilities.dp;
@@ -3769,6 +4188,7 @@ index 00000000..0cbb68c1
 +
 +import org.telegram.margelet.MargeletConfig;
 +import org.telegram.margelet.MargeletMarkup;
++import org.telegram.margelet.MargeletSpans;
 +import org.telegram.messenger.LocaleController;
 +import org.telegram.messenger.R;
 +import org.telegram.ui.ActionBar.AlertDialog;
@@ -3831,6 +4251,83 @@ index 00000000..0cbb68c1
 +                .setPositiveButton(LocaleController.getString(R.string.Done),
 +                        (d, w) -> editText.makeSelectedMargelet(MargeletMarkup.KIND_SIZE, chosen[0], start, end))
 +                .setNegativeButton(LocaleController.getString(R.string.Cancel), null)
++                .show();
++    }
++
++
++    /**
++     * Окно кнопки: куда ведёт и какого цвета.
++     *
++     * Цвет выбирается кружками, а не списком названий: названий у цветов нет,
++     * а показать их можно прямо.
++     */
++    public static void showButton(Context context, EditTextCaption editText, int start, int end) {
++        if (context == null || editText == null || start < 0 || end <= start) {
++            return;
++        }
++        final int[] chosen = {0};
++
++        final LinearLayout layout = new LinearLayout(context);
++        layout.setOrientation(LinearLayout.VERTICAL);
++        layout.setPadding(dp(20), dp(4), dp(20), 0);
++
++        final android.widget.EditText address = new android.widget.EditText(context);
++        address.setHint(LocaleController.getString(R.string.MargeletMarkupButtonHint));
++        address.setTextColor(Theme.getColor(Theme.key_dialogTextBlack));
++        address.setHintTextColor(Theme.getColor(Theme.key_dialogTextHint));
++        address.setSingleLine(true);
++        layout.addView(address, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT,
++                LayoutHelper.WRAP_CONTENT));
++
++        final LinearLayout colors = new LinearLayout(context);
++        colors.setOrientation(LinearLayout.HORIZONTAL);
++        colors.setPadding(0, dp(14), 0, 0);
++        final android.view.View[] dots = new android.view.View[MargeletSpans.BUTTON_COLORS.length];
++        for (int i = 0; i < dots.length; i++) {
++            final int index = i;
++            final android.view.View dot = new android.view.View(context);
++            dot.setBackground(Theme.createCircleDrawable(dp(22), MargeletSpans.buttonColor(i)));
++            dot.setOnClickListener(v -> {
++                chosen[0] = index;
++                for (int k = 0; k < dots.length; k++) {
++                    dots[k].setScaleX(k == index ? 1.25f : 1f);
++                    dots[k].setScaleY(k == index ? 1.25f : 1f);
++                }
++            });
++            dots[i] = dot;
++            colors.addView(dot, LayoutHelper.createLinear(22, 22, 0, 0, i == 0 ? 0 : 6, 0, 0));
++        }
++        dots[0].setScaleX(1.25f);
++        dots[0].setScaleY(1.25f);
++        layout.addView(colors, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT,
++                LayoutHelper.WRAP_CONTENT));
++
++        new AlertDialog.Builder(context)
++                .setTitle(LocaleController.getString(R.string.MargeletMarkupButton))
++                .setView(layout)
++                .setPositiveButton(LocaleController.getString(R.string.Done), (d, w) -> {
++                    final String url = address.getText().toString().trim();
++                    editText.makeSelectedButton(chosen[0], url, start, end);
++                })
++                .setNegativeButton(LocaleController.getString(R.string.Cancel), null)
++                .show();
++    }
++
++    /**
++     * Предупреждение про премиум-значки, один раз.
++     *
++     * Текст говорит ровно то, что происходит: премиума от этого не появится,
++     * анимацию увидят только в форке, остальным уедет запасной символ.
++     */
++    public static void warnEmojiOnce(Context context) {
++        if (context == null || MargeletConfig.emojiWarned()) {
++            return;
++        }
++        MargeletConfig.setEmojiWarned(true);
++        new AlertDialog.Builder(context)
++                .setTitle(LocaleController.getString(R.string.MargeletEmojiWarnTitle))
++                .setMessage(LocaleController.getString(R.string.MargeletEmojiWarnText))
++                .setPositiveButton(LocaleController.getString(R.string.OK), null)
 +                .show();
 +    }
 +
@@ -13315,7 +13812,7 @@ index 03d0ba33..17f98fa6 100644
      <string name="English">Inglês</string>
      <string name="LanguageNameInEnglish">Portuguese (Brazil)</string>
 diff --git a/TMessagesProj/src/main/res/values-ru/strings.xml b/TMessagesProj/src/main/res/values-ru/strings.xml
-index 24c56292..bfe511e3 100644
+index 24c56292..562e30cd 100644
 --- a/TMessagesProj/src/main/res/values-ru/strings.xml
 +++ b/TMessagesProj/src/main/res/values-ru/strings.xml
 @@ -1,7 +1,7 @@
@@ -13328,7 +13825,7 @@ index 24c56292..bfe511e3 100644
      <string name="LanguageName">Русский</string>
      <string name="English">Английский</string>
      <string name="LanguageNameInEnglish">Russian</string>
-@@ -263,4 +263,107 @@
+@@ -263,4 +263,113 @@
      <string name="RemindTodayAt">\'Отправить сегодня в\' HH:mm</string>
      <string name="RemindDayAt">\'Отправить\' d MMM \'в\' HH:mm</string>
      <string name="RemindDayYearAt">\'Напомнить\' d MMM yyyy \'в\' HH:mm</string>
@@ -13412,6 +13909,12 @@ index 24c56292..bfe511e3 100644
 +    <string name="MargeletMarkupSizeExample">Вот такой</string>
 +    <string name="MargeletMarkupDim">Затемнение</string>
 +    <string name="MargeletMarkupRainbow">Радуга</string>
++    <string name="MargeletMarkupButton">Кнопка</string>
++    <string name="MargeletMarkupButtonHint">Ссылка: сайт или t.me/…</string>
++    <string name="MargeletFreeEmoji">Премиум-значки без премиума</string>
++    <string name="MargeletFreeEmojiAbout">Ставить платные значки в свои сообщения. Их увидят только в Margelet: сервер такую пометку у не-премиума не пропускает, остальным придёт запасной символ.</string>
++    <string name="MargeletEmojiWarnTitle">Премиум-значки</string>
++    <string name="MargeletEmojiWarnText">Премиума у вас от этого не появится. Значок увидят только в Margelet, всем остальным придёт обычный запасной символ.</string>
 +    <string name="MargeletMarkup">Оформление</string>
 +    <string name="MargeletMarkupInfo">Своё оформление текста</string>
 +    <string name="MargeletMarkupAbout">Что показывать в чужих сообщениях. Отправлять можно в любом случае.</string>
@@ -13452,21 +13955,22 @@ index d4683443..57d10109 100644
      <string name="English">Англійська</string>
      <string name="LanguageNameInEnglish">Ukrainian</string>
 diff --git a/TMessagesProj/src/main/res/values/ids.xml b/TMessagesProj/src/main/res/values/ids.xml
-index cc49d135..8c6e02b7 100644
+index cc49d135..1a5c2cf8 100644
 --- a/TMessagesProj/src/main/res/values/ids.xml
 +++ b/TMessagesProj/src/main/res/values/ids.xml
-@@ -1,5 +1,9 @@
+@@ -1,5 +1,10 @@
  <resources>
      <item name="menu_spoiler" type="id"/>
 +    <!-- Своё оформление форка: размер, затемнение, радуга. -->
 +    <item name="menu_margelet_size" type="id"/>
 +    <item name="menu_margelet_dim" type="id"/>
 +    <item name="menu_margelet_rainbow" type="id"/>
++    <item name="menu_margelet_button" type="id"/>
      <item name="menu_quote" type="id"/>
      <item name="menu_regular" type="id"/>
      <item name="menu_bold" type="id"/>
 diff --git a/TMessagesProj/src/main/res/values/strings.xml b/TMessagesProj/src/main/res/values/strings.xml
-index ffa4d566..bf79f09b 100644
+index ffa4d566..4e6f70f1 100644
 --- a/TMessagesProj/src/main/res/values/strings.xml
 +++ b/TMessagesProj/src/main/res/values/strings.xml
 @@ -1,7 +1,7 @@
@@ -13479,7 +13983,7 @@ index ffa4d566..bf79f09b 100644
      <string name="LanguageName">English</string>
      <string name="English">English</string>
      <string name="LanguageNameInEnglish">English</string>
-@@ -11221,4 +11221,107 @@
+@@ -11221,4 +11221,113 @@
      <string name="UnsupportedMessageTitle">Unsupported Message</string>
      <string name="UnsupportedMessageMessage">Update Telegram to view this message</string>
      <string name="UnsupportedUpdate">Update</string>
@@ -13563,6 +14067,12 @@ index ffa4d566..bf79f09b 100644
 +    <string name="MargeletMarkupSizeExample">Like this</string>
 +    <string name="MargeletMarkupDim">Dim</string>
 +    <string name="MargeletMarkupRainbow">Rainbow</string>
++    <string name="MargeletMarkupButton">Button</string>
++    <string name="MargeletMarkupButtonHint">Link: a site or t.me/…</string>
++    <string name="MargeletFreeEmoji">Premium emoji without Premium</string>
++    <string name="MargeletFreeEmojiAbout">Put paid emoji into your messages. Only Margelet shows them: the server does not accept that marker from a non-Premium account, so everyone else gets the fallback character.</string>
++    <string name="MargeletEmojiWarnTitle">Premium emoji</string>
++    <string name="MargeletEmojiWarnText">This does not give you Premium. Only Margelet will show the emoji, everyone else gets the plain fallback character.</string>
 +    <string name="MargeletMarkup">Formatting</string>
 +    <string name="MargeletMarkupInfo">Text formatting of the fork</string>
 +    <string name="MargeletMarkupAbout">What to show in other people\u0027s messages. Sending is always allowed.</string>

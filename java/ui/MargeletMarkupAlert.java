@@ -11,6 +11,7 @@ import android.widget.TextView;
 
 import org.telegram.margelet.MargeletConfig;
 import org.telegram.margelet.MargeletMarkup;
+import org.telegram.margelet.MargeletSpans;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.R;
 import org.telegram.ui.ActionBar.AlertDialog;
@@ -73,6 +74,83 @@ public class MargeletMarkupAlert {
                 .setPositiveButton(LocaleController.getString(R.string.Done),
                         (d, w) -> editText.makeSelectedMargelet(MargeletMarkup.KIND_SIZE, chosen[0], start, end))
                 .setNegativeButton(LocaleController.getString(R.string.Cancel), null)
+                .show();
+    }
+
+
+    /**
+     * Окно кнопки: куда ведёт и какого цвета.
+     *
+     * Цвет выбирается кружками, а не списком названий: названий у цветов нет,
+     * а показать их можно прямо.
+     */
+    public static void showButton(Context context, EditTextCaption editText, int start, int end) {
+        if (context == null || editText == null || start < 0 || end <= start) {
+            return;
+        }
+        final int[] chosen = {0};
+
+        final LinearLayout layout = new LinearLayout(context);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(dp(20), dp(4), dp(20), 0);
+
+        final android.widget.EditText address = new android.widget.EditText(context);
+        address.setHint(LocaleController.getString(R.string.MargeletMarkupButtonHint));
+        address.setTextColor(Theme.getColor(Theme.key_dialogTextBlack));
+        address.setHintTextColor(Theme.getColor(Theme.key_dialogTextHint));
+        address.setSingleLine(true);
+        layout.addView(address, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT,
+                LayoutHelper.WRAP_CONTENT));
+
+        final LinearLayout colors = new LinearLayout(context);
+        colors.setOrientation(LinearLayout.HORIZONTAL);
+        colors.setPadding(0, dp(14), 0, 0);
+        final android.view.View[] dots = new android.view.View[MargeletSpans.BUTTON_COLORS.length];
+        for (int i = 0; i < dots.length; i++) {
+            final int index = i;
+            final android.view.View dot = new android.view.View(context);
+            dot.setBackground(Theme.createCircleDrawable(dp(22), MargeletSpans.buttonColor(i)));
+            dot.setOnClickListener(v -> {
+                chosen[0] = index;
+                for (int k = 0; k < dots.length; k++) {
+                    dots[k].setScaleX(k == index ? 1.25f : 1f);
+                    dots[k].setScaleY(k == index ? 1.25f : 1f);
+                }
+            });
+            dots[i] = dot;
+            colors.addView(dot, LayoutHelper.createLinear(22, 22, 0, 0, i == 0 ? 0 : 6, 0, 0));
+        }
+        dots[0].setScaleX(1.25f);
+        dots[0].setScaleY(1.25f);
+        layout.addView(colors, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT,
+                LayoutHelper.WRAP_CONTENT));
+
+        new AlertDialog.Builder(context)
+                .setTitle(LocaleController.getString(R.string.MargeletMarkupButton))
+                .setView(layout)
+                .setPositiveButton(LocaleController.getString(R.string.Done), (d, w) -> {
+                    final String url = address.getText().toString().trim();
+                    editText.makeSelectedButton(chosen[0], url, start, end);
+                })
+                .setNegativeButton(LocaleController.getString(R.string.Cancel), null)
+                .show();
+    }
+
+    /**
+     * Предупреждение про премиум-значки, один раз.
+     *
+     * Текст говорит ровно то, что происходит: премиума от этого не появится,
+     * анимацию увидят только в форке, остальным уедет запасной символ.
+     */
+    public static void warnEmojiOnce(Context context) {
+        if (context == null || MargeletConfig.emojiWarned()) {
+            return;
+        }
+        MargeletConfig.setEmojiWarned(true);
+        new AlertDialog.Builder(context)
+                .setTitle(LocaleController.getString(R.string.MargeletEmojiWarnTitle))
+                .setMessage(LocaleController.getString(R.string.MargeletEmojiWarnText))
+                .setPositiveButton(LocaleController.getString(R.string.OK), null)
                 .show();
     }
 

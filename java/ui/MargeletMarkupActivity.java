@@ -25,6 +25,8 @@ public class MargeletMarkupActivity extends UniversalFragment {
     private static final int ID_RAINBOW = 3;
     private static final int ID_WATERMARKS = 4;
     private static final int ID_COPY = 5;
+    private static final int ID_BUTTON = 6;
+    private static final int ID_EMOJI = 7;
 
     @Override
     protected CharSequence getTitle() {
@@ -46,7 +48,12 @@ public class MargeletMarkupActivity extends UniversalFragment {
                 .setChecked(MargeletConfig.markupEnabled(MargeletMarkup.KIND_DIM)));
         items.add(UItem.asCheck(ID_RAINBOW, LocaleController.getString(R.string.MargeletMarkupRainbow))
                 .setChecked(MargeletConfig.markupEnabled(MargeletMarkup.KIND_RAINBOW)));
+        items.add(UItem.asCheck(ID_BUTTON, LocaleController.getString(R.string.MargeletMarkupButton))
+                .setChecked(MargeletConfig.markupEnabled(MargeletMarkup.KIND_BUTTON)));
         items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletMarkupAbout)));
+        items.add(UItem.asCheck(ID_EMOJI, LocaleController.getString(R.string.MargeletFreeEmoji))
+                .setChecked(MargeletConfig.freeEmoji()));
+        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletFreeEmojiAbout)));
         items.add(UItem.asCheck(ID_WATERMARKS, LocaleController.getString(R.string.MargeletWatermarks))
                 .setChecked(MargeletConfig.showWatermarks()));
         items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletWatermarksAbout)));
@@ -61,6 +68,11 @@ public class MargeletMarkupActivity extends UniversalFragment {
             MargeletConfig.setShowWatermarks(!MargeletConfig.showWatermarks());
         } else if (item.id == ID_COPY) {
             MargeletConfig.setCopyFormatting(!MargeletConfig.copyFormatting());
+        } else if (item.id == ID_EMOJI) {
+            MargeletConfig.setFreeEmoji(!MargeletConfig.freeEmoji());
+        } else if (item.id == ID_BUTTON) {
+            MargeletConfig.setMarkupEnabled(MargeletMarkup.KIND_BUTTON,
+                    !MargeletConfig.markupEnabled(MargeletMarkup.KIND_BUTTON));
         } else {
             final int kind = item.id == ID_SIZE ? MargeletMarkup.KIND_SIZE
                     : item.id == ID_DIM ? MargeletMarkup.KIND_DIM

@@ -60,6 +60,25 @@ public class MargeletMarkup {
     public static final int KIND_SIZE = 0;
     public static final int KIND_DIM = 1;
     public static final int KIND_RAINBOW = 2;
+    /** Кнопка: подпись видна текстом, ссылка едет в нагрузке метки. */
+    public static final int KIND_BUTTON = 3;
+    /** Премиум-значок: в нагрузке номер документа. */
+    public static final int KIND_EMOJI = 4;
+
+    /**
+     * Длина нагрузки в разрядах и разрядов на байт.
+     *
+     * Нагрузка нужна не всем видам: у размера и радуги хватает значения, а
+     * кнопке нужна ссылка, значку — его номер. Поэтому у метки переменная
+     * длина: сначала пять разрядов длины, потом байты по шесть разрядов
+     * (три в шестой степени — 729, любой байт помещается).
+     */
+    private static final int LEN_TRITS = 5;
+    private static final int BYTE_TRITS = 6;
+
+    private static boolean hasPayload(int kind) {
+        return kind == KIND_BUTTON || kind == KIND_EMOJI;
+    }
 
     /**
      * Заголовок, который форк дописывает в начало оформленного сообщения.
@@ -106,11 +125,54 @@ public class MargeletMarkup {
 
     /** Открывающая метка как строка. */
     public static String open(int kind, int value) {
+        return open(kind, value, null);
+    }
+
+    public static String open(int kind, int value, byte[] payload) {
         final StringBuilder out = new StringBuilder();
         out.append(OPEN);
         number(out, kind, KIND_TRITS);
         number(out, value, VALUE_TRITS);
+        if (hasPayload(kind)) {
+            final byte[] bytes = payload == null ? new byte[0] : payload;
+            final int length = Math.min(bytes.length, pow(TRITS, LEN_TRITS) - 1);
+            number(out, length, LEN_TRITS);
+            for (int i = 0; i < length; i++) {
+                number(out, bytes[i] & 0xFF, BYTE_TRITS);
+            }
+        }
         return out.toString();
+    }
+
+    private static int pow(int base, int power) {
+        int result = 1;
+        for (int i = 0; i < power; i++) {
+            result *= base;
+        }
+        return result;
+    }
+
+    /** Нагрузка как строка в UTF-8, или пусто. */
+    public static String payloadOf(byte[] payload) {
+        if (payload == null || payload.length == 0) {
+            return "";
+        }
+        try {
+            return new String(payload, "UTF-8");
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    public static byte[] bytesOf(String text) {
+        if (text == null) {
+            return new byte[0];
+        }
+        try {
+            return text.getBytes("UTF-8");
+        } catch (Exception e) {
+            return new byte[0];
+        }
     }
 
     public static String close() {
@@ -123,12 +185,19 @@ public class MargeletMarkup {
         public final int value;
         public final int start;
         public final int end;
+        /** Ссылка у кнопки, номер документа у значка. Иначе пусто. */
+        public final byte[] payload;
 
-        Run(int kind, int value, int start, int end) {
+        Run(int kind, int value, int start, int end, byte[] payload) {
             this.kind = kind;
             this.value = value;
             this.start = start;
             this.end = end;
+            this.payload = payload;
+        }
+
+        public String text() {
+            return payloadOf(payload);
         }
     }
 
@@ -147,19 +216,37 @@ public class MargeletMarkup {
         }
         // Метки могут вкладываться друг в друга, поэтому открытые куски
         // держим стопкой: закрывающий знак закрывает последний открытый.
-        final ArrayList<int[]> open = new ArrayList<>();
+        final ArrayList<Object[]> open = new ArrayList<>();
         for (int i = 0; i < text.length(); i++) {
             final char c = text.charAt(i);
             if (c == OPEN && i + MARK_LEN <= text.length() && allTrits(text, i + 1)) {
-                open.add(new int[]{
-                        number(text, i + 1, KIND_TRITS),
-                        number(text, i + 1 + KIND_TRITS, VALUE_TRITS),
-                        i + MARK_LEN});
-                i += MARK_LEN - 1;
+                final int kind = number(text, i + 1, KIND_TRITS);
+                final int value = number(text, i + 1 + KIND_TRITS, VALUE_TRITS);
+                int after = i + MARK_LEN;
+                byte[] payload = new byte[0];
+                if (hasPayload(kind)) {
+                    if (after + LEN_TRITS > text.length() || !allTrits(text, after, LEN_TRITS)) {
+                        continue;   // метка обрезана — считаем её мусором
+                    }
+                    final int length = number(text, after, LEN_TRITS);
+                    after += LEN_TRITS;
+                    if (after + length * BYTE_TRITS > text.length()
+                            || !allTrits(text, after, length * BYTE_TRITS)) {
+                        continue;
+                    }
+                    payload = new byte[length];
+                    for (int b = 0; b < length; b++) {
+                        payload[b] = (byte) number(text, after + b * BYTE_TRITS, BYTE_TRITS);
+                    }
+                    after += length * BYTE_TRITS;
+                }
+                open.add(new Object[]{kind, value, after, payload});
+                i = after - 1;
             } else if (c == CLOSE && !open.isEmpty()) {
-                final int[] top = open.remove(open.size() - 1);
-                if (i > top[2]) {
-                    runs.add(new Run(top[0], top[1], top[2], i));
+                final Object[] top = open.remove(open.size() - 1);
+                final int start = (Integer) top[2];
+                if (i > start) {
+                    runs.add(new Run((Integer) top[0], (Integer) top[1], start, i, (byte[]) top[3]));
                 }
             }
         }
@@ -167,7 +254,14 @@ public class MargeletMarkup {
     }
 
     private static boolean allTrits(CharSequence text, int at) {
-        for (int i = 0; i < MARK_LEN - 1; i++) {
+        return allTrits(text, at, MARK_LEN - 1);
+    }
+
+    private static boolean allTrits(CharSequence text, int at, int count) {
+        if (at + count > text.length()) {
+            return false;
+        }
+        for (int i = 0; i < count; i++) {
             if (!isTrit(text.charAt(at + i))) {
                 return false;
             }
@@ -199,7 +293,9 @@ public class MargeletMarkup {
         }
         final Spanned spanned = (Spanned) text;
         final MargeletSpans.Base[] spans = spanned.getSpans(0, spanned.length(), MargeletSpans.Base.class);
-        if (spans.length == 0) {
+        final boolean hasEmoji = spanned.getSpans(0, spanned.length(),
+                org.telegram.ui.Components.AnimatedEmojiSpan.class).length > 0;
+        if (spans.length == 0 && !hasEmoji) {
             return text;
         }
         final SpannableStringBuilder out = new SpannableStringBuilder(text);
@@ -207,14 +303,34 @@ public class MargeletMarkup {
         // от того, в каком порядке система вернула разметку.
         // Метка: позиция, открывающая?, начало куска, конец куска, вид, значение.
         final ArrayList<int[]> marks = new ArrayList<>();
+        final ArrayList<byte[]> payloads = new ArrayList<>();
         for (MargeletSpans.Base span : spans) {
             final int start = spanned.getSpanStart(span);
             final int end = spanned.getSpanEnd(span);
             if (start < 0 || end <= start) {
                 continue;
             }
-            marks.add(new int[]{start, 1, start, end, span.kind(), span.value()});
-            marks.add(new int[]{end, 0, start, end, span.kind(), span.value()});
+            marks.add(new int[]{start, 1, start, end, span.kind(), span.value(), payloads.size()});
+            marks.add(new int[]{end, 0, start, end, span.kind(), span.value(), payloads.size()});
+            payloads.add(span.payload());
+        }
+
+        // Премиум-значки: у них своя разметка от телеграма, не наша. Меняем её
+        // на нашу метку с номером документа и убираем — иначе при отправке
+        // соберётся телеграмовская пометка, а сервер её у не-премиума не
+        // пропустит и не отправится вообще ничего.
+        final org.telegram.ui.Components.AnimatedEmojiSpan[] emoji =
+                out.getSpans(0, out.length(), org.telegram.ui.Components.AnimatedEmojiSpan.class);
+        for (org.telegram.ui.Components.AnimatedEmojiSpan span : emoji) {
+            final int start = out.getSpanStart(span);
+            final int end = out.getSpanEnd(span);
+            out.removeSpan(span);
+            if (start < 0 || end <= start) {
+                continue;
+            }
+            marks.add(new int[]{start, 1, start, end, KIND_EMOJI, 0, payloads.size()});
+            marks.add(new int[]{end, 0, start, end, KIND_EMOJI, 0, payloads.size()});
+            payloads.add(bytesOf(Long.toString(span.getDocumentId())));
         }
         // Порядок вставки тут не «как удобнее», а единственно верный, и обе
         // тонкости я сначала сделал наоборот. Обе поймала отдельная модель
@@ -237,7 +353,9 @@ public class MargeletMarkup {
             return a[1] == 1 ? Integer.compare(a[3], b[3]) : Integer.compare(a[2], b[2]);
         });
         for (int[] mark : marks) {
-            out.insert(mark[0], mark[1] == 1 ? open(mark[4], mark[5]) : close());
+            out.insert(mark[0], mark[1] == 1
+                    ? open(mark[4], mark[5], payloads.get(mark[6]))
+                    : close());
         }
         // Заголовок стоит в конце, а не в начале: из начала он лезет в
         // уведомления и в список чатов, где от сообщения видна одна строка.
@@ -252,6 +370,28 @@ public class MargeletMarkup {
         for (Run run : parse(text)) {
             if (!MargeletConfig.markupEnabled(run.kind)) {
                 continue;   // этот вид оформления человек выключил у себя
+            }
+            if (run.kind == KIND_BUTTON) {
+                final String url = run.text();
+                text.setSpan(new MargeletSpans.Button(run.value, url),
+                        run.start, run.end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                if (!url.isEmpty()) {
+                    // Нажатие отдаём обычной ссылочной разметке: её телеграм
+                    // ловит сам, своя обработка тут была бы лишней.
+                    text.setSpan(new org.telegram.ui.Components.URLSpanReplacement(url),
+                            run.start, run.end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                }
+                continue;
+            }
+            if (run.kind == KIND_EMOJI) {
+                try {
+                    final long id = Long.parseLong(run.text());
+                    text.setSpan(new org.telegram.ui.Components.AnimatedEmojiSpan(id, null),
+                            run.start, run.end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                } catch (Exception ignored) {
+                    // Номер не разобрался — оставляем запасной значок как есть.
+                }
+                continue;
             }
             final Object span = MargeletSpans.create(run.kind, run.value);
             if (span != null) {

@@ -31,10 +31,26 @@ public class MargeletSpans {
 
         public abstract int value();
 
+        /** Нагрузка метки: ссылка у кнопки. У остальных ничего. */
+        public byte[] payload() {
+            return null;
+        }
+
         @Override
         public void updateMeasureState(@NonNull TextPaint paint) {
             // По умолчанию оформление на размеры не влияет.
         }
+    }
+
+    /** Цвета кнопок. Значение метки — номер в этом списке. */
+    public static final int[] BUTTON_COLORS = {
+            0xFF4E9CF5, 0xFF34C759, 0xFFF0932B, 0xFFE74C3C, 0xFF9B59B6,
+            0xFF16A085, 0xFFE84393, 0xFF7F8C8D, 0xFF2C3E50, 0xFFD4AC0D,
+            0xFF00B8D9, 0xFF6C5CE7, 0xFF8DD1B0, 0xFFB7A8E0
+    };
+
+    public static int buttonColor(int value) {
+        return BUTTON_COLORS[Math.max(0, Math.min(BUTTON_COLORS.length - 1, value))];
     }
 
     public static Object create(int kind, int value) {
@@ -151,6 +167,96 @@ public class MargeletSpans {
             MargeletSeizure.poke();
             hsv[0] = (System.currentTimeMillis() % CYCLE_MS) * 360f / CYCLE_MS;
             paint.setColor(Color.HSVToColor(hsv));
+        }
+    }
+
+    /**
+     * Пометка кнопки: невидимая, нужна только чтобы отправка знала цвет и
+     * ссылку. Рисует кнопку отдельная разметка {@link Button}: одна и та же
+     * разметка не может и занимать место, и оставаться в списке наших меток.
+     */
+    public static class ButtonMark extends Base {
+        private final int value;
+        private final String url;
+
+        public ButtonMark(int value, String url) {
+            this.value = value;
+            this.url = url;
+        }
+
+        @Override
+        public int kind() {
+            return MargeletMarkup.KIND_BUTTON;
+        }
+
+        @Override
+        public int value() {
+            return value;
+        }
+
+        @Override
+        public byte[] payload() {
+            return MargeletMarkup.bytesOf(url);
+        }
+
+        @Override
+        public void updateDrawState(TextPaint paint) {
+            // Ничего: рисует Button.
+        }
+    }
+
+    /**
+     * Кнопка: подпись рисуется на цветной плашке, как у ботов.
+     *
+     * Рисование и нажатие разведены нарочно. Эта разметка занимает место и
+     * рисует плашку, а за нажатие отвечает обычная ссылочная разметка, которую
+     * телеграм уже умеет ловить, — свою обработку нажатий заводить незачем.
+     */
+    public static class Button extends ReplacementSpan {
+        private final int color;
+        private final String url;
+        private final android.graphics.RectF rect = new android.graphics.RectF();
+
+        public Button(int value, String url) {
+            this.color = buttonColor(value);
+            this.url = url;
+        }
+
+        public String url() {
+            return url;
+        }
+
+        private static int padding() {
+            return org.telegram.messenger.AndroidUtilities.dp(10);
+        }
+
+        @Override
+        public int getSize(@NonNull Paint paint, CharSequence text, int start, int end,
+                           Paint.FontMetricsInt fm) {
+            final int width = (int) paint.measureText(text, start, end) + padding() * 2;
+            if (fm != null) {
+                final Paint.FontMetricsInt source = paint.getFontMetricsInt();
+                final int extra = org.telegram.messenger.AndroidUtilities.dp(3);
+                fm.ascent = fm.top = source.ascent - extra;
+                fm.descent = fm.bottom = source.descent + extra;
+            }
+            return width;
+        }
+
+        @Override
+        public void draw(@NonNull Canvas canvas, CharSequence text, int start, int end,
+                         float x, int top, int y, int bottom, @NonNull Paint paint) {
+            final int extra = org.telegram.messenger.AndroidUtilities.dp(3);
+            final float width = paint.measureText(text, start, end) + padding() * 2;
+            rect.set(x, paint.getFontMetricsInt().ascent + y - extra,
+                    x + width, paint.getFontMetricsInt().descent + y + extra);
+            final int wasColor = paint.getColor();
+            paint.setColor(color);
+            canvas.drawRoundRect(rect, org.telegram.messenger.AndroidUtilities.dp(8),
+                    org.telegram.messenger.AndroidUtilities.dp(8), paint);
+            paint.setColor(0xFFFFFFFF);
+            canvas.drawText(text, start, end, x + padding(), y, paint);
+            paint.setColor(wasColor);
         }
     }
 

@@ -140,6 +140,92 @@ public class MargeletCopy {
         return out.toString();
     }
 
+
+    /**
+     * Разметка телеграма значками, как её пишут руками.
+     *
+     * Это и есть то, что попадает в буфер обычным текстом. HTML понимают
+     * далеко не везде, а вот **жирный** телеграм разбирает обратно сам — я
+     * взял ровно те значки, которые он ищет при отправке (BOLD_PATTERN и
+     * соседние в MediaDataController), чтобы вставленное вернулось тем же
+     * оформлением, а не осталось звёздочками.
+     *
+     * Подчёркиванию значка в телеграме нет, поэтому оно теряется — честнее
+     * потерять, чем написать значок, который потом не разберётся.
+     */
+    private static String token(TLRPC.MessageEntity entity) {
+        if (entity instanceof TLRPC.TL_messageEntityBold) {
+            return "**";
+        } else if (entity instanceof TLRPC.TL_messageEntityItalic) {
+            return "__";
+        } else if (entity instanceof TLRPC.TL_messageEntityStrike) {
+            return "~~";
+        } else if (entity instanceof TLRPC.TL_messageEntitySpoiler) {
+            return "||";
+        } else if (entity instanceof TLRPC.TL_messageEntityCode) {
+            return "`";
+        } else if (entity instanceof TLRPC.TL_messageEntityPre) {
+            return "```";
+        }
+        return null;
+    }
+
+    /** То же разрезание по границам, что и в HTML, только значками телеграма. */
+    public static String markdown(CharSequence text, ArrayList<TLRPC.MessageEntity> entities) {
+        if (text == null) {
+            return null;
+        }
+        final List<TLRPC.MessageEntity> usable = new ArrayList<>();
+        final TreeSet<Integer> bounds = new TreeSet<>();
+        bounds.add(0);
+        bounds.add(text.length());
+        if (entities != null) {
+            for (TLRPC.MessageEntity entity : entities) {
+                if (token(entity) != null && entity.offset >= 0 && entity.length > 0
+                        && entity.offset + entity.length <= text.length()) {
+                    usable.add(entity);
+                    bounds.add(entity.offset);
+                    bounds.add(entity.offset + entity.length);
+                }
+            }
+        }
+        if (usable.isEmpty()) {
+            return text.toString();
+        }
+        Collections.sort(usable, (a, b) -> a.offset != b.offset
+                ? Integer.compare(a.offset, b.offset)
+                : Integer.compare(b.length, a.length));
+
+        final StringBuilder out = new StringBuilder();
+        final List<TLRPC.MessageEntity> stack = new ArrayList<>();
+        final List<Integer> points = new ArrayList<>(bounds);
+        for (int k = 0; k + 1 < points.size(); k++) {
+            final int from = points.get(k), to = points.get(k + 1);
+            final List<TLRPC.MessageEntity> want = new ArrayList<>();
+            for (TLRPC.MessageEntity entity : usable) {
+                if (entity.offset <= from && from < entity.offset + entity.length) {
+                    want.add(entity);
+                }
+            }
+            int same = 0;
+            while (same < stack.size() && same < want.size() && stack.get(same) == want.get(same)) {
+                same++;
+            }
+            while (stack.size() > same) {
+                out.append(token(stack.remove(stack.size() - 1)));
+            }
+            for (int i = same; i < want.size(); i++) {
+                out.append(token(want.get(i)));
+                stack.add(want.get(i));
+            }
+            out.append(text, from, to);
+        }
+        while (!stack.isEmpty()) {
+            out.append(token(stack.remove(stack.size() - 1)));
+        }
+        return out.toString();
+    }
+
     /** Кладёт сообщение в буфер вместе с оформлением. */
     public static void copy(MessageObject message) {
         if (message == null || message.messageOwner == null) {
@@ -149,13 +235,18 @@ public class MargeletCopy {
         if (TextUtils.isEmpty(plain)) {
             return;
         }
+        // В буфер кладём два представления. Обычным текстом идёт разметка
+        // значками: её телеграм разбирает обратно сам, и вставленное снова
+        // становится жирным, а не остаётся звёздочками. Владелец на это и
+        // жаловался — HTML понимают далеко не везде.
+        final CharSequence asText = markdown(plain, message.messageOwner.entities);
         final String asHtml = html(plain, message.messageOwner.entities);
         if (TextUtils.isEmpty(asHtml)) {
-            AndroidUtilities.addToClipboard(plain);
+            AndroidUtilities.addToClipboard(asText);
         } else {
             // Через двухдоводный addToClipboard: он не чистит текст, а
             // одинарный нарочно вычищает наши метки — здесь они и есть смысл.
-            AndroidUtilities.addToClipboard(plain, asHtml);
+            AndroidUtilities.addToClipboard(asText, asHtml);
         }
     }
 }

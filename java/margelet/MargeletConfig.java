@@ -116,6 +116,23 @@ public class MargeletConfig {
         prefs().edit().putBoolean("watermarks", on).apply();
     }
 
+    /** Премиум-значки без премиума: видны только в форке. */
+    public static boolean freeEmoji() {
+        return prefs().getBoolean("free_emoji", true);
+    }
+
+    public static void setFreeEmoji(boolean on) {
+        prefs().edit().putBoolean("free_emoji", on).apply();
+    }
+
+    public static boolean emojiWarned() {
+        return prefs().getBoolean("emoji_warned", false);
+    }
+
+    public static void setEmojiWarned(boolean value) {
+        prefs().edit().putBoolean("emoji_warned", value).apply();
+    }
+
     /** Пункт «Копировать с оформлением» в меню сообщения. */
     public static boolean copyFormatting() {
         return prefs().getBoolean("copy_formatting", true);
