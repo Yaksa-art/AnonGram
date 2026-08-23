@@ -29,6 +29,601 @@ index 7cc3a8e3..533927ca 100644
              buildConfigField "String", "BUILD_VERSION_STRING", "\"" + APP_VERSION_NAME + "\""
              buildConfigField "String", "APP_CENTER_HASH", "\"\""
              buildConfigField "String", "BETA_URL", "\"" + getProps("BETA_PRIVATE_URL") + "\""
+diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
+new file mode 100644
+index 00000000..9721af0c
+--- /dev/null
++++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
+@@ -0,0 +1,122 @@
++package org.telegram.margelet;
++
++import android.content.Context;
++import android.content.SharedPreferences;
++
++import org.telegram.messenger.ApplicationLoader;
++
++/**
++ * Настройки форка. Держим их в отдельном файле и в своём разделе настроек,
++ * чтобы правки не растекались по коду оригинала: чем меньше тронуто чужих
++ * строк, тем проще будет подтягивать новые версии телеграма.
++ */
++public class MargeletConfig {
++
++    private static final String PREFS = "margelet";
++
++    public static final int INPUT_LINES_DEFAULT = 6;
++    public static final float INPUT_TEXT_SIZE_DEFAULT = 18f;
++
++    public static final String APP_NAME = "Margelet";
++
++    public static final String CHANNEL_URL = "https://t.me/margeletter";
++    public static final String FORUM_URL = "https://t.me/margeletforum";
++
++    private static SharedPreferences prefs() {
++        return ApplicationLoader.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
++    }
++
++    /**
++     * До скольких строк растёт поле ввода, прежде чем начать прокручиваться.
++     * Ноль означает «расти, пока есть место на экране»: сам EditText выше
++     * своего контейнера не станет, так что бесконечности тут не будет — будет
++     * ровно высота экрана, о которой и просили.
++     */
++    public static int inputMaxLines() {
++        int v = inputMaxLinesRaw();
++        return v <= 0 ? Integer.MAX_VALUE : v;
++    }
++
++    /**
++     * То же значение, но как оно записано: ноль остаётся нулём. Экрану
++     * настроек нужно именно это — иначе «без предела» пришлось бы угадывать
++     * по двум миллиардам строк.
++     */
++    public static int inputMaxLinesRaw() {
++        return prefs().getInt("input_max_lines", INPUT_LINES_DEFAULT);
++    }
++
++    public static void setInputMaxLines(int lines) {
++        prefs().edit().putInt("input_max_lines", lines).apply();
++    }
++
++    /** Размер текста в поле ввода, в тех же единицах, что и в оригинале. */
++    public static float inputTextSize() {
++        return prefs().getFloat("input_text_size", INPUT_TEXT_SIZE_DEFAULT);
++    }
++
++    public static void setInputTextSize(float sp) {
++        prefs().edit().putFloat("input_text_size", sp).apply();
++    }
++
++    /** Поле ввода сверху экрана, а не снизу. */
++    public static boolean inputOnTop() {
++        return prefs().getBoolean("input_on_top", false);
++    }
++
++    public static void setInputOnTop(boolean top) {
++        prefs().edit().putBoolean("input_on_top", top).apply();
++    }
++
++    /**
++     * Слышал ли человек мяуканье хоть раз. До этого раздела «Звук» в
++     * настройках нет: настраивать то, о существовании чего не знаешь, незачем,
++     * а найденная случайно шутка тем и хороша, что найдена.
++     */
++    public static boolean meowHeard() {
++        return prefs().getBoolean("meow_heard", false);
++    }
++
++    public static void setMeowHeard() {
++        prefs().edit().putBoolean("meow_heard", true).apply();
++    }
++
++    /** Мяуканье по нажатию на название — можно выключить совсем. */
++    public static boolean meowEnabled() {
++        return prefs().getBoolean("meow_enabled", true);
++    }
++
++    public static void setMeowEnabled(boolean enabled) {
++        prefs().edit().putBoolean("meow_enabled", enabled).apply();
++    }
++
++    /**
++     * Путь к своему звуку. Пусто — играет тот, что лежит в сборке. Файл
++     * копируется к нам при выборе: ссылка на чужой файл живёт до первой
++     * уборки в галерее, а копия — сколько нужно.
++     */
++    public static String meowPath() {
++        return prefs().getString("meow_path", null);
++    }
++
++    public static void setMeowPath(String path) {
++        if (path == null) {
++            prefs().edit().remove("meow_path").apply();
++        } else {
++            prefs().edit().putString("meow_path", path).apply();
++        }
++    }
++
++    /**
++     * Первый запуск. Нужен, чтобы один раз включить тёмно-зелёную тему и
++     * больше в выбор темы не лезть: если человек потом поставит другую, наше
++     * дело в это не вмешиваться.
++     */
++    public static boolean claimFirstLaunch() {
++        if (prefs().getBoolean("first_launch_done", false)) {
++            return false;
++        }
++        prefs().edit().putBoolean("first_launch_done", true).apply();
++        return true;
++    }
++}
+diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletMeow.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletMeow.java
+new file mode 100644
+index 00000000..f3d81a4d
+--- /dev/null
++++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletMeow.java
+@@ -0,0 +1,115 @@
++package org.telegram.margelet;
++
++import android.content.Context;
++import android.media.MediaPlayer;
++import android.view.MotionEvent;
++import android.view.View;
++import android.view.ViewConfiguration;
++
++import org.telegram.messenger.AndroidUtilities;
++import org.telegram.messenger.R;
++import org.telegram.ui.Components.CubicBezierInterpolator;
++
++import java.io.File;
++
++/**
++ * Мяуканье по нажатию на название на главном экране, с прогибом надписи.
++ *
++ * Сначала было по удержанию, но владелец справедливо сказал, что по нажатию
++ * живее. Событие не съедается: нажатие по названию по-прежнему прокручивает
++ * список к началу, и ломать привычный жест ради шутки не стоит.
++ *
++ * Нажатием считаем короткое касание без ухода пальца в сторону — иначе мяу
++ * срабатывало бы на каждой прокрутке, начавшейся с названия.
++ */
++public class MargeletMeow {
++
++    public static void attach(View view) {
++        if (view == null) {
++            return;
++        }
++        view.setOnTouchListener(new View.OnTouchListener() {
++            private float startX, startY;
++            private long startAt;
++            private boolean tracking;
++
++            @Override
++            public boolean onTouch(View v, MotionEvent event) {
++                final int slop = ViewConfiguration.get(v.getContext()).getScaledTouchSlop();
++                switch (event.getActionMasked()) {
++                    case MotionEvent.ACTION_DOWN:
++                        startX = event.getX();
++                        startY = event.getY();
++                        startAt = System.currentTimeMillis();
++                        tracking = true;
++                        break;
++                    case MotionEvent.ACTION_MOVE:
++                        if (Math.abs(event.getX() - startX) > slop
++                                || Math.abs(event.getY() - startY) > slop) {
++                            tracking = false;
++                        }
++                        break;
++                    case MotionEvent.ACTION_UP:
++                        if (tracking && System.currentTimeMillis() - startAt
++                                <= ViewConfiguration.getLongPressTimeout()) {
++                            squish(v);
++                            play(v.getContext());
++                        }
++                        tracking = false;
++                        break;
++                    default:
++                        tracking = false;
++                        break;
++                }
++                return false;
++            }
++        });
++    }
++
++    /** Прогиб: надпись приседает и отпружинивает обратно. */
++    public static void squish(View view) {
++        if (view == null) {
++            return;
++        }
++        view.animate().cancel();
++        view.setPivotY(view.getHeight());
++        view.animate()
++                .scaleY(0.72f).scaleX(1.09f)
++                .setDuration(90)
++                .setInterpolator(CubicBezierInterpolator.EASE_OUT)
++                .withEndAction(() -> view.animate()
++                        .scaleY(1f).scaleX(1f)
++                        .setDuration(340)
++                        .setInterpolator(CubicBezierInterpolator.EASE_OUT_BACK)
++                        .start())
++                .start();
++    }
++
++    /** Проиграть звук — тот, что выбран: свой файл или лежащий в сборке. */
++    public static void play(Context context) {
++        if (!MargeletConfig.meowEnabled()) {
++            return;
++        }
++        try {
++            MediaPlayer player;
++            final String own = MargeletConfig.meowPath();
++            if (own != null && new File(own).exists()) {
++                player = new MediaPlayer();
++                player.setDataSource(own);
++                player.prepare();
++            } else {
++                player = MediaPlayer.create(context, R.raw.margelet_meow);
++            }
++            if (player == null) {
++                return;
++            }
++            player.setOnCompletionListener(MediaPlayer::release);
++            player.start();
++            // Настройки звука появляются только после того, как его услышали
++            // хотя бы раз: до этого их не за что настраивать.
++            MargeletConfig.setMeowHeard();
++        } catch (Exception ignored) {
++            // Звук — украшение. Не дала система — экран должен жить дальше.
++        }
++    }
++}
+diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletStrings.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletStrings.java
+new file mode 100644
+index 00000000..a976d1eb
+--- /dev/null
++++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletStrings.java
+@@ -0,0 +1,54 @@
++package org.telegram.margelet;
++
++/**
++ * Подмена имени в текстах интерфейса.
++ *
++ * Слово «Telegram» встречается не только как название приложения: «Telegram
++ * Premium», «Telegram Stars», «Telegram Business» — это платные услуги
++ * самого телеграма, и переименовывать их во что-то своё было бы враньём:
++ * человек платит телеграму, а не нам. Поэтому такие связки оставляем как
++ * есть, а одиночное имя заменяем.
++ *
++ * Ссылки не трогаем: в них имя пишется строчными (telegram.org), а мы ищем
++ * слово с большой буквы.
++ */
++public class MargeletStrings {
++
++    private static final String NAME = "Telegram";
++
++    /** Что после имени означает «это их услуга, не переименовывать». */
++    private static final String[] KEEP_AFTER = {
++            " Premium", " Stars", " Business", " Wallet", " Passport", " Ads", " API", " FAQ"
++    };
++
++    public static String rename(String value) {
++        if (value == null || value.indexOf(NAME) < 0) {
++            return value;
++        }
++        StringBuilder out = new StringBuilder(value.length());
++        int from = 0;
++        while (true) {
++            int at = value.indexOf(NAME, from);
++            if (at < 0) {
++                out.append(value, from, value.length());
++                break;
++            }
++            int end = at + NAME.length();
++            // Часть более длинного слова (Telegrammer и подобное) не трогаем.
++            boolean wordEnd = end >= value.length() || !Character.isLetterOrDigit(value.charAt(end));
++            boolean wordStart = at == 0 || !Character.isLetterOrDigit(value.charAt(at - 1));
++            boolean keep = !wordStart || !wordEnd;
++            if (!keep) {
++                for (String tail : KEEP_AFTER) {
++                    if (value.startsWith(tail, end)) {
++                        keep = true;
++                        break;
++                    }
++                }
++            }
++            out.append(value, from, at).append(keep ? NAME : MargeletConfig.APP_NAME);
++            from = end;
++        }
++        return out.toString();
++    }
++}
+diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletTags.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletTags.java
+new file mode 100644
+index 00000000..bbaa84f3
+--- /dev/null
++++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletTags.java
+@@ -0,0 +1,152 @@
++package org.telegram.margelet;
++
++import java.io.ByteArrayOutputStream;
++import java.io.File;
++import java.io.FileInputStream;
++import java.io.FileOutputStream;
++import java.io.InputStream;
++import java.io.OutputStream;
++import java.nio.charset.StandardCharsets;
++
++/**
++ * Свой писатель тегов ID3v2.3 — название, исполнитель, обложка.
++ *
++ * Почему теги пишутся в файл, а не подставляются при отправке: телеграм,
++ * отправляя mp3, сам читает из него теги и складывает их в атрибуты документа,
++ * а обложку — в превью. Значит достаточно поправить файл, и всё остальное
++ * произойдёт само, тем же кодом, что и обычно. Собирать документ руками
++ * означало бы дублировать чужую работу и разойтись с ней на следующей версии.
++ *
++ * Библиотеки для этого не беру: формат простой, а лишняя зависимость в чужом
++ * дереве — это то, что придётся тащить через все будущие обновления.
++ */
++public class MargeletTags {
++
++    /** Заголовок ID3v2 занимает десять байт, дальше идут кадры. */
++    private static final int HEADER = 10;
++
++    /**
++     * Размер в заголовке пишется «безопасными» семибитными байтами: старший бит
++     * каждого байта всегда ноль, чтобы кусок тега не притворился началом
++     * звукового кадра.
++     */
++    private static void writeSynchsafe(OutputStream out, int value) throws Exception {
++        out.write((value >> 21) & 0x7F);
++        out.write((value >> 14) & 0x7F);
++        out.write((value >> 7) & 0x7F);
++        out.write(value & 0x7F);
++    }
++
++    private static void writeInt(OutputStream out, int value) throws Exception {
++        out.write((value >> 24) & 0xFF);
++        out.write((value >> 16) & 0xFF);
++        out.write((value >> 8) & 0xFF);
++        out.write(value & 0xFF);
++    }
++
++    private static void frame(ByteArrayOutputStream out, String id, byte[] body) throws Exception {
++        out.write(id.getBytes(StandardCharsets.ISO_8859_1));
++        writeInt(out, body.length);
++        out.write(0);
++        out.write(0);
++        out.write(body);
++    }
++
++    /** Текстовый кадр: признак кодировки, затем UTF-16 с меткой порядка байт. */
++    private static byte[] text(String value) throws Exception {
++        final ByteArrayOutputStream body = new ByteArrayOutputStream();
++        body.write(1);
++        body.write(0xFF);
++        body.write(0xFE);
++        body.write(value.getBytes(StandardCharsets.UTF_16LE));
++        return body.toByteArray();
++    }
++
++    /** Кадр с картинкой: кодировка, mime, тип (3 — передняя обложка), подпись. */
++    private static byte[] picture(byte[] jpeg) throws Exception {
++        final ByteArrayOutputStream body = new ByteArrayOutputStream();
++        body.write(0);
++        body.write("image/jpeg".getBytes(StandardCharsets.ISO_8859_1));
++        body.write(0);
++        body.write(3);
++        body.write(0);
++        body.write(jpeg);
++        return body.toByteArray();
++    }
++
++    /** Сколько байт в начале файла занимает старый тег, если он там есть. */
++    private static int oldTagLength(InputStream in) throws Exception {
++        final byte[] head = new byte[HEADER];
++        if (in.read(head) != HEADER) {
++            return 0;
++        }
++        if (head[0] != 'I' || head[1] != 'D' || head[2] != '3') {
++            return -1;   // тега нет, эти десять байт — уже музыка
++        }
++        int size = 0;
++        for (int i = 6; i < 10; i++) {
++            size = (size << 7) | (head[i] & 0x7F);
++        }
++        return size;
++    }
++
++    /**
++     * Переписывает src в dst с новыми тегами. Пустые значения пропускаются:
++     * пустой кадр и отсутствие кадра — разные вещи, и второе честнее.
++     */
++    public static boolean write(File src, File dst, String title, String artist, byte[] cover) {
++        try (InputStream in = new FileInputStream(src);
++             OutputStream out = new FileOutputStream(dst)) {
++
++            final ByteArrayOutputStream frames = new ByteArrayOutputStream();
++            if (title != null && !title.isEmpty()) {
++                frame(frames, "TIT2", text(title));
++            }
++            if (artist != null && !artist.isEmpty()) {
++                frame(frames, "TPE1", text(artist));
++            }
++            if (cover != null && cover.length > 0) {
++                frame(frames, "APIC", picture(cover));
++            }
++            final byte[] body = frames.toByteArray();
++
++            out.write("ID3".getBytes(StandardCharsets.ISO_8859_1));
++            out.write(3);
++            out.write(0);
++            out.write(0);
++            writeSynchsafe(out, body.length);
++            out.write(body);
++
++            final int skip = oldTagLength(in);
++            if (skip < 0) {
++                // Старого тега не было — те десять байт, что мы уже прочитали,
++                // надо вернуть на место, иначе музыка начнётся с середины.
++                try (InputStream again = new FileInputStream(src)) {
++                    copy(again, out);
++                }
++            } else {
++                long left = skip;
++                final byte[] buf = new byte[8192];
++                while (left > 0) {
++                    final int read = in.read(buf, 0, (int) Math.min(buf.length, left));
++                    if (read <= 0) {
++                        break;
++                    }
++                    left -= read;
++                }
++                copy(in, out);
++            }
++            return true;
++        } catch (Exception e) {
++            return false;
++        }
++    }
++
++    private static void copy(InputStream in, OutputStream out) throws Exception {
++        final byte[] buf = new byte[16384];
++        int read;
++        while ((read = in.read(buf)) > 0) {
++            out.write(buf, 0, read);
++        }
++    }
++}
+diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletTheme.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletTheme.java
+new file mode 100644
+index 00000000..dd5e0a34
+--- /dev/null
++++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletTheme.java
+@@ -0,0 +1,38 @@
++package org.telegram.margelet;
++
++import org.telegram.messenger.FileLog;
++import org.telegram.ui.ActionBar.Theme;
++
++/**
++ * Тема по умолчанию — тёмная с зелёным акцентом.
++ *
++ * Своей темы не рисую: такая уже есть в самом телеграме. «Night» — чёрная
++ * основа, а зелёный берётся её же готовым акцентом (0xff4ab841). Из
++ * четырнадцати акцентов ночной темы зелёных два; второй, кроме зелёного,
++ * красит сообщения в фиолетовый, поэтому взят этот.
++ *
++ * Ставится ровно один раз, при первом запуске. Если человек потом выберет
++ * другую тему, форк в этот выбор больше не лезет.
++ */
++public class MargeletTheme {
++
++    private static final int GREEN_ACCENT_ID = 2;
++
++    public static void applyOnFirstLaunch() {
++        try {
++            if (!MargeletConfig.claimFirstLaunch()) {
++                return;
++            }
++            Theme.ThemeInfo night = Theme.getTheme("Night");
++            if (night == null) {
++                return;
++            }
++            night.setCurrentAccentId(GREEN_ACCENT_ID);
++            Theme.saveThemeAccents(night, true, false, true, false);
++            Theme.applyTheme(night);
++        } catch (Exception e) {
++            // Тема — не то, ради чего стоит ронять запуск.
++            FileLog.e(e);
++        }
++    }
++}
+diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletWordmark.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletWordmark.java
+new file mode 100644
+index 00000000..9e079b73
+--- /dev/null
++++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletWordmark.java
+@@ -0,0 +1,78 @@
++package org.telegram.margelet;
++
++import android.graphics.Canvas;
++import android.graphics.ColorFilter;
++import android.graphics.Paint;
++import android.graphics.PixelFormat;
++import android.graphics.Rect;
++import android.graphics.drawable.Drawable;
++import android.text.TextPaint;
++
++import androidx.annotation.NonNull;
++
++import org.telegram.messenger.AndroidUtilities;
++
++/**
++ * Название форка, нарисованное текстом вместо картинки.
++ *
++ * На главном экране телеграм показывает имя двумя способами: развёрнутый
++ * заголовок — настоящей надписью, а свёрнутый — картинкой со словом
++ * «Telegram». Владелец это и заметил: имя менялось только когда развёрнуты
++ * истории. Картинку рисовать смысла нет, поэтому здесь просто текст,
++ * притворяющийся картинкой.
++ *
++ * Красится он белым, потому что поверх стоит цветовой фильтр умножением:
++ * белое умножается на цвет темы и становится этим цветом.
++ */
++public class MargeletWordmark extends Drawable {
++
++    private final TextPaint paint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
++    private final int height = AndroidUtilities.dp(20);
++
++    public MargeletWordmark() {
++        paint.setTypeface(AndroidUtilities.bold());
++        paint.setColor(0xFFFFFFFF);
++        paint.setTextSize(height);
++    }
++
++    @Override
++    public void draw(@NonNull Canvas canvas) {
++        final Rect b = getBounds();
++        paint.setTextSize(height);
++        float w = paint.measureText(MargeletConfig.APP_NAME);
++        if (w > b.width() && w > 0) {
++            paint.setTextSize(height * b.width() / w);
++            w = paint.measureText(MargeletConfig.APP_NAME);
++        }
++        final Paint.FontMetrics fm = paint.getFontMetrics();
++        canvas.drawText(MargeletConfig.APP_NAME, b.left,
++                b.centerY() - (fm.ascent + fm.descent) / 2f, paint);
++    }
++
++    @Override
++    public int getIntrinsicWidth() {
++        return (int) Math.ceil(paint.measureText(MargeletConfig.APP_NAME));
++    }
++
++    @Override
++    public int getIntrinsicHeight() {
++        return height;
++    }
++
++    @Override
++    public void setAlpha(int alpha) {
++        paint.setAlpha(alpha);
++        invalidateSelf();
++    }
++
++    @Override
++    public void setColorFilter(ColorFilter colorFilter) {
++        paint.setColorFilter(colorFilter);
++        invalidateSelf();
++    }
++
++    @Override
++    public int getOpacity() {
++        return PixelFormat.TRANSLUCENT;
++    }
++}
 diff --git a/TMessagesProj/src/main/java/org/telegram/messenger/LocaleController.java b/TMessagesProj/src/main/java/org/telegram/messenger/LocaleController.java
 index df646cf4..b25e5001 100644
 --- a/TMessagesProj/src/main/java/org/telegram/messenger/LocaleController.java
@@ -59,7 +654,7 @@ index df646cf4..b25e5001 100644
  
      public static String getServerString(String key) {
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
-index 6b8cddfe..b7addf56 100644
+index 6b8cddfe..5b385ef3 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
 @@ -1199,6 +1199,8 @@ public class ChatActivity extends BaseFragment implements
@@ -115,20 +710,27 @@ index 6b8cddfe..b7addf56 100644
              case OPTION_SAVE_TO_GALLERY: {
                  if (Build.VERSION.SDK_INT >= 23 && (Build.VERSION.SDK_INT <= 28 || BuildVars.NO_SCOPED_STORAGE) && getParentActivity().checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
                      getParentActivity().requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 4);
-@@ -46015,6 +46031,13 @@ public class ChatActivity extends BaseFragment implements
-                         options.add(OPTION_SHARE);
-                         icons.add(R.drawable.msg_shareout);
+@@ -46097,6 +46113,20 @@ public class ChatActivity extends BaseFragment implements
                      }
-+                    // Правка тегов у музыки: в телеграме это делают через ботов,
-+                    // то есть отдают свой файл чужому серверу ради трёх строк.
-+                    if (selectedObject.isMusic()) {
-+                        items.add("Теги трека");
-+                        options.add(OPTION_MARGELET_TAGS);
-+                        icons.add(R.drawable.msg_edit);
-+                    }
-                 } else if (type == 10) {
-                     items.add(LocaleController.getString(R.string.ApplyThemeFile));
-                     options.add(OPTION_APPLY_LOCALIZATION_OR_THEME);
+                 }
+ 
++                // Правка тегов у музыки: в телеграме это делают через ботов, то
++                // есть отдают свой файл чужому серверу ради трёх строк.
++                //
++                // Пункт стоит ПОСЛЕ всей цепочки по типам, а не внутри ветки.
++                // В первый раз я вписал его внутрь, привязавшись к строкам
++                // «Сохранить в загрузки / Поделиться файлом» — а они повторяются
++                // почти в каждой ветке слово в слово, и попал в файлы
++                // локализации вместо музыки. Здесь условие одно и явное.
++                if (selectedObject.isMusic() && !noforwardsOrPaidMedia) {
++                    items.add("Теги трека");
++                    options.add(OPTION_MARGELET_TAGS);
++                    icons.add(R.drawable.msg_edit);
++                }
++
+                 final boolean canForward = !selectedObject.isSponsored()
+                     && !isQuickRepliesOrWelcomeMessagesMode()
+                     && chatMode != MODE_SCHEDULED
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/Components/ChatActivityEnterView.java b/TMessagesProj/src/main/java/org/telegram/ui/Components/ChatActivityEnterView.java
 index ac402db5..2ab3931f 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/Components/ChatActivityEnterView.java
@@ -305,6 +907,496 @@ index 49bf8215..e9b242a0 100644
  
          public final String key;
          public final int background;
+diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletInputActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletInputActivity.java
+new file mode 100644
+index 00000000..3304f089
+--- /dev/null
++++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletInputActivity.java
+@@ -0,0 +1,86 @@
++package org.telegram.ui;
++
++import android.view.View;
++
++import org.telegram.margelet.MargeletConfig;
++import org.telegram.ui.Components.UItem;
++import org.telegram.ui.Components.UniversalAdapter;
++import org.telegram.ui.Components.UniversalFragment;
++
++import java.util.ArrayList;
++
++/** Ветка «Поле ввода»: сколько строк, какой размер текста, где оно стоит. */
++public class MargeletInputActivity extends UniversalFragment {
++
++    /** Значения ползунка строк. Ноль — «сколько влезет на экран». */
++    private static final int[] LINES = {2, 3, 4, 5, 6, 8, 10, 15, 0};
++    private static final int ID_TOP = 1;
++
++    private static final int[] SIZES = {14, 15, 16, 17, 18, 19, 20, 22, 24};
++
++    private static int indexOf(int[] arr, int value, int fallback) {
++        for (int i = 0; i < arr.length; i++) {
++            if (arr[i] == value) {
++                return i;
++            }
++        }
++        return fallback;
++    }
++
++    @Override
++    protected CharSequence getTitle() {
++        return "Поле ввода";
++    }
++
++    @Override
++    protected void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
++        items.add(UItem.asHeader("Сколько строк"));
++        String[] lines = new String[LINES.length];
++        for (int i = 0; i < LINES.length; i++) {
++            lines[i] = LINES[i] == 0 ? "макс." : String.valueOf(LINES[i]);
++        }
++        items.add(UItem.asSlideView(lines, indexOf(LINES, MargeletConfig.inputMaxLinesRaw(), 4),
++                i -> MargeletConfig.setInputMaxLines(LINES[i])));
++        items.add(UItem.asShadow("До скольких строк поле растёт, прежде чем начать прокручиваться. "
++                + "В оригинале их шесть. «Макс.» — расти, пока есть место на экране.\n\n"
++                + "Предел в 4096 знаков на сообщение остаётся: его держит сервер, а не приложение."));
++
++        items.add(UItem.asHeader("Размер текста"));
++        String[] sizes = new String[SIZES.length];
++        for (int i = 0; i < SIZES.length; i++) {
++            sizes[i] = String.valueOf(SIZES[i]);
++        }
++        items.add(UItem.asSlideView(sizes, indexOf(SIZES, Math.round(MargeletConfig.inputTextSize()), 4),
++                i -> MargeletConfig.setInputTextSize(SIZES[i])));
++        items.add(UItem.asShadow("Применяется к следующему открытому чату."));
++
++        items.add(UItem.asCheck(ID_TOP, "Поле ввода сверху").setChecked(MargeletConfig.inputOnTop()));
++        items.add(UItem.asShadow("Поле переезжает под шапку чата, место под него в списке "
++                + "сообщений тоже переезжает наверх. Клавиатура и панели остаются внизу — они "
++                + "принадлежат экрану, а не полю.\n\nПрименяется к следующему открытому чату: "
++                + "у уже открытого половина размеров посчитана от прежней стороны."));
++    }
++
++    @Override
++    public View createView(android.content.Context context) {
++        final View view = super.createView(context);
++        // Скруглённые карточки — так выглядят нынешние экраны настроек.
++        // Без этой строки список рисуется сплошной лентой, как в прошлой
++        // версии приложения: владелец это заметил сразу.
++        listView.setSections();
++        return view;
++    }
++
++    @Override
++    protected void onClick(UItem item, View view, int position, float x, float y) {
++        if (item.id == ID_TOP) {
++            MargeletConfig.setInputOnTop(!MargeletConfig.inputOnTop());
++            listView.adapter.update(true);
++        }
++    }
++
++    @Override
++    protected boolean onLongClick(UItem item, View view, int position, float x, float y) {
++        return false;
++    }
++}
+diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletSettingsActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletSettingsActivity.java
+new file mode 100644
+index 00000000..de99db1e
+--- /dev/null
++++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletSettingsActivity.java
+@@ -0,0 +1,84 @@
++package org.telegram.ui;
++
++import android.view.View;
++
++import org.telegram.margelet.MargeletConfig;
++import org.telegram.messenger.R;
++import org.telegram.messenger.browser.Browser;
++import org.telegram.ui.Components.IconBackgroundColors;
++import org.telegram.ui.Components.UItem;
++import org.telegram.ui.Components.UniversalAdapter;
++import org.telegram.ui.Components.UniversalFragment;
++
++import java.util.ArrayList;
++
++/**
++ * Корень своего раздела: ветки, а не свалка переключателей. Пока веток одна,
++ * «Поле ввода», плюс две ссылки — канал и форум.
++ *
++ * Строки рисуются тем же классом, что и на главном экране настроек
++ * (SettingsActivity.SettingCell): цветная плашка со значком, название,
++ * подпись под ним. Первая версия была собрана на старых ячейках, и владелец
++ * сразу заметил, что раздел выглядит из прошлой версии приложения.
++ */
++public class MargeletSettingsActivity extends UniversalFragment {
++
++    private static final int ID_INPUT = 1;
++    private static final int ID_SOUND = 2;
++    private static final int ID_CHANNEL = 3;
++    private static final int ID_FORUM = 4;
++
++    @Override
++    protected CharSequence getTitle() {
++        return "Margelet";
++    }
++
++    @Override
++    protected void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
++        items.add(SettingsActivity.SettingCell.Factory.of(ID_INPUT,
++                IconBackgroundColors.GREEN.top, IconBackgroundColors.GREEN.bottom,
++                R.drawable.settings_chat, "Поле ввода", "Строки, размер текста, положение"));
++        // Раздел «Звук» появляется, только когда мяуканье уже услышали.
++        if (MargeletConfig.meowHeard()) {
++            items.add(SettingsActivity.SettingCell.Factory.of(ID_SOUND,
++                    IconBackgroundColors.ORANGE_DEEP.top, IconBackgroundColors.ORANGE_DEEP.bottom,
++                    R.drawable.settings_sounds, "Звук", "Мяуканье на главном экране"));
++        }
++        items.add(UItem.asShadow(null));
++        items.add(SettingsActivity.SettingCell.Factory.of(ID_CHANNEL,
++                IconBackgroundColors.BLUE.top, IconBackgroundColors.BLUE.bottom,
++                R.drawable.settings_channel, "Канал", "t.me/margeletter"));
++        items.add(SettingsActivity.SettingCell.Factory.of(ID_FORUM,
++                IconBackgroundColors.ORANGE.top, IconBackgroundColors.ORANGE.bottom,
++                R.drawable.settings_group, "Форум", "t.me/margeletforum"));
++        items.add(UItem.asShadow(null));
++    }
++
++    @Override
++    public View createView(android.content.Context context) {
++        final View view = super.createView(context);
++        // Скруглённые карточки — так выглядят нынешние экраны настроек.
++        // Без этой строки список рисуется сплошной лентой, как в прошлой
++        // версии приложения: владелец это заметил сразу.
++        listView.setSections();
++        return view;
++    }
++
++    @Override
++    protected void onClick(UItem item, View view, int position, float x, float y) {
++        if (item.id == ID_INPUT) {
++            presentFragment(new MargeletInputActivity());
++        } else if (item.id == ID_SOUND) {
++            presentFragment(new MargeletSoundActivity());
++        } else if (item.id == ID_CHANNEL) {
++            Browser.openUrl(getContext(), MargeletConfig.CHANNEL_URL);
++        } else if (item.id == ID_FORUM) {
++            Browser.openUrl(getContext(), MargeletConfig.FORUM_URL);
++        }
++    }
++
++    @Override
++    protected boolean onLongClick(UItem item, View view, int position, float x, float y) {
++        return false;
++    }
++}
+diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletSoundActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletSoundActivity.java
+new file mode 100644
+index 00000000..4cb67025
+--- /dev/null
++++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletSoundActivity.java
+@@ -0,0 +1,110 @@
++package org.telegram.ui;
++
++import android.content.Intent;
++import android.net.Uri;
++import android.view.View;
++
++import org.telegram.margelet.MargeletConfig;
++import org.telegram.margelet.MargeletMeow;
++import org.telegram.messenger.ApplicationLoader;
++import org.telegram.ui.Components.UItem;
++import org.telegram.ui.Components.UniversalAdapter;
++import org.telegram.ui.Components.UniversalFragment;
++
++import java.io.File;
++import java.io.FileOutputStream;
++import java.io.InputStream;
++import java.io.OutputStream;
++
++/** Ветка «Звук»: мяуканье на долгое нажатие по названию на главном экране. */
++public class MargeletSoundActivity extends UniversalFragment {
++
++    private static final int ID_ENABLED = 1;
++    private static final int ID_STANDARD = 2;
++    private static final int ID_OWN = 3;
++    private static final int ID_PLAY = 4;
++
++    private static final int PICK_SOUND = 4801;
++
++    @Override
++    protected CharSequence getTitle() {
++        return "Звук";
++    }
++
++    @Override
++    public View createView(android.content.Context context) {
++        final View view = super.createView(context);
++        listView.setSections();
++        return view;
++    }
++
++    @Override
++    protected void fillItems(java.util.ArrayList<UItem> items, UniversalAdapter adapter) {
++        items.add(UItem.asCheck(ID_ENABLED, "Мяуканье").setChecked(MargeletConfig.meowEnabled()));
++        items.add(UItem.asShadow("Играет, если задержать палец на названии на главном экране "
++                + "примерно на полторы секунды."));
++
++        final boolean own = MargeletConfig.meowPath() != null;
++        items.add(UItem.asHeader("Какой звук"));
++        items.add(UItem.asRadio(ID_STANDARD, "Стандартный").setChecked(!own));
++        items.add(UItem.asRadio(ID_OWN, own ? "Свой файл" : "Выбрать свой файл").setChecked(own));
++        items.add(UItem.asButton(ID_PLAY, "Послушать"));
++        items.add(UItem.asShadow("Свой файл копируется внутрь приложения: ссылка на файл в "
++                + "галерее живёт до первой уборки, а копия — сколько нужно.\n\n"
++                + "Стандартный звук — запись под лицензией CC0, то есть автор отказался от "
++                + "прав на неё. Синтезированный вариант, который был здесь раньше, я убрал: "
++                + "он собирался вслепую и звучал плохо."));
++    }
++
++    @Override
++    protected void onClick(UItem item, View view, int position, float x, float y) {
++        if (item.id == ID_ENABLED) {
++            MargeletConfig.setMeowEnabled(!MargeletConfig.meowEnabled());
++            listView.adapter.update(true);
++        } else if (item.id == ID_STANDARD) {
++            MargeletConfig.setMeowPath(null);
++            listView.adapter.update(true);
++        } else if (item.id == ID_OWN) {
++            final Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
++            intent.setType("audio/*");
++            intent.addCategory(Intent.CATEGORY_OPENABLE);
++            try {
++                startActivityForResult(intent, PICK_SOUND);
++            } catch (Exception ignored) {
++                // Не на каждом телефоне есть чем открыть выбор файла.
++            }
++        } else if (item.id == ID_PLAY) {
++            MargeletMeow.play(getContext());
++        }
++    }
++
++    @Override
++    public void onActivityResultFragment(int requestCode, int resultCode, Intent data) {
++        if (requestCode != PICK_SOUND || data == null || data.getData() == null) {
++            return;
++        }
++        final Uri uri = data.getData();
++        final File out = new File(ApplicationLoader.getFilesDirFixed(), "margelet_meow_own");
++        try (InputStream in = ApplicationLoader.applicationContext.getContentResolver().openInputStream(uri);
++             OutputStream os = new FileOutputStream(out)) {
++            if (in == null) {
++                return;
++            }
++            final byte[] buf = new byte[16384];
++            int read;
++            while ((read = in.read(buf)) > 0) {
++                os.write(buf, 0, read);
++            }
++        } catch (Exception e) {
++            return;
++        }
++        MargeletConfig.setMeowPath(out.getAbsolutePath());
++        listView.adapter.update(true);
++        MargeletMeow.play(getContext());
++    }
++
++    @Override
++    protected boolean onLongClick(UItem item, View view, int position, float x, float y) {
++        return false;
++    }
++}
+diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletTagsAlert.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletTagsAlert.java
+new file mode 100644
+index 00000000..e847e23c
+--- /dev/null
++++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletTagsAlert.java
+@@ -0,0 +1,186 @@
++package org.telegram.ui;
++
++import static org.telegram.messenger.AndroidUtilities.dp;
++
++import android.app.Activity;
++import android.content.Intent;
++import android.graphics.Bitmap;
++import android.graphics.BitmapFactory;
++import android.net.Uri;
++import android.util.TypedValue;
++import android.view.Gravity;
++import android.widget.LinearLayout;
++import android.widget.TextView;
++
++import org.telegram.margelet.MargeletTags;
++import org.telegram.messenger.AndroidUtilities;
++import org.telegram.messenger.ApplicationLoader;
++import org.telegram.messenger.DocumentObject;
++import org.telegram.messenger.FileLoader;
++import org.telegram.messenger.MessageObject;
++import org.telegram.messenger.R;
++import org.telegram.messenger.SendMessagesHelper;
++import org.telegram.tgnet.TLRPC;
++import org.telegram.ui.ActionBar.AlertDialog;
++import org.telegram.ui.ActionBar.Theme;
++import org.telegram.ui.Components.BulletinFactory;
++import org.telegram.ui.Components.EditTextBoldCursor;
++import org.telegram.ui.Components.LayoutHelper;
++
++import java.io.ByteArrayOutputStream;
++import java.io.File;
++import java.io.InputStream;
++
++/**
++ * Правка тегов у аудио прямо из чата: название, исполнитель, обложка.
++ *
++ * В телеграме это обычно делают через ботов — то есть отдают свой файл чужому
++ * серверу ради трёх строчек текста. Здесь всё происходит на телефоне: теги
++ * пишутся в копию файла, копия отправляется в тот же чат. Исходное сообщение
++ * не трогаем: чужое сообщение править нельзя, а своё телеграм разрешает менять
++ * только текстом, не файлом.
++ */
++public class MargeletTagsAlert {
++
++    public static final int PICK_COVER = 4802;
++
++    private static MargeletTagsAlert current;
++
++    private final ChatActivity fragment;
++    private final MessageObject message;
++    private final EditTextBoldCursor titleField;
++    private final EditTextBoldCursor artistField;
++    private final TextView coverButton;
++    private byte[] cover;
++
++    private MargeletTagsAlert(ChatActivity fragment, MessageObject message) {
++        this.fragment = fragment;
++        this.message = message;
++
++        final Activity context = fragment.getParentActivity();
++        titleField = field(context, "Название");
++        artistField = field(context, "Исполнитель");
++
++        final TLRPC.Document document = message.getDocument();
++        if (document != null) {
++            for (TLRPC.DocumentAttribute a : document.attributes) {
++                if (a instanceof TLRPC.TL_documentAttributeAudio) {
++                    titleField.setText(a.title == null ? "" : a.title);
++                    artistField.setText(a.performer == null ? "" : a.performer);
++                }
++            }
++        }
++
++        coverButton = new TextView(context);
++        coverButton.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
++        coverButton.setTextColor(Theme.getColor(Theme.key_dialogTextBlue2));
++        coverButton.setText("Выбрать обложку");
++        coverButton.setPadding(0, dp(12), 0, dp(4));
++        coverButton.setOnClickListener(v -> pickCover());
++    }
++
++    private static EditTextBoldCursor field(Activity context, String hint) {
++        final EditTextBoldCursor edit = new EditTextBoldCursor(context);
++        edit.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
++        edit.setTextColor(Theme.getColor(Theme.key_dialogTextBlack));
++        edit.setHintColor(Theme.getColor(Theme.key_dialogTextHint));
++        edit.setHintText(hint);
++        edit.setBackgroundDrawable(null);
++        edit.setLineColors(Theme.getColor(Theme.key_dialogInputField),
++                Theme.getColor(Theme.key_dialogInputFieldActivated),
++                Theme.getColor(Theme.key_text_RedRegular));
++        edit.setSingleLine(true);
++        edit.setPadding(0, dp(4), 0, dp(6));
++        return edit;
++    }
++
++    public static void show(ChatActivity fragment, MessageObject message) {
++        if (fragment == null || fragment.getParentActivity() == null || message == null) {
++            return;
++        }
++        final MargeletTagsAlert alert = new MargeletTagsAlert(fragment, message);
++        current = alert;
++
++        final LinearLayout layout = new LinearLayout(fragment.getParentActivity());
++        layout.setOrientation(LinearLayout.VERTICAL);
++        layout.addView(alert.titleField, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 40));
++        layout.addView(alert.artistField, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 40, 0, 8, 0, 0));
++        layout.addView(alert.coverButton, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT,
++                LayoutHelper.WRAP_CONTENT, Gravity.LEFT));
++
++        new AlertDialog.Builder(fragment.getParentActivity())
++                .setTitle("Теги трека")
++                .setView(layout)
++                .setPositiveButton("Отправить", (d, w) -> alert.apply())
++                .setNegativeButton("Отмена", null)
++                .show();
++    }
++
++    private void pickCover() {
++        try {
++            final Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
++            intent.setType("image/*");
++            intent.addCategory(Intent.CATEGORY_OPENABLE);
++            fragment.startActivityForResult(intent, PICK_COVER);
++        } catch (Exception ignored) {
++            // Не на каждом телефоне есть чем открыть выбор файла.
++        }
++    }
++
++    /** Вызывается из ChatActivity, когда система вернула выбранную картинку. */
++    public static void onCoverPicked(Intent data) {
++        if (current == null || data == null || data.getData() == null) {
++            return;
++        }
++        current.readCover(data.getData());
++    }
++
++    private void readCover(Uri uri) {
++        try (InputStream in = ApplicationLoader.applicationContext.getContentResolver().openInputStream(uri)) {
++            Bitmap bitmap = BitmapFactory.decodeStream(in);
++            if (bitmap == null) {
++                return;
++            }
++            // Обложку ужимаем: в тег иногда кладут снимок с камеры на пять
++            // мегабайт, и он едет вместе с песней каждому получателю.
++            final int max = 800;
++            if (bitmap.getWidth() > max || bitmap.getHeight() > max) {
++                final float scale = Math.min(max / (float) bitmap.getWidth(), max / (float) bitmap.getHeight());
++                bitmap = Bitmap.createScaledBitmap(bitmap,
++                        Math.round(bitmap.getWidth() * scale), Math.round(bitmap.getHeight() * scale), true);
++            }
++            final ByteArrayOutputStream out = new ByteArrayOutputStream();
++            bitmap.compress(Bitmap.CompressFormat.JPEG, 87, out);
++            cover = out.toByteArray();
++            coverButton.setText("Обложка выбрана");
++        } catch (Exception ignored) {
++        }
++    }
++
++    private void apply() {
++        final File src = FileLoader.getInstance(fragment.getCurrentAccount())
++                .getPathToMessage(message.messageOwner);
++        if (src == null || !src.exists()) {
++            BulletinFactory.of(fragment).createSimpleBulletin(R.raw.error,
++                    "Сначала скачай файл — теги пишутся в него, а его ещё нет на телефоне.").show();
++            return;
++        }
++        final String name = message.getDocumentName();
++        final File dst = new File(FileLoader.getDirectory(FileLoader.MEDIA_DIR_CACHE),
++                (name == null || name.isEmpty() ? "track.mp3" : name));
++        final boolean ok = MargeletTags.write(src, dst,
++                titleField.getText().toString().trim(),
++                artistField.getText().toString().trim(),
++                cover);
++        if (!ok) {
++            BulletinFactory.of(fragment).createSimpleBulletin(R.raw.error,
++                    "Не получилось записать теги в файл.").show();
++            return;
++        }
++        SendMessagesHelper.prepareSendingDocument(fragment.getAccountInstance(),
++                dst.getAbsolutePath(), dst.getAbsolutePath(), null, null, "audio/mpeg",
++                fragment.getDialogId(), null, fragment.getThreadMessage(), null, null, null,
++                true, 0, null, fragment.getMessageChatSendParams(), false);
++        current = null;
++    }
++}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java
 index 40634647..c7dd2382 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java
@@ -532,6 +1624,33 @@ index d3a1ae4c..49936b15 100644
 +    android:shape="rectangle">
 +    <solid android:color="#8DD1B0" />
 +</shape>
+diff --git a/TMessagesProj/src/main/res/drawable/margelet_background.xml b/TMessagesProj/src/main/res/drawable/margelet_background.xml
+new file mode 100644
+index 00000000..49936b15
+--- /dev/null
++++ b/TMessagesProj/src/main/res/drawable/margelet_background.xml
+@@ -0,0 +1,5 @@
++<?xml version="1.0" encoding="utf-8"?>
++<shape xmlns:android="http://schemas.android.com/apk/res/android"
++    android:shape="rectangle">
++    <solid android:color="#8DD1B0" />
++</shape>
+diff --git a/TMessagesProj/src/main/res/drawable/margelet_plane.xml b/TMessagesProj/src/main/res/drawable/margelet_plane.xml
+new file mode 100644
+index 00000000..04c782f3
+--- /dev/null
++++ b/TMessagesProj/src/main/res/drawable/margelet_plane.xml
+@@ -0,0 +1,10 @@
++<?xml version="1.0" encoding="utf-8"?>
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="108dp"
++    android:height="108dp"
++    android:viewportWidth="108"
++    android:viewportHeight="108">
++  <path
++      android:fillColor="#FFFFFF"
++      android:pathData="M54,29.88 L27.55,67.46 L52.05,59.11 L54,64.12 L55.95,59.11 L80.45,67.46 Z" />
++</vector>
 diff --git a/TMessagesProj/src/main/res/mipmap-anydpi-v26/ic_launcher.xml b/TMessagesProj/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
 index 5a996b47..1e4830c5 100644
 --- a/TMessagesProj/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
@@ -845,6 +1964,78 @@ z?QIB#qaBf0!iG1k_;;A0#?LT@IhczzSc@L4*DUmAdrTRxU?z-PP<mkCNvIVVf5RP-
 z@E?i`85og%4klQ{`N{=Ud{{sUfLgGaqZ$<<aTc|hGoIrA3x>5a6BdbPKmY&$07*qo
 IM6N<$f*OiP4FCWD
 
+diff --git a/TMessagesProj/src/main/res/mipmap-hdpi/margelet_foreground.png b/TMessagesProj/src/main/res/mipmap-hdpi/margelet_foreground.png
+new file mode 100644
+index 0000000000000000000000000000000000000000..e8a965166db2e795bc5c055b80222ed21dc9d067
+GIT binary patch
+literal 3311
+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
+V9eL13{p67W%#17zD{eh__J4DZgz*3X
+
+literal 0
+HcmV?d00001
+
 diff --git a/TMessagesProj/src/main/res/mipmap-mdpi/ic_launcher.png b/TMessagesProj/src/main/res/mipmap-mdpi/ic_launcher.png
 index e102f5883ecd8e61540c64481114851488d4e5bb..408839968c63ecef6cc0a413f69af0d47fc16a93 100644
 GIT binary patch
@@ -1026,6 +2217,55 @@ z{L$u@-NW;ZA^%RVj(4A0z+P3O`T-w$pcfx2-P0%Y-GANPpYsJmFR4Z;Hl*evS$Xw(
 zP!3*l$#Wx4dCICjebw285aSruUY!ae7kg@zLT&WevM2X^HAY58zKrXW-=*(TS=2(!
 zMrVD?2Eo}{aIE|!98H|$qu6GIT<pPK)YwAs=KoV=&z?P>ynNaAux)Dk2iNRN2d>&3
 yzj=Rd<ta}PVjRO7a*%sp|6|2`AY*L>@c#gG9Icd38chZO0000<MNUMnLSTaKgj%Hl
+
+diff --git a/TMessagesProj/src/main/res/mipmap-mdpi/margelet_foreground.png b/TMessagesProj/src/main/res/mipmap-mdpi/margelet_foreground.png
+new file mode 100644
+index 0000000000000000000000000000000000000000..53e58daa918692875143db27025d178cc50ab3a4
+GIT binary patch
+literal 2036
+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
+Nz?{QcRatt({R3&f<8A-|
+
+literal 0
+HcmV?d00001
 
 diff --git a/TMessagesProj/src/main/res/mipmap-xhdpi/ic_launcher.png b/TMessagesProj/src/main/res/mipmap-xhdpi/ic_launcher.png
 index efc237c50a3040e4b00e1ac29d655334d8b4c645..bc7f08466c51e27d27002ed801de00253e949cd6 100644
@@ -1428,6 +2668,101 @@ z!h08g^q&zII!}>BIPx4JrbtYaZ(^NusIu}8O}@6}-N8_W6s|#ez_THTHCPKD@CBdn
 zjTnf9m`?1m$mMf;n*E#`!409NFvfsMoT8$l3*}KeZqnq*V<%6VG^V(C(nZCSipRh~
 zCZ0Ky$;1ak@%Wi|C^S%AU7gEjvmeQ!k0rps8L$Hy0|a~!e*qd`X$Ip02LGGJHMt80
 wiwh>uxJmRcSOe@i!Pc|60WeHV_Gl{hf3!BV0p33E3jhEB07*qoM6N<$g5=w89smFU
+
+diff --git a/TMessagesProj/src/main/res/mipmap-xhdpi/margelet_foreground.png b/TMessagesProj/src/main/res/mipmap-xhdpi/margelet_foreground.png
+new file mode 100644
+index 0000000000000000000000000000000000000000..311473a0c0e319500bdded9cad01bbe74542510e
+GIT binary patch
+literal 4648
+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
+
+literal 0
+HcmV?d00001
 
 diff --git a/TMessagesProj/src/main/res/mipmap-xxhdpi/ic_launcher.png b/TMessagesProj/src/main/res/mipmap-xxhdpi/ic_launcher.png
 index e59e4f0b45d576a41e0591d0c9a8b5f609b5c004..74d168df65f35f576992875a5b194c7cdc95cb3c 100644
@@ -2053,6 +3388,155 @@ zV)2uaSh7Bz9O}f#;Vf>40r>boTtgX@#XYzeb)YWPiMr7S+L8n_6@5XUu81c8*GeQN
 zn&wnNO_oG;ZHnX>7$JZZ`5#N+CI$5WH%jGapbpd}iDj}X7@D3)G*{L(c`PPIP*+K!
 z8ZQZJA_$iR224p|DgYm#>r(lNl2FD=V!28d%$1SmG7=PtN)Z-`OT{=qbL}cwC?u9E
 mg86`mN)?w4=>89~SpFX{EO3{^3OzRf0000<MNUMnLSTaHt@sZB
+
+diff --git a/TMessagesProj/src/main/res/mipmap-xxhdpi/margelet_foreground.png b/TMessagesProj/src/main/res/mipmap-xxhdpi/margelet_foreground.png
+new file mode 100644
+index 0000000000000000000000000000000000000000..6c1346a19db23886dcd27e79adbaf00646474193
+GIT binary patch
+literal 7602
+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
+MW;UkPCf+ap2NMeHcmMzZ
+
+literal 0
+HcmV?d00001
 
 diff --git a/TMessagesProj/src/main/res/mipmap-xxxhdpi/ic_launcher.png b/TMessagesProj/src/main/res/mipmap-xxxhdpi/ic_launcher.png
 index df70e45123daccdce7a0241b4ecced5af59395e3..0b3172dd2b02ccf13f3df6a72770b20343287c06 100644
@@ -2889,6 +4373,589 @@ zrxALd47cg-0`;Zg%YA(J#w?~8fxrb82mww{b3b_pQxCj>JYaUB`a8NoXv*flne#?K
 z1vj6IYZ=$B+Z+_Z%n{-mCF`vlkg4?PLrLJi#2Sw)Y7jb#7aSant3X0dOc{t9il1Dx
 z9l7z+?Xhp@aWcFEAD@-!Ay_J6OiC+U<COR>4|ec{ikI$hX%rU2>N=g3OpaS1bAPWH
 OpsJ|xvRd9O`2PT=s<Pq$
+
+diff --git a/TMessagesProj/src/main/res/mipmap-xxxhdpi/margelet_foreground.png b/TMessagesProj/src/main/res/mipmap-xxxhdpi/margelet_foreground.png
+new file mode 100644
+index 0000000000000000000000000000000000000000..5f2b161e50bd5649906381431e24ab90ea857a8c
+GIT binary patch
+literal 10629
+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
+U#l<Kb|7RGar1iG^jrGU>0a6(n>i_@%
+
+literal 0
+HcmV?d00001
+
+diff --git a/TMessagesProj/src/main/res/raw/margelet_meow.ogg b/TMessagesProj/src/main/res/raw/margelet_meow.ogg
+new file mode 100644
+index 0000000000000000000000000000000000000000..8d663983da419cb90df2741325fb21b8898d9f8b
+GIT binary patch
+literal 20403
+zcmb5VcU)AlvpAYvmJUkq!qST%y$ZO}yY!|YT{=<)lwPEFklu?RDAE+9caSR5n;=LP
+z0jZ+!&g%Ex&%N)D_xruGXR|qzOmZ@rnM@|L_Z~gc0dVl2D>S9J4xLTObM%GL!@OMF
+zEbQFT02tW&SLq76(17=_duYu6zR;L3=qX?>9eEvvuJzwnBF4XV2%%y%b1xeazFYhv
+zxA^(^(DfOhueGzKi<PyT6jW#l6$<i0g#t)NJBxpKFwB3yY%;R?Fn|L<Ad?zZci>op
+z9sooD<X4KOJ?(EfU3wbyQjzRw1UmP%QgO^Tq7lmNwUp63{RqL_kwRAF03bjhCr+l@
+z7n$vrQ+n!e#9B05edt_RBwq@3m{jVV@eX71g3Pwm20ad;5hj3WgTi49CDT@74EwKy
+zvn1UjinBD`Vvw_p&V7i#4;gYzVzW3|QwEo_SW|_oyf{T$g=fmxeXj+3(f!BWGh`@{
+z4AjVfC4a|(gx&=LTKxs0TmIMHzhNOkAVe3SoJjWZE#2@q-S7e3C^4%R3G283&xE$H
+zj-ZsDuKc8~o`If;$rGnZFQ>^gr)mAa8GR?C2B-P|eg7Rg5(e^_#gmvhlbAS@zKSIw
+zLc=TJzzR*0e2%EEVsUFqajbSpHa=;OA~RoRWNwz{;{B}xO+EtsHsFhQ)P{H5BcG(d
+zX=a&SX6gU!jk4|M0w{=<eXex>Zbdg1?7tN52hg0Nv|0MxxE0-n`rIWIJ>>d4)CN*?
+z2kIZ-|JNiy(+*uIQf_%2$-ZRCQBvX2387(9buA(FiT{gRhb-tXzd!?F%&|$c55y5n
+zF#k)IK&V-&0vuU_e?37JA_~@!nPZthhsCdDuIHDNWleNM>SnPwmZxXAkBDz%JC0C)
+z&2}H*9L(s+&lt;eA5kXAEcuu7A<4q7D*pt*s5i2&^-`Nd_3S=nVwcYvLbyg_ncrSE
+zl0mu1lq~l8M%{ny{cY5Jq}()nq(giK!ib#9a%jXgfpX_o*?YsdXc*M*e-hlk?1O^l
+z&3uNcHzyeB7l&m*##qXjOz#nYEjgdRpR<@gHcmmMJVaBQn!Us$`0vP(0E80#PcCK*
+zr?QA(EX#Jo<9b<~6vZ{jQ9C5?ksF;<c8y5vRCf`{67bi3QsEY!)VGYS|Ca0iT3pGY
+zq<+fyW(maLoF)Gx3Yt`;Rl;2?>c8?4p6&)oMSd{e|D3pemQmsx<NxCxJ)nb_`5!<3
+zWoA7CFDIiHp7Za*OlCZnr~Q_vV;@q6TN|bQulwK7p^*TzIQ<pJ6pI-CzU&YU8Qgyp
+z{2$3tbS3Lcq#H<NQLSN7|HM6fD0J_q&^W0)#4bAICgbFu6BO1uA|?~U))RWxlU~-d
+z4c7PH`586%Eua36d)o7VN)9A8OyY50mHxNn#I1_OF)Jsr7$vd&m7Ma7+^zD$|Ci+C
+z+eVe8N0miHZA8RzM5ftAW>z#7Iu5?xY5G6j|1CL?z(BXWHjDiKlALyaI$20~YPi*Z
+z{u`szIHVms<SGB>1OU*UK%k0NB`jLnJd@hOliECbx>9=or)v@|S`cAV|7u!7i8Gp~
+z1L@sKPi<pl2z+<a-Q#?RW0?9~cZmceeDG755k9dQauKc&(c}RUq&ulX=wyc&H?oU0
+zwAZqWK55x!yQfH~+$bS)7_2YSwNR}W84-sbW3&hB>*lmn>Pu<xA!YCw`c@O+5gHK#
+zIT#?qVJu0|R^t4Y?RJf`B-?U?u{6bfP<%Z*<dbrFw)-b>&O~kWquYq`R<`blIA=~M
+zv{J$8pf7hQBq|8t3J2Hv4kVQ)<g`8sX&tGJdrFOam?%%E>5$6nP0DHMsT<Tgjq6(9
+z|0Fc=8G01f($&)vcAC}In?F&TNK>DlbkfrEyx-tt?(H;xDm76DJvuFVnB0HjG<#}&
+ze>zt2Z&L<PQ=aMulTJFGP9~)C)8u*vY4Ve))&^;w4^yodr{%^y<tI~2v^=fvr<yE#
+zSsR_IPak{grG-JIEAKo_sGOHYbD@qNLZt@Qvy{$@BL4HIVUPa4)wrJUxUR{Bo+s4r
+z{1mz=gL-QSGMnnOY+y2bBCO?MGOlNB<e_JzZ#{czVszrErRR4))f!!T>a<K5K0D>N
+z;$dQfZdu>x#BY8&b$!Zn<xFj&0UDs^gs0!~iRYsXPm?qG>0>{=G(XFF>xXAy%jFln
+z2Qd{DI~CvY+PFS;R^xy8xzNg+;yHijwD@SDHU8l1@7_d*`A+_w2KR;5*W7JC1^ulJ
+zeM{};OLu-XZ8f#>?lkc)w7wzJo1E6WFA_eP8updK|Lct3ikQNGcVs@}x9sh2?wvc`
+z5W8~XH|V&d!0;^ZaHuKv`$ezYg~Y~_xRHGVT!^92yunvMKt@x;1R_X*8IjvHeoRJf
+z0!SZ}T$52Dwj>hRD7G3>#w{tPP*LWwAdvZ%o-!oPS&)(@!^smyVvJwXO`&2}Rj==0
+z&of1&;!u!6CCkZEI%Tg`HA%yd#pte~@+}+EZcxFLz{X3DYuejLXgRlkTTEuTo}EG<
+z!F3}vMTLt$HN}FUyjx#8s=ip)(&6noh2=;=3WX}yTd2T^f1S#5NF3dH_P@@jpm))S
+z7!+zsoTD6Sij%WvNL(3eN@9}(!cgPsp-_pef|}wi?}3`)=`oa5=1EJj;Nk3<u^4LX
+zNxP3-P@kX@1HJD381Z*g_Jk$fhW|Q`sXw7YcTT0sB@AIW37^baREpQ9IoQAbMqxQx
+zzdq$K(o!~Mul{y@&SFUF8<o{?BldL}Xn+*5ocs+__D=lY=>F3==M>Zw&(s`L@VE0x
+z8fY9-GZ3w&p{B}vG95-b`qC}$@l4TK4oUT-ISe<RX5LSLM4dnkT9DE;u^_R<{VTSi
+z96eN_Sd6{d$z#awba!p8-t3SBm7a8WB9+1H5KR@83@E3}nUbWUQWd7HqEcQDi7g&l
+zY#ql^4C(UGN(aRS0y|u}KmL@{61JXw%Q8wTKLJUl7aB4yq&L~X^A7?sFdCw(H|goQ
+zNQyR$rXkKh{aeQq5(o7O4>V-{#BV}KZ`#uu((~q?e<4#&mWF7^Y=e`Dxbq?;5tQNP
+z>2pnc7p=Smefw${pq-Qs1mZaw-dHKN<*xqwR#*U-6UbmOh7rg>R$+>a5+^GFX6-P5
+zY!4OCwCz^`NXXJeb{jiXL5rnDIg~)TaFxH0|6j@9RrUXOLJl?!R=}4lv#xC%c6rO7
+zu<%L*=!A@GONd7$wpfZk^Q}{bYHKT(q$==lAXAdGRjTwxl$A<Kri`QCx@kbOP)~6`
+z24Y5Id!Ak@%Uy^|jUD)*97jnBm1QOWl(DRGc|Db7jPSIvHdF-~P2*{jb~JzQ1BboF
+z7gH9M_1_@tM5>;`vPyVk!F?ZHd88h)zBQ|Q3>{vJW3N1gfd#^AfCyJ)q&mq%UySC#
+zUox?PKvV>OZ?^k2NPy*3_@QS0+QUkm|AB=j{0CN$qAl<b#+srDi72`r1XCIKhl?iK
+z4Uhl8I7`s&p-VYSAfub(pS6+#mHsD3^4~e_|EgE4t@0lX2o0C<FD^PM2t~Jo&Y}DL
+zo8u}W1K{x&Xh}3f<XGt%g~qZy@CJVwA2OAZBgT%L3TQ%y_anQJ;dq=q+4TgRA#|l`
+zoS`YHBmChJ$rShT$uS^nmI!S+!Gqu&d<igsjf1NVQ074evY|LcMeXhH-$NTJ92u){
+zB{^=aNZd)37XJ;veT#1m0~Ow@FxP|WLH#B8)}92B3{fyq_bR|sYVW`ml{^S%U-*K^
+zDb&VBZ?6Cnfa?JCVG$9J(<wgh!&Zvu$5B>BmjE%)jt$z);c{|9ed8+!FcKyK8Eulk
+zMd$>9_-FN__k9S&zug{c|KBbUz1u_Qs6vW#4oM}%#l<8<q$DK7BqhWpB&4MzZ{HRd
+zzk`yL5|fk?7Z(?mln{pC;?hzQlIY*t(vlJ)5<+6)VnU*#LLwp%J_Lmx#l%F!MI}Tf
+z#6*OIp)X2Wh)+xu-KdD5Fu$m<0Kbr+sHmW*kf5-bG?YM>z->WcQZiB!G7=I}5>irO
+z5pfCOyTl}<M5Ls|C}B|nX+dHVViIy<GAXE(R1```NJz+_EEx$gDfE#NB8DD`Nr*^E
+zL`aB<Nk~NaMTGf<g`xhS?gWH{MI=Oo1%-r!1qFo!gakxH1jK}eg~*uV*<nkH5p;np
+z(->xwhyn+M@$=nA!u}&{l32ddp+y6)3{V$!RZMc=g86{L`G@`6+uml6X|Nt7jaI72
+z_FFAJA)d}@=~)EPVT8F6&78EbfS{{*2-7J8m@yqaY~vZW{oGmjRXUd0zw^eUTigS?
+zXD{3-f{a)V>ujp6eSb%#^8x7y$tuDEKU61iZ%P<DHlPZdVR4E++oIVQ*cNBKGnph-
+z*JNK^`Rl|p=DyW)1+A2ecNN8Yc<&Ld5zT>wf!CFU1O!TlX4JJYx>;gfu)izoMbr0~
+zs5TZGem3Q(jkln2Lo}j-gBovHzR9WJ#AQQwSV?H^k6LAp;ly9I0cNS&+bX9&hZPtL
+zP2OHlY%Y?EsPHBH-jb&>H)(<K>z06)TA1r$GL{<fkC03y%x^;#!g@m+A7SAtk)=NT
+zzUfL%_vZcAg5i<oyA}0;9@)Y}!X0Zk4KvCj(u`Y)YY<j5DXsk1p3W-~K50WSn<Okb
+zWpV4hg75Z4ngcFZeXBXSAUu*nLCE=wPm^5^AD8AvYkm{8O01U#322RY790z|zQ2rP
+zIk=!f29VlHm-c)U!Z^f@U(~h7!xe5vzF+ftd|d6rjS<NHs98hKF%iFk>>EDZKVqSi
+zaQv(~;jtA&pYmQ+c)NG8vfx9~9i~-}(Iom0Q&yyX!sBDj9g1NZp>;=FPU=tLdg%ct
+zSkjTtx?)jJ1Fs+^;654`28F?o`ra7G>V&yP=G5KdN|nnge%!xZ@NG&oP3_AAoyhjx
+zfjbR}z(4ZY1fkZSw|ggTi9P8xW^UJkobvi2J%JPr(_RH|FhOE?k-qCIK^=@R_Tu&R
+z;)t&e`rRsPh=J^5(~O0vy9ERt_AGPN!qSE_g)pSbncJ@LuPt>1iujih7n9fmJ2$6#
+za%#-A0E(AW$mw3>C83>~7Tmx5SrlOy0ztCO2a$L4oE|rUqxsi}b&TQhHM)BbNpICW
+z5hx8_AM>Cj<>z+F7dyoz!Krf2E`pghHb)bNaUfX7!-qtq4K>9Z@ljTxLMB=6zoRH+
+zZb&26cWt}vw8W|fBd-&=Q0{pqeE9tti>4wOx3&CPEnyfLg7JVb<~qe^K_G{nO`qm$
+zS)u1KW;q=zib?L6CFAISPQE{*K82H%(!E$(mEv`e&lKcFHrFyThVf}9(N6V-4ofy+
+zwd;K*NxLY!jpLET_{43qMPYF0sO<JmZu)`o*K^ZAB);oUH%{_;qe%CsKss_E_%7q%
+z=7y5J75a@w@WCsyt=T6ISO)f3DOt^0SMchE-&%BeO^#AdzZE230!_A^Y=*cLF^hXJ
+z|BPqBgn<l7&q5D6V!n^#qOOIs-)S8sup?|f(fd`?b2{6UZpO}(GI*j;tt$u{nvpU2
+zj!*MLg;wAWOggf;(_DtkLXU)jno8#zS<fvn-enzHl!MS>)e!jl=lYGdLqr6!O8C#a
+zQ*JD|`Sfkh-fF)^HB5ZW*2rgLjEqqUEaIK%HJ%ka2&DGe>}A&TI2o<}&W-3W?PMwg
+zwx~5SC03b`c1EB}ZSlOaR!{$pq8_ekWOJms%t}ObD04Kw_1z3yz&t)-tvqk38}s(2
+zt?7%@T&DCe#kKl{oB(xQ>N#e+$BY_QZ&+D@DOyfD9wNtqWoM^l36_#1SMEVpHllK3
+zl5>0_Z?)xyVqEdS=Qv{1Tb3xZ`K%z8PTo@f%+RFP2uY|%76kKnzlEBSp%wy^9QAaU
+zJ|EJFO|w0o%eyJh{|)sa^e|ICY%p1fp(^8tRA)}m*~2Q;lMn$iKp!dDkx#_@g{3v<
+zpd&ak!Utv;Ss^s%(WvU7`?v&TyQJpbjIZiBx4)c-_2SLrAx14Ozqq*iI(x@vbwYC-
+z5}@WFMn+`95u^&MHs}aZM0Sf+CF4aQ&zlNskumCHKq997=uVqwU9=p=%cn|r<yn*I
+zQu#G-ZZg4^A{GYjGKQPybt|g$reInhh+_oK<bSv!Sn*ujyn=$aq{o2Ju+X&>(K$iW
+zCM-e#Qaa*Q=hkRrgkS0)p!p3pmq8&{`sdPXzVjIY<e`~LTjPi0D9k9Td0#19GpQ*p
+zoImE}PhP?aieuWe;U6%m5zf$noAV*QDEJ=AoXl^1pY0k@3k@wU)A^;NCvy};^tSEe
+z4R+p-!Pd_VMr+@x#p)zIZ(hwg%x{L5BUz=((YVMN=5n+Uk^ONZMWx}m4Q5wiVk_Ft
+z9z3jME_9PQ;|h0WJNUlznH0+mb==1LaZTWl$*VN%+=1p0!cY)Y45`!^I>i*+b_t?M
+zy^@R_*cO*rykLxgEzxQ>&-KMpttDA9vmbSqWF!wdgT^&(<ZelhC1{FZ3C@ZRQQR2X
+zdM`kVRQa5-cChm}-y-B}MU(RSn-9sceit}F$8Szq5-v*T?#X}Z;sd#}3x(z~Y#0Nx
+z?PnGpl1r?C99pWPZ@1|4!<y!JllW=9_HO8B{O*b*2r##q4X^OMXY|H-`je=SfB8aE
+zh)i&Y#xEsf%faAmcP1DMN%hYiC%6)7bL^|;>*CMSA(?|%eD5W+>)Lm1Jjo3Q={VuJ
+z5ewsdj93TA0f-qek6+S)#6F!NA2w&1&-qM)wnZ&@bRlG`t~l<=S>N~S9Rbz;XRAj=
+zteXry#SkAY1j88l5{4jD>TlwYD3IDj-`;v#Jkm1{Mg6JO;Yn{V$Y$Gk?Ia@Tz-E^8
+zX=X{?kUg14gAf;@YtV`e5;;I9+e;~!@@EK!S_2Modm@S|m_4Lg^yKF%;!|4$ljHl6
+z7=d3nWt{37NrCCPWcy=AqJ(V17~XGWyjK)3&1;#vCC5=*QWTUcLVQoCnv`ko#+zk_
+zx9Cnr1EeH8l{|Nt`T+QEEgU3hdh~WF?eWC$iYN}@2Hp%(Jg>FuaA1Co8{_Z0{T)>=
+z`A+^$``eFI3K-RL11=p-4PQT9AePRXS65`liLSHGib7g{?5iZKnncLOkKK5PL%Y9a
+zHD=aLp)!6|lkF3W(~Caw&{S(-TvE-6+r+>WH)lUzQ_od=z#ZdjH0J3={57Bee^cKg
+zbT1<=r+?qPB||Ez=+_C$Q;n~+ceFcZ$JV1JFZhLl|GDJAiVWO5Zf!}^=~*?kpAHUq
+zHFlJKb7t?FyydSigp~O^tJIIigfnukev)QuXyg8p8IY%oEF0y#hsMqx3)D=ppl0=P
+z<hU<w_&CV~B(VA_mApFr_FCW-`LQ-7No4eUsUJ^S6w2I02KnHD-O5IDD<k)vyy3aC
+zlHK{5I32P|Q{i>J*!aElm>?3t<MgfjM&um+IM$BrD=)bde8B{!)!^qJ1@<`}zz2*G
+ztnu7n>HPypp*h7wLxR$3sL6Wy0K^n?k$b8S+wQ$gb2a)fOm2mE#%nrSGxT%#MS-%(
+z^V*Puup-AW4H3|KzOZdBLmf&v&{8mWX6C;80B**j`_sly>k%g<W#}&gbJo+)cS_=d
+z4HXtirf;__1UEWOiFYM{G;U4@Ux7z=lj`A2f(55_M`M#VoJA(T#VTG>j=x2hX}l*Y
+zFtcDbF;rz~p7}uFjR^*_NR6TASpM?N@prx^eebInD+cq}n)7cG7$_z!>EqXJ-P>Va
+z2w@ERm1_j8+`}HF8IEo?IcAtt?1>UKzd4@*`g6L*y9K+!FVYrh4L$f|*Cc@w3z9$Q
+z%Usq8QH2Ms_wxEy!IGeRR|E}K<kf4$mmApE4K1_i0X=Tcxw(v1#7CtQ!b<IL3mg?N
+zlvjK1&v?7)jt_Whuley7Z>(b5-S$pdmn=JN0-(nKHS>)6P?PQTTpXU2d`+QVF1As^
+zNeTwXw@Z1pLWa1jsv(P%U83rNEQhLN!j&EGj-Ol|1f;VYpoZM>Fo2Hmgx#l?8W_@?
+z>gJ{#4_s#l+^x(~YmoZZB7sVs!-=LlqWrde@ZA~>>6A)MBU9+8<JjO$fW80*2>q~U
+z<$RiI0naspa5qgJD-S%iGP_~T=zhr+0%AhbB^qpUh;_K;p8OPAZ>Zw=<CVzw$md;U
+zMT$3GH7R0p;VH;95<ZXNEBz{vblTtU+Znts4ESOwY%j(yi4$*W`D@E2ycEz%dnQGF
+z%Ico{a~_dTTWWO;NE@k#gvcOdx01!(I%DIik&6Zb$-zTP1oryhX@wUxp7W}cE#zmU
+z&%2UwTM`ZkOA@$P0?>@12uyuSLJAU;kUsHh3e1i&CdwEjy>ldgq>kwa?GZz~eN9MQ
+z^>M}02+VP@tG4szKsXWy<oZ~jYbqfk1}uv$QaJD1JWRz!3I=agslC*(Z@3wzL2t(w
+zlktg1DSP1|Y^FSP)Cij!+Qnvo*2vVx7@{W$NqznDup(y1!W}^*(j4dK9g8JdMiuV!
+z7GiHaOI`9`supw4EVM5ZjjLaS!1yy#Xc;S^wF*lKN_j@3{5H2HLdkOyXc9y_PcBe2
+z&w0pQf2B{Krj?`rh9@}=mgOf>)<}Z~LKOjoC*K8UOf+Npkr*_NlO<#Diq?$d+suYf
+z_9?E92B%Wqn?$PO^CO>tETODNMR~vUVM=)ZK9gNFGEG70|N0u3Q2`|3JL*-jWeox*
+zA@;c+o-nFl-zzx6pq5K4CuhIKU<0C~v7xb%hfp)7=Ch0vvYXX~h>zc61x&r76OTyK
+zbk_7mAMf#}B7QdP#Ij&61{n2zf5Ze)<OvKcMV2(8lvvWyJm!&txph;JGC?z@!8xx>
+z>`a%Lzs;Mfi>~W|`&%~f>Pq_DT>=iUKyC&(2DN#rd42LJPLUSH(8Uikb7hVgZmBt|
+zp<CKI#W#NLEmM?Gl)v&SEi=56=3%}i0Ql_aqhe*n%{?%g&+CFbLor((VuJ8-A=X>V
+z+&7KOC|OIk1$yX=mg{>;KDds=8-MzWZ-(!P0WKr08&NZb)tS&-3sYHl20waIft565
+zySME6ChO&!aM+zgrS$i6n|=No35j7ftpam;*Z`bWLL<wF?ZOUiLUgb3f4WthTm4q_
+zI!uY`?bP|@PI<XKzVo&7W?X)&Emih<%6T?nr+by0$5img!`Xn|I2Muso4_1NMS&14
+zT>RblFmBwC_ZuGv==44l<Q6TGmpY78Vn;>%%-$CnDXpX+3Zz%~+KL6FIVYhhNYrFK
+z4gahlWmrAmGYN3J(!DR9JW_8S9?@9gmFw4II$hv@otT`lxuLjD2pr|9qrL!;t4tme
+zlwkXqeUvc9t2*-gL=k3iDC5kGwUhHWqMWm8*~TNtWXs)-?YNF($w|PN?<x};+<x#z
+z2weJ*V+18|J!XfdLQU)>onQ=k8zc~+jtu8Bo^Wi7ppqP&x?wIR-MFr+4%a9G&JK*<
+zxS|#jV9BRPHZ4K_i^dYOQ?gcR_F|3_FvLZba&#rlX<3**DPuH=ab>ZMTv9Q{UsFvk
+z{#k8c1;B5wB_DE#rOD0MF2YHzj#wOx@5N&(mqi#m$A8FLb>2*N_q{!bMTKm?pZ#2|
+z35z#(tLAr^U^f6B^c9nhF?<WIp0{Te=dg;@W~`PWzXB=BL)XG-hbUyrx>M(XZ_rFI
+z2q)(=2iy1B3H8`p=woTq49qSJM#Rj3dvTSON6P5xpgo>aH9*2`_SpxR$+v0p66K0R
+z@*O4h@9clz`^I3cQl&ltd44X-Q!%I+I}5S~o(h$TaG6iEylXN~)TG*4Dg9NcJIrbN
+z{)W8=)_Q?G|B8D*lfh)a)#1A&c>ev|$R61sA|8mMO0;}~DL3j2SP*GUSEAy0qQ>UM
+z*BbNE6fM_sBpS+$lV82E-;f}LJY35l*RX^(kMt9P(n$aNaSr?k)_NpJi}ZUVleeTv
+zR4xxc-u@Z^5Cu1NI+vLvU%i+&fE=gqy^rg!0aK$?+84yy*I0xFY>pIWJzUh`-2@Kz
+zvwB0yxia=L9n^<3arWga-)Hllh%~-XDhr2>ju!UO;@%}FBNv=pNjS}9m2zEVwlO7e
+zsQQr5J$IU;-`z-@n%S_BC6jYq#OF52<4FzYc;`7NFrn!j_-9VeqNozbmIo|D$CGQu
+z`>I*<IqKr27vGyV$>BUt_Ewuk+HWw#a;0MIgnoW_<1rT*Cgfi8kCdl1mT5*V4M-<V
+zZN|DSnv75YHyDx5n&1QFmr7*DskcuasKAX)RG$6nV$r-el^G~Wjt77P93m(!mW)t`
+z+KAHZW^B#Ct&b*wOo8u?9rnsp73=X1qkMLmsf4yJt{JmFBAh5~-O|&AflYjnTfQ!$
+z8P<(>;ub%o;1W74VUN$p@wn4<m|B<afMkbmQOSx;QMo(h`EF#hM|Ri2A8S4UI7~BG
+zMMp>qG56M>;b~FSxjETt22N3yb$2I6Qxtxw=IRkyKsMStss7%Td+b@Wbh{To#I&Xj
+zm5~cfmQ<v&9_&rC#6%VleR$#TOS)Jnv&n6traeKE(qs@QU?=5#QF-<_fd*K>a-&i)
+z(#Gl!_>%j=nQb6R@Dc?52-Me{fF4G!)ms^I8cmXxqu$@CUSVId$d&HWJ||Ft16<Hr
+zks6Xlgg3M%?&gVEq-JDBm_bMelX>dr#FP@vBy~RVN~hoC8&UJc^Iah_{K`KW=}uq_
+zv^J8{4&ZTOCvEgskK@eSlB?n;1pP7=RG8o$#-Y<4WM^Ot3tDAz8K~ZK5{kX4lo<uN
+zOa{rjWEl(Fm7jGvKC4EJn$#j|m=0RF4}Y+~WD?m`chM@vcrnZ3L-}0k(N8bWBqJ2(
+z+|@&IF59crE{;nluoUGfuDV%uP@PO;1bM<dZh?}737_W<*;(O2e)civy+SjM>Zsn^
+zE_Fjb55`3!I<bZne~3C{Ztw)#HegCe33tgB=$o+`(T2z7hRO@2dSX<QUHMGTBv+U8
+zb+$@T%_Uk<IA&~X$dIjZJNZN0xtUwxDO*tOYsTsmLqKgk2p?7AHiJ<Q9m&s;Ii<8o
+ztBhHgW#rpLZqK=hj*vlq-&~&(TEbB8z$b1B;jv2`_}{lO9Z}u;>~34qxyBsD3C_#D
+zdoJ&qTTf0Rg^zv4LU5hoAaIcj_(ustGM;G0{-~Hxz*n1M#&-ZAM^>Qx{+uNIr2+HQ
+z<LganVj(+Kzu<mBpMs`MBE3pr00p~*gbvQg*8cF2-dt!fP51K$IER9=%OAryI`Wk!
+zwcj0?h31oFT(6DcO-u^+G%sMpqyY8C2heBsK(bTOp|O{!)3K@CIM!o~i-IEsN4VEB
+z=>{I}7mk&^R?rGo@ol9TtqTeYQLqwhaD;qbfd&}Be-K(4sw2DQ-4uFb;;OeCeBa@q
+zG%Z#I>c^<YxvIoz+p6%ozffy4@VzN9wtsi$BXkDd&vCFQ43n;~K1W5U?`ur;_d^1^
+zl_@I+uLgVsgz0PZBA86zYoumAebJN{ZzE2D>662U2L0Gzcb1ACv}UTCD{QjuAF3}g
+zb1E=%&)g)1u@Ddn`a9s-iOO)2IhAG>_j^=5&7lk0%zkKeCM*uVuz<^o;|$cMz`?%S
+zUgE%}vQfUf0-QR(D$DQf06Ajurs$IfCXy9zSWNJ_VaV;-50;Q$J$En_dPB8+jgkI@
+z@#N~QTRKsgOsJo{!)$rWgmDyx>f%!oQ6a|f7r%1<#-ixkC?kFkfN4`I#MLw?w|D|t
+z>%m~XDRnpnAKS>U5;a>}V$uzlsGVf2m*37<{K`g$@4q3%2lP#7&1H-MnK(0>%Cp`2
+z^wh+G=`!2#xm2(4NZ1(5vGbmg+}4@;Vy;W&cl+GiFe?o@vw&STPC_={OV|Jnwcuci
+z`kmB25ePXjQB*2eERndUHyc^bTFq7#b@m{2d3Z?stLJSoXd$5gaKqiF0KX?>Erw5`
+z6Mhel#OQCkmDk;{$}={Xb*oR^skM(MyLsws@$lBgO;N~H@gKC74H}a=KsKUvkIh3{
+zz=ZOpI<S2mfO|uZ>#$LiA*z>o|Lu25=OyRTWoC32v9l1J_xCkUAfqz5IzJBwbc4&)
+z&$7F2TAb;Fk|o7!%PLcP*;bqu4<4-_+_Z+)!iv~N)F#4|<)S|w()n)_K?H|fWumKy
+zx(ji+{jbYUA#z;haHofX+b{3?Gh9GZqt-e|j?pm2DY-Bp^@%1XHx%;~6Qte}Ol!_2
+z5<KSQXA-wYy62Oemh0o*6>GP=z<e>PLXBRnq1ll!_x@4?X+?9$#9l3B!VQdoHzf+b
+zor>C)oBKS_CT{)s$s6;v=%!oR@>wM|8jwh0FAW}_$Bf}Zy-9a+kWw7!eI`U90-yS}
+z&JK0oCaK-B&09EJa=J%tkCkkaou}>xY5GgFM#M?H_A{edl#j-o{YPBf5Ehf!CcX7#
+zQ5YT$<6*~=YuaRrQR0SJw9RK1on6N_RW*>V-%dT(gxJ)MB_3^)<FBY7^8;%{#b4Aq
+z&X>cV)QT-kaqzt5)DEb(v;XC`EPKEW1O9W9&|({kF(55qm4b`!A^t-JMm=_@<gBQs
+zR9<MjiDX}7gWK+28#=IAG_#cc3Y`<1&h^kDI-`0&-u7{(qF(G^)8m0D0T03rnx?v1
+z#<17X`S&6pls^`I>?zkEI6uCs5>~+h=;umkal;}&lAwU|Q8D*SRSX4%A+CP)GR0^#
+zUJv=bfxL_u*<zL``&RFK4e9M;0NARDdpyAs^nP$gV<d}%>cDnKZyIi3YJ$jK(wrv&
+zcZ#pcU{p$+f?`vrxIu%}?ZWC|-fo!Y(T<0lT-(TlDFp`5Iw#-dT`=9<_3+TnN&wC3
+z)Zjfh(2po{c)*?SbE(aT%JF(^bMi4ZCrS3~%LV&Sda%@#Dw{?$`-NAWnYl=`6CTeh
+zj1x%l$(mtV#0?(zM5Ob+-uT!=yBf8GTwC5lQv!AXmMVme?!Ro<-&dz+j>%0Kmac&r
+z!o91ik|vm?UfO$F%O^P`YuOlG==Vo#?gTtb?n4`Y^qFC@X_}j>ZqRPDpF@YDrVRmb
+zVbU0(f-i5?V&LnfK20WVci#4LQTZmK&PlU<P7Z@Z+)i#Jzo{m<`p_-D?k4nlHhEYy
+z0;rjts|+J&7hIP0SKRj3x$wW1)eBRO5+V(7nXwSSG&2=4Gg;2qF8bRyW2@V3GI#*7
+ze2S}aZEj>Hr#6+z?zIfU+FU}SmN&t!%Rh@mus|R%eRWK&x><A3|6{Gi9L*XM*8o+Z
+z|K)8FnG&w{y=(K|dVKd^YbW&A)OeB%Q58dG_h72g{ms&Y6?SoEj3UuNn<4@$ZY!*d
+zJ&ILA=6ghIHU@9wl0)3!39HfNwg)D!2i%h(BkJtctDDd)3(FP|srM)K+42d{m>2c!
+z4I-G3aiIYkKO%|sFy{hZNHKG9{ibDdBmFb>I_q;708_J=w78+#Z1gM_I7RH{?{;L3
+z;7EA5dYiM&G2bSaaPzO>8h{l$>(*lWCf}by`hpVDVMqR9(;Ih~&3!Q#m+fNj8_+9*
+z&(4+;8+S;Y6EU=2*J4dQNMz#yzx~5zPZVVUDy9vwKw2BB&kuyMRLeeKo&9!)JG7*X
+ztv<&9i0H6oKcZAbQctm*Zy$+C@J>89@^vSbxn@2WL@-TVO+YD01dhDwm&@+3IFd#j
+z{yC7ir;&#ka&ww2TP8Igz>a{8U8NcKmcS7K<)6Plk!wLEMBjsb{6PYT6J+U4Iz`Z6
+zY!$-y=SyOquhqi1qeJXYYe7;^Kf)z0>W6-JHe#+EttU!wo+V@_=0M6%=~(p!hyaW?
+z9>uFSu9M3zXp9vumwt3lpm>+Aa)GMTx7Q|wrYW{dK!%Smxqc;-7TR@w-Lixk;;9~v
+zP}_(U=w^Kl?YZMnr!T#9ptC(1dp?*-O6Cdx4gLINNCOegZ`BjR7!{-H_;JDn)@-?}
+zzF57xdWoX)kx@GmafM>v(qvmmL5ofoF#s6P0?Lb4VV85M5F%c4@&?3wIQYK?#)Onu
+zgzUX9MR#++AxpQd_PwF>&)WWy(S7>@rJ_x_nE8`FPhTlAgVu}K3=~zaxA=gimDy3T
+zqZcVR2VS*h+?U~Z_^7Mn3Y}-frc{G#syuke-i&2OtZq0+z?eE`6}?47GwXe(Iu*`e
+zbi<MVtu-4>O81;ge|bmx^9b+lpo)#And_`NBDOXvd^?KKFFqIC1z)(BetAmRPhJDN
+zQ9hr_7&=9Qs3_kdnnMe5kAh9+HkKn^1tO;r4?gfk(tsg<c^Y^dai$7#upS5H&TO9o
+zQk-3BWJC%ku@Vr-wub8DwW!4LKiaqxVD-TRTpG5^epMipSM}&O70moVjwSsopZ=XX
+z3rv=fka1Ux-_Jyzrp8QP?$g0(2E)3X3KB^f7IP{IxgT;D?o`4Ol(I$VUBh=$W#tP*
+zZGGThO|DB4-o)p#zVK+f(?t&d=Ewj3-M;_B07(o;HDjW8G9C9mDPk!w;ATBzdV-q}
+zWD}L%OEhj;@i>)Xgq*diiHdaFLGmPsglCX;)(BcQ<}gE|_zWeVB}=>UQTY`)etV-1
+z<N`5fxm7>wXok_B51W3c?)l2?Qi_thAno|5wJZWz`@r;rFty&M&B2NWJuMrgiF&gk
+z)}!0PCzp*UPR)#YrmbLrHInLdTv=IgIqvZAE#$|6jCMyxw~m~J`-akn)rmcZ)W}2*
+z;}MA(e&d(kFMCoR#*)k{{@BUUEYw#?n#L5QW?P&QYYjME_0eMj4cm~lIA*^pzsgKo
+z6d$VYCk(i&D=&6zgjN|AICHxr*bxUUzDmz`=aZ;ayL3o<w17~u>fGY<OW=Bo9>e>Q
+zL4ok^;QHl02BK0@oJQ{s0dvxHQ0FB-`R95;BX$IQ>>+Qg$;}1l)agYA5++Ji%#XWW
+zyOo@v(l>JX`*mEN;vkOc8mu9PBeh2)&}>@HxneZ0(s9SP9l!N?0so!WxLn4hhWp#X
+zEl7~<mT31a5}-XO-=$k{+*9UK<6?FcRQ>qqj~0ezjG*|tD;||m@s}Tb8haEKenr7=
+zTYGHh97`d3=6>Y9#sWWyWMJSZ*m7cJl&LOTgbLKn&Zw~gE3aV|L;!K-HDpImDn3q0
+z>=NuKO7Bw+>5D+`M3`096`r7N08BD3Y`pF;sGdDo&TWdm`-;8;kjz=r4&$i1H!FRE
+ztWjF)dG0s_s@wLqxD3wXdi}M8U%4IY0w^Q4#JN!llRxwJkD!qL$GV`|KWKU54n{$0
+zbq99-gw=;8_=2y=#L4qe{RyD;S`hW_!v}ph!Sk^3MTn#T(Rd~n*m#0$m4Ik7!2^?v
+zmY^jF@Vr@di3#IQu3vU7uL~5Td?fSJFU{@|0ukaqS+*X!MJNZ`Z0nG=s0Z23)Pjhs
+zn9x#oqV>5zO?3+oT(IWl`RU{lsj)OR-K}eZ^HdL9FowJ$KX33d0wk5cREqYhd=Cte
+z71@0fK+r^xGjQAbRlF?NxCV~mf@c5xz`YOdzD~twxgF_}rVNh4%cl>n<ElF%aZmxe
+z)4Ip7A)D0c@6U<Yc!@Cb+qiDt!X0v+*Lrd%RNp2LNqG-^BEj{gjj>=YAHCjz@#z7!
+z*|Ey22$*D%)7%P-h*x6FE{<;}^VbC>v^eZ&Ji$O3I|3Sw)@_M9*Nx|_p$(!_?DZt*
+zG_)r;rU=FnSyv@{#gcO*)5QIxg13B@K_MuzaNlhC+e7z4k*K2j{nnY~`$R`yePH^7
+z)?M&|s`j!pNd+tg#o3{0Vqj>7)%LBLNB@L`$B<u!H9<e__bmb5^Kv!SvgwzDFi0gu
+z(goi<;2}B`zM(SCtq7MZvef(F6J+a}YkOGT{py!73=s{pyolHid8mdLoHqBe{8zLf
+z)`GtiIXr-+E&-AEqs?=ITG|HIY;P$VdQOt*8%PDVtX=)w(Gs%AD^p90<92{Rmh1O>
+z6x*|wU%VJY1abqv8*}pVl6k6S^UukNZc1dz4`&Hy#n51KXUR@}@1jw1TQnp}jzQeC
+z1czJlv<Mm570Ll>Y5`wn?*2&TaTMwRpUQ-*^}hT~kMiKsF)~D%olk>Vz^^-8S20i+
+z6B+3C`uXzWdcnFhiYzegxsGosY{AWGZZS{UR-zp{|4v0lZf3Wyb!is^Q6>oyW<LMd
+z%6e|eBFjleD%jgqx_r9_yN)de7?2*ATwK9siB3#V@MCaZ-9gYm=4iMKGn~N-z4u(=
+z$l_-J{ek{2*3>l4`s~4ZB_``bde*bPRxgLIZs9-po&9(e+H3gFSD7ntIDQGSiX)))
+zLvp7-g(2bD%$uKBrFYg74xjZ{U(&He5^4#_XTMtB;egx}JD#(smuv@Aqib*Za}*RZ
+zs*&#IF#NIUo|MVk%t-YBPh+be`(sfaPG7iHrqkL2K6db<6*A=b)D(u?FVG1`3g^b!
+zju8wcibBB_PTrH=&MnakT561tnO@JYwN-K2zL&T&^9BYkGojUzLvB^xEuPO;TZ9@P
+z5NkH6{ZKe1(JG5*3!qdxAy%%cL_V<+$uzB5L7+EIlLf50E|R-z;sVrCoLN+fw(XE#
+z{k8d-6b6|Xy<jWy4(|;%-a;+5xHjvD59+N++Y!(XZIW6w!f{{igb*_EI@v_SktnQY
+zW8ajcNt<rQS?`QcH?ks$DO-R01*x9`6U!%>^w73$9t!hhA*c6;JUsj&5`%1owD=tP
+zL*fBhm+KmLMMSO;&6nb`c^Q8S92;9Ha_4(L!j|SzF@lIlezU|AE8H7obGbFkcvnX2
+zB$oA3^kIm^%&6k-kgLt`ig>`;rq6TpNrv~|F#$q)-U&mTu{UrnCI)TTEXBn*q7a&S
+zy>Y^;m|xBq$E|qC=p2wvRJ3or8X8_i69DOt>KU3GR$sbuBo)GA;%dy8F#td25Yfm2
+zE4JK9`EB(?1}f$0l8grmUw`Hz)T^M-)^>#dyr+>W4&f5ywRb#X;ij^DlmRftdZ*no
+z(<$Xc-I{CdsUvBRDFj{~#BH5FTVJ*UkO>4C#$@!l15%wFIwC)(r{QLxuzRbQpiq-<
+zXCGnb%>3YIkEpvfLV=-n-xCh}KgI^}co=!l4$zrHj#H}^Tojh(n>BoEc37C}Zb(MA
+zd`wtvLv98U^}0l7eIw)-@&BL>VbEM(UW*}!S;EQcr=cJs2Cnx4v@*i*G(&huKDGou
+zHJPT&vsC8{Ibn9j1t`eEj}2n=z~ddYa-xDH(lM?P;^uv;y?Kj!gGKG8%UR)*H(^^2
+zH7`o_ZVKKhvVDcc39b6`vHD2e<TJjc4JC%eabgiEH>`Y&h1R8o2)oCW`x~R_PARuP
+z4bAKiNfD3PC!Pvj$Od7ccX1i0mk2ZmDA5W?42t`-(j&}7VMvVClQ_TFf$<yO?+x{y
+z7|;gWJB}=?61P?2wHNhTLs7c^^T!oDx>{%bkgJr1S_(I-atDzQka>CGxfJlG)2r@K
+z>GGbj7pu?w-R2Xfub;IXFjGO^mwEMPNU}`t<0pqy)aZSmUyKsKMg1ADh%J8g0;9#b
+z<#}rIm$So<*JbTA-R2)@q)l-`NG9K51w_GpOtXr;u?jPeE*P5Nqr_zyPlFpcopvSl
+zGTUwsRO|LmxcqQPP?f!a0i@?Wy^zJM(!K-K=10ZZk`^GJ60(BC6a-}Ox8DYZl4{ik
+z*=rRjZo@g5D*WP{)S!RA<<3{xb9hjD`>>5BG8Pp%7PbOSP+yx988h}OuyKi2DKmpH
+zI!-K_oM6TN?nc8|X#_;|ohp0%P5U#JMo|LV8!O!hHDHVoP?%j7<`88f?h4nR69iVM
+zddko!GtUb?IQz(;F$#mk&eI-ACa}M0bGXC@xe;_uy4eB|ngL7H(GKOZ;!BR$`P?t4
+z>q^ANZjJ4nc5d_`!P5M9dk#5-*uc{@su+dYqd1yC_<I-e<A+Upu!`)W0hUU)^}r|H
+zY_-~J+v_fQT52%RI$!k+SxoZl_PLM%b!s)zmwq1d1aAcV@V(cJ*wztYRdlMKDr!ij
+zplpb52)7l&gw8K==W|lBHT4cQSsz&qZF1lX^g>&=^oQT$7m0YHe!LUzN+M=sd13gn
+zK)QCi_nj0JtLwk>-AjX`X_d(*j(|G#vA_=pU<?4hrcUYNEg@Gc@%u*I8MV}O#_SKM
+zyMB%t*vLYDirhI*3?oM8FB-YfMqaCd@SQ3k0g2@sK3UN?_S0pwX7z2a@wWwtn1br*
+zw14<~v%tumgB&PI`1@+oPE^oXIHR`6-vSC`iiu+rQAl9A(oRCg(3*eoD>@^ySxldj
+zrd?@AYH0UAcMSOyt>4$JNeS?AtsCc-s{sKRoWv|Lb!b$L7als6%tho(jj!oszOWwZ
+zd&2KU;0~Rrec-vvQH-7N*Tb_TS%Z<!(=L3xEZa@y(K0G)<bX0sgcE$$%3J6WXV7?e
+zmk}CIMQlb)0^eikh&N$eOQh_!7BSS1S$$r%N!6;`PPK_+`pRCd_G;HNtk!TE?sd1w
+z2l#*rax}ck*=<hX99xGJy^ZeRH$GzA{E{ytizDWfAt~Wr_sJ=fj%*SIjclKNe!)-n
+zZfaNWCg7IN%BdA+RKKgd#4M{&!tL0AXxIMoP~bIT_$Q>_Wi>ylf--!tQ)zB+O61O%
+zW`!Cs^Gm_@k2dLy(d5SFJf|u*yk}^5oCvJoLaZj4>{6b0J8b(x6?Jr0>7s6_yk4XB
+zGy3D!0TRI9sAR;j3$!9Z7dk2#+NXof5t?o@VG&VrNl9r5D3KDAxGg4r8y$HpDt;UK
+zg`S}l`n?SmKu`%$X%Qh_K@sQ!h58Bz2|>Zdf`a_QLV{3`F;v1YA|%KwASePAKp;UO
+zVIh7#(`b{BY|ULfg~PYz{l1+I#GHUCYE|jx+UM}n+CqH#dK5>_yK2Ml#8EwY?q1n{
+z9Pq&(k4xi4D5MDyf?hJJ%D5eem;jXmX~v}GTrg9=3{Dzx&#HhuO}78TiFUtaImz}G
+zBi<=TV5*W6(wy)bbx3D^!`eI=2gq<ASnMvUYHIBt#Vp-3ja04T-SA@KTi!|;m4*V#
+z+x6cwOV9&TE~(VJj2%eGp(i`TWqp^Q7Z^u=n93$+uL`A(Pv&M6*$+l++;hN+Wc+TP
+z`f!>UN7-vYSs7Be{V@=)kRsVn!|lI@xEv4x1rq>Xch^)78x8{ROAC8)t;)cgA3x;Q
+z|4|ycJW`s*?pLM%^uG3#8C*s<swlif9C8^!LBjL>u?SRgf~?4^B|JR5AH1HDDrs+P
+z=nzA<KE$%AUQTr7g0+R|<jG}^0kb#;Kp*kBQFD{Yj1yYw(rY5<DL}>NOMa7yv5Q#p
+zmbqH99oefmH#%ZE@#NJDw(maolnhk2g(bBV@V+|Wuz}0)P+F@{CF~~xiWRY((bXcD
+zfm)AGsfz^`JFI{EQI=rbd;e0htMZn=zd;*TQHZ9{ebOA#p!+Xas4l~Wy0F6x;kV17
+zurGD11n^o$D8N6HMaI29v79~$m!SWZTWsu;**lhX)X9?qoGuOacWHTpe1K`V9PI$U
+zR**HjpOr}Ik+$R3#enC<AAUB&^e*woeNL|S1YraRHEnl3Xd9V{RZ$TXbEm$4&@yLF
+zKa6`Be$*9?ON_%J4UM&m3>T>ws&+{90*6WKKJSDSo}$VV*4QEHU8@5E(phXIBkQz-
+zf>`91nN_=T0So=}qYOqyl7c*ChKyLwc>ybU3R7f9zi5oi-DW8Zw`PNWwUoF84aE$+
+z*nm0~5@r!`x}YCS`IMI*ZlExh!qv_R^INKw>;w7D8N1-^92LG@ayn8eINpbizP{yC
+z`>)pMj}FB@$Vg2^Gr2ukK2kqqx-H7F6kgd#$lv^hh0cgpM`V~ELy3iAK6bV*nvA}~
+zJXBuK9*l?-#m{|iIAvg)p#Rymif7lY#pkBD%|aip7D9{ZXLj}o3aI9e$&3S!$@Lok
+zv`HnuLY_s|Wm3#iG1b0K{diyDwdZFHdQlywE&IkS{Bl-e%-rzGDFx!=)s7#DJxnU>
+zTrGc2xUR0aogMOoNM9Z9DX5*vRC3gw?@hi_3^bG^AP6zL(_HE9339_?8e_YDbzrwC
+zQt434V*{L<r6#fd=jko^K~d&|-4Zv$Pv;Rx_G5`X6MTjKyzlAZ8v2RR{@^l<E=0Y1
+zE)M&OfRBya0}B|2{4~8^9;5$|JM3ohz1|gW7x{Y1)KXVWqh8glzOJjz7}eegnttz9
+zLjUk==-BTYHvTd?rqg_u2JjLaB%T@9U>e+&JR@Fv^qDO-tL)Pk;=6_2nX)wgL#fVR
+zEyQ!H>?D@Lb{o|Z6#MR>{MJE3Oq58PnYLIJYZyxM+l_0{3JSTU8WAtX0WM*xM6nNX
+z`3L)EcfxDoR+Mabmton5SvYE6o<f+6?@AC6QJ3F$^ddbAHbv%f@GB{C#B72+xh1_R
+zSc!Ox1kQQmt!}!$`?3BWk`_sUEa<fMFMT9>3BV5V3mbvjYP}K7-i|P%tfD;L-6Stv
+z$|Pr2p>8!I`E-x1=tR4Zc}Z>X-0*AxTI_m^J80788iIWik*K<MVzOJt1Ro2dhBNUp
+zKb@v$KaN}-Qu!jj`<}hASg+#59JGcxuCU1%x1T}*`Fop0_(;v))Lr77<4T`7j_pdu
+zI>mpA3(AdSa+(NoN3&^dG1FN8QdQhGxeg(ssWTgthyL5aFdIBV<-U@mW5Mx*DBbwc
+zRU7kNc{Wn-C?Zu~2}eq+GL{+}PEksv>TO*;Hi!+>Fleu@qK>E`If*8F3vg1f9Ij{n
+z;)w+Mk>kj^nZBd8e)<eHCkrVJWD-_ljc%mMb6k#kSuWUR*zT-4xVDd0ML!3y0$)<i
+zXV+iL-fVaLHb_g8UOe5in<n^-#H8tSU0gkz(e@+0dZP)m>@7h!eV7ofv*af1G7kDf
+zhoJ9ufuPtZ&nG4uXKG-~#E5NAcn@CZ#SpFjnf=Yjmr*84<^FDh<r<?CIdIc3k1o+`
+zM<4*AY!jF1k1|pB<}yc?gb{br>wYE4w)_F@SN+~6b}iG}t+TqEpQlfw=;Y#V!K9%c
+zXT`>7&m0Y*h~S*)RPgG|eQj}aSTjXQ>cIL``PsD98|SI0#(>rAg6AbU9VyD|B+({J
+zq7b|9%4UH>unf^Q`ZXnPyVy~~`HsYHlDsAl<<CjkvP89S4tRT)5hkgliC8i7q--q3
+zO*3=cn9%kV(j&2j&6{T~5bx1?z|F|*j`j(P+}OJdGs^bn7(X@fDD_uxY!*6bCTimn
+zMG)GI^f%GfeK5lYxo8!1x4Hca%|Z6F(5&R%c}1<|%|Wv>`ofNIT7Qk7%Z#}zIRJ~c
+zG6?hOBQL$5`VRxYzDI)G=L@N^Od|jO*0IMsjvM&(;9J6lhKmgD*vuH2`w+EB^fSa0
+z85sgao9WknZj1|`f|^QRjX+%VJiCf8Ecfo00NU`F>nC1Az>M61V4}#-*T}Qnbemh2
+z?f&UFpY(`whr8ZE0|KW#HP#a@#>$yawG{4{5lgg%c}WeO_D9cr0qsf^Kj<tZ#3DsJ
+zza>+U#_f3z;of}vKK_cdO-ylV+l^Hv%v5EWfDN>U@2)5?O0@@|IhV&1JeG1+&5M0v
+zKNb<qk!<X93$7uDQeXG=dbwKY@%#oei;iTk#L1^XglRZ8q%eQN+t4ApLmqd)dzI@W
+zr^7Z!N2P&l^3}UOKEE5)g;Xv2D!c_?syFRQlf=UWI#ZNIp)SKbXdTJAF}AN1276PS
+z;_C<rE2u8cto+yr{V^ic889-O3-39Xs^Z(Myl?bC#ny^`j9*B6A`pnN6n2C`i@A9B
+z&oVmrzaAe7Y8ah<TGCXYdW1J%u8-Av74c|hegA;(tC%w(s6bYImb%aNf!-p>9wRr*
+z1A`XB>q{QAepZo!Q1YkvS4NP9Nv!4mHYfEFTar3sgErevzLSt5!hL18HHo~;AxHp@
+z7S9mc>n8xMguX5AsuK!ryWZY>68mZY)#1oNMgTTtLqfrnphniWM$NbHDHk6lG9<fy
+z^_%8}UxsmG&|-fJTK&;GbY}LRc>BJ6)79nA_)s&JK5Q8Ee23MIhS?Q2dh#a12Gf>#
+z;$S}tvmz|ZNmy<eH^lJV39X7rkVc5zwSg5{I4QGF+DQ<<!O>kGRvnfOLh+p4kbcTk
+z!A5qz**{mRUa>JswN?+O56{LHC9dn*mm-1w<1mH=2J=mZzxy$3zLTurj8gvCxXzNg
+zcn=@p%G6aGB#tt7t(uJuWWc|lLrfq3AXptP(T}E2V>S%s@#W!REEO~1_!wcd0d?Vc
+z^{mW;F7wBOILjulLO!ylNXS3v_cFx13^{U~zySuReL8cst?>}fmEP9i?fjF~Dd~-=
+zX<q5Yt+5T4Hv-?4?+zaL{<s!LpV9Ejb0+3Pp{bXR9OY7onzf*}))%49bnOzr%$>w3
+z#x0YvdMQbpf!eF?N`zhL%d(Tci5w0npVw2hzMZ-!-x3P-8RIu`{`d>@rxR@j*bufh
+zEop3_B6C>0;B^KsCi`!nKSWGaliVBMdwKU>z*D=NLAps2`p_7siT#y!yHNg~W4wkD
+zp@XGowWriZ*?9yNc~(jEyW1WG+T`U1_QN&?mF6zcu>8=~twZ@sNN_jdH7n_v531gI
+zQxq{Tx+Qy9kI`T$?VZeYS};#F=cmkwc{~J5Au-Tci1`*2sB|h=kUw5EJN!RATX{Uw
+z{~w>(#2n2ea)uGU7;{7-*WBc$@Zf8RvNB9_)m$+xay5zEXDSLIH=8r`ohxcNDn-ea
+zQqlJ_zQ5o9pZDYSem&2}=ka-bl!JXukl4`~Zatmns9e9s&Zr}Fy!{T`jPGS(s{5s?
+zBYy-W5^5O!YYUyguMU;+Y-JgLkvA49cD?88%*Oii=Nbk*pUOWJM=`C6d=@cRvVJIe
+z+Jk`g@eC-*CU&+zMXgMPe7jYzI7MHSl)@pPg$-RQ`Nfy?krq*jpnsfMbP(za-;GXW
+zOJ~zhpbV976m?=rYEov<tYtF$%R||qw$b?egQ4hVjJUAk-9|~`TdTM))>Mks-A#dM
+zE&v1oGyYB-0D>i3rgO##NshYWB{(ANB!tbQD5M>A$1hb?B0eKfczy<@gX6YAzuIFl
+z`onGx-JSD~726^iY{e$gSHG=1JX;<7hH>0pCG}<0wuwtMM6A9HCUwX?1oju(UVPYM
+z`Nl#g7MMdV?G);}8Q1c{=E+QXAkLRypte38xDo*BpiGPVrHNNopWZH<)QDigjZ-Ju
+z&7B5BKqHNfEE>K{&I$H@i%U5q`NZ1Eu3I2M`k1F-RNPUYO)pC5V^s(<ev80}u%FZF
+z&dET+v}@`L3c89<^OUkT+MXr4)qUFJCSreDac>NVIAq<7V&w6W$5~TiSX1@|O7i+H
+zCuE?Xd~Ee?Z~17uFG8|F!m__)g$$20mb>{YsmQivGddZV1FSPIMPhJbE$v`P%4^S6
+z9+kP0U0t+EdWt7|&odP)A2|j|ldeZ?ufC}g2J5<V0e4$0-^>B2hzd()Q9)v&83Wy>
+zV|O*%yt?eiFrKTw+UmJDe|6mZH2=zfbfEUq^+s_((Twu>zSt#TOqxVt^hm%XCvjB1
+zG}>X=pK8DSpyN_@=8y76c>4f#4<iF6`Ni_Q6ackSjQS5QZ&6_{$Svc#)?rLR;k-$+
+zMVschyC+0WjGW?>ThQ=xN+Gd_X6w{@Q3eb^U`<db!aD<fU*{}{LWR>>4U#ZeM%$4$
+zdlntR=U^qtgLBjg_8`Ohy0&@d#1TtlsD47wivQYsSWtqR>>9G^H=eIq5?=8k(V?P9
+zVU(iywqpE8>|R!QR<K(N*1Edg90^D|hD8kkGa@T)d-sE?UhzVn=H@Pr*`$po)VNwu
+zmNREd9b#l7Jv5DMg9J_A8y!11g#Rx*u2K;03P#o-{52gNnZpGB#IR*}9QLYqORtZ4
+zs<=GeO7QuOX^=#MHI5Y>EI!jACe2zaMHAn~ZjtN5PYOM=mUGQI%qc#bJl1G29ymQw
+za>^0-4hX1|!BQvS0$DmI(M8$59g|%9`AE#3s5!GowT&ses&|)YH2fv<jo6df-iQ-t
+zSPli&0gMB9jSN%0lD7Fc#w|cpuK&SKe$e_)i&KweBHdvw*TMoHPHKUN0!*RBvH;E+
+zfC~`&E+_`qJ_!$}+0a6@PHNrU%d-`H_nya(LN&hJx1NE48Hfp94(#0$;ZOwZ2Do4!
+zICL@CCE<OwzJ`(WNt=rbv6^}rDl&5cNX_GXeyBoeXTx$|XV?BhM|@o-pf=!s!E<VW
+z6M8vsuUyUNP$0kFBPIrjc;wVNC{NX`>hDxX^C>fp9WU$p@~*k+vH_|l{1>3Iid;F4
+zOJ_bFh6EWm1#wMcGtM>3`DTvn85kWyr7O$l<%R=-W<9>|X_`C24X-fOq0?C51<UFD
+z^3A0k+1qiQC_{Qt_UcSp<PN7=LD)2K00<lSe&SlPUH1Xkm}D%d!;$ZZrPh97mS2l2
+zL;6eG-cd=iRqubJ*$KX9N5agx4)}z#Qmx3N4DO?i7Eeiq4i%(IuaAeW@yb*%uLzbq
+zW0tm7j^7@Bx^y}k1!ZYqzdkg&eJn9h5V2C-b&>Byw)#z6v}7xMDKAzj@Bu8f>JLxR
+z9TSmIoq^#Z;K){t;|?baFb6jFZC4I(25z-ByseUkpsVvpD*B9{X%(<A6B2lCI@qho
+z`#)s@A&9U7m&$Klm=NJpBF5)`|IkosvZ3Ye?fx<s|5|meDj|pa_V;rz=L7QR_Q`K$
+zn@&zw@E0)Fc~n8p0d2TW-2W(t*THCXK*qODcHiD%9PTEkLje*484*ru84UAUwKDLb
+zT6whBEHhQzko(%DH|D?A{_$$+S*1)i-ns7H9v?3{^jIkbPGfZ^5HwPxSrFC;$`RZH
+z_3@y8?{d5~WjbLTGIMxPZ&N!@NJYZ#_p6A0M`(k3;Klx<d;4XGU{ND$3a#P#I?#gm
+z8R)me>ACJkLLs^n{5Z*GH<Zj?_U_}{hsYb}F`s}CWTgg38+b!?N(W_%$ktDd`NKSJ
+z&`&%(ML+$t!d>Xk{m}SI8%A|P3mP>yNLO0r0XFhuMBw*jnFYRP3yF=<`F#!<iAz@5
+zH4VzAxO<2sxuDG^AyI$2Mpa~*k!2PLU>^cw$9_%~=$ouk67|WFzjS5E?$@v?gIKvk
+z4|+Y7sv%x*nvMp}2|*piHlI-j+zDjuJO-4;fi)832X*UOmN^XF+r&kWoL@I>$n@Ke
+zrt=n9cYo8m@J(#zeBkGGe!!at)q(Dowv52^H<^Cws~9$0lX9EUU#cNH(+4h|C5=3K
+z7LwGT)Li1lBUca%J^*dMJZ0BlEk8HE*d?2lN0DjCCosg7#&*b#a{1eD;^*S2Dff>)
+z)hroqYB+xY0H+441poxas%rZFmgR4f9=y99$NPFoEYov13gbdMaYboT%pKBP+LGuX
+z^Z&a6wdOzu8$6fq>A!4vp<-IhK0B4~vE3vyFDzT9D;LG<)<BhTG~Zs_wq-#8m~G#k
+zQd+R-DIP|JuD7@ub*mM_O(4K+;wfeKt(~b4g8E{z8~iUWS~2545Bb;1kcK$uLRyw~
+mUm<^oL2B;VXQl;P+##@&TGm#E)m{C<2%jY?Akfv*;{O8myWpz;
+
+literal 0
+HcmV?d00001
 
 diff --git a/TMessagesProj/src/main/res/values-ar/strings.xml b/TMessagesProj/src/main/res/values-ar/strings.xml
 index 8b870043..1a774895 100644

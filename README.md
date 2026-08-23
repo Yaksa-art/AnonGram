@@ -49,6 +49,12 @@ gradle :TMessagesProj_AppStandalone:assembleAfatStandalone
 
 The apk lands in `TMessagesProj_AppStandalone/build/outputs/apk/afat/standalone/`.
 
+The patch contains the added files as well as the edits, so applying it is all
+you need. (It did not, once: `git diff` silently leaves out files git has never
+been told about, and the first published patch was missing every new class in
+it. That is why `java/` and `res/` are also kept here as plain copies — and why
+the patch is now generated after `git add -N`.)
+
 ## What this repository does not contain
 
 - **api_id / api_hash.** Those are the build owner's personal keys. Get your own
