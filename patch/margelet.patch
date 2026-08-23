@@ -3405,10 +3405,10 @@ index 95495c32..f3e1cc7c 100644
  
          // trim again in case some whitespace inside tags
 diff --git a/TMessagesProj/src/main/java/org/telegram/messenger/MessageObject.java b/TMessagesProj/src/main/java/org/telegram/messenger/MessageObject.java
-index 77870805..9cd3bc0f 100644
+index 77870805..d3b0aa11 100644
 --- a/TMessagesProj/src/main/java/org/telegram/messenger/MessageObject.java
 +++ b/TMessagesProj/src/main/java/org/telegram/messenger/MessageObject.java
-@@ -8053,6 +8053,14 @@ public class MessageObject {
+@@ -8053,6 +8053,24 @@ public class MessageObject {
          }
          text = FormattedDateSpan.restoreFormatedDateEntities(text);
          Spannable spannable = (Spannable) text;
@@ -3418,7 +3418,17 @@ index 77870805..9cd3bc0f 100644
 +        //
 +        // Кнопки дописываются в СПИСОК разметки до его обработки: ссылку тогда
 +        // строит сам телеграм, своим обычным кодом, а не я своим.
-+        org.telegram.margelet.MargeletMarkup.injectEntities(text, entities);
++        //
++        // Список может прийти пустым указателем — у сообщения без единого
++        // жирного слова разметки нет вовсе. Тогда заводим свой: иначе кнопка
++        // в таком сообщении осталась бы без ссылки, а это как раз самый частый
++        // случай — «просто текст и кнопка».
++        if (org.telegram.margelet.MargeletMarkup.has(text)) {
++            if (entities == null) {
++                entities = new ArrayList<>();
++            }
++            org.telegram.margelet.MargeletMarkup.injectEntities(text, entities);
++        }
 +        org.telegram.margelet.MargeletMarkup.apply(spannable);
          URLSpan[] spans = spannable.getSpans(0, text.length(), URLSpan.class);
          boolean hasUrls = spans != null && spans.length > 0;
