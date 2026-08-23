@@ -68,6 +68,31 @@ public class MargeletConfig {
         prefs().edit().putBoolean("input_on_top", top).apply();
     }
 
+    /** Режим стримера: прятать номер телефона. */
+    public static boolean streamerMode() {
+        return prefs().getBoolean("streamer", false);
+    }
+
+    public static void setStreamerMode(boolean on) {
+        prefs().edit().putBoolean("streamer", on).apply();
+    }
+
+    public static boolean streamerHidesOthers() {
+        return prefs().getBoolean("streamer_others", false);
+    }
+
+    public static void setStreamerHidesOthers(boolean on) {
+        prefs().edit().putBoolean("streamer_others", on).apply();
+    }
+
+    public static boolean streamerHidesUsername() {
+        return prefs().getBoolean("streamer_username", false);
+    }
+
+    public static void setStreamerHidesUsername(boolean on) {
+        prefs().edit().putBoolean("streamer_username", on).apply();
+    }
+
     /** Правка тегов у музыки. По умолчанию включена. */
     public static boolean tagsEnabled() {
         return prefs().getBoolean("tags_enabled", true);

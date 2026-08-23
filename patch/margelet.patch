@@ -29,12 +29,143 @@ index 7cc3a8e3..533927ca 100644
              buildConfigField "String", "BUILD_VERSION_STRING", "\"" + APP_VERSION_NAME + "\""
              buildConfigField "String", "APP_CENTER_HASH", "\"\""
              buildConfigField "String", "BETA_URL", "\"" + getProps("BETA_PRIVATE_URL") + "\""
+diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletCats.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletCats.java
+new file mode 100644
+index 00000000..8668ad3a
+--- /dev/null
++++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletCats.java
+@@ -0,0 +1,125 @@
++package org.telegram.margelet;
++
++import static org.telegram.messenger.AndroidUtilities.dp;
++
++import android.app.Activity;
++import android.app.Dialog;
++import android.graphics.Color;
++import android.graphics.drawable.ColorDrawable;
++import android.util.TypedValue;
++import android.view.Gravity;
++import android.view.View;
++import android.view.ViewGroup;
++import android.view.Window;
++import android.view.WindowManager;
++import android.widget.FrameLayout;
++import android.widget.ImageView;
++import android.widget.LinearLayout;
++import android.widget.TextView;
++
++import org.telegram.messenger.AndroidUtilities;
++import org.telegram.messenger.LocaleController;
++import org.telegram.messenger.R;
++import org.telegram.messenger.browser.Browser;
++import org.telegram.ui.Components.LayoutHelper;
++
++import java.net.URLEncoder;
++
++/**
++ * Кошка на весь экран, если долбить по вкладке «Чаты».
++ *
++ * Считаем нажатия подряд: семь штук, между соседними не больше секунды. Порог
++ * такой, чтобы обычный человек, переключающий вкладки, на него не наткнулся, а
++ * тот, кто именно долбит, — наткнулся сразу.
++ */
++public class MargeletCats {
++
++    private static final int TAPS_NEEDED = 7;
++    private static final long GAP_MS = 1000;
++
++    /** Кошки. Добавить свою может кто угодно — через владельца, см. ссылку внизу. */
++    private static final int[] PHOTOS = {R.drawable.margelet_cat_1, R.drawable.margelet_cat_2};
++    private static final int[] NAMES = {R.string.MargeletCatOne, R.string.MargeletCatTwo};
++
++    private static final String OWNER = "narezany";
++
++    private static int taps;
++    private static long lastTap;
++
++    public static void tap(Activity activity) {
++        final long now = System.currentTimeMillis();
++        taps = (now - lastTap > GAP_MS) ? 1 : taps + 1;
++        lastTap = now;
++        if (taps >= TAPS_NEEDED) {
++            taps = 0;
++            show(activity);
++        }
++    }
++
++    private static void show(Activity activity) {
++        if (activity == null) {
++            return;
++        }
++        try {
++            final int index = (int) (Math.random() * PHOTOS.length);
++
++            final FrameLayout root = new FrameLayout(activity);
++            root.setBackgroundColor(0xFF000000);
++
++            final ImageView photo = new ImageView(activity);
++            photo.setScaleType(ImageView.ScaleType.CENTER_CROP);
++            photo.setImageResource(PHOTOS[index]);
++            root.addView(photo, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
++
++            final LinearLayout bottom = new LinearLayout(activity);
++            bottom.setOrientation(LinearLayout.VERTICAL);
++            bottom.setBackgroundColor(0xB0000000);
++            bottom.setPadding(dp(20), dp(16), dp(20), dp(24));
++
++            final TextView name = new TextView(activity);
++            name.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 22);
++            name.setTypeface(AndroidUtilities.bold());
++            name.setTextColor(Color.WHITE);
++            name.setText(LocaleController.getString(NAMES[index]));
++            bottom.addView(name, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
++
++            final TextView invite = new TextView(activity);
++            invite.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
++            invite.setTextColor(0xFF8DD1B0);
++            invite.setText(LocaleController.getString(R.string.MargeletCatAddYours));
++            invite.setPadding(0, dp(10), 0, 0);
++            invite.setOnClickListener(v -> writeToOwner(activity));
++            bottom.addView(invite, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
++
++            root.addView(bottom, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT,
++                    LayoutHelper.WRAP_CONTENT, Gravity.BOTTOM));
++
++            final Dialog dialog = new Dialog(activity);
++            dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
++            dialog.setContentView(root, new ViewGroup.LayoutParams(
++                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
++            final Window window = dialog.getWindow();
++            if (window != null) {
++                window.setBackgroundDrawable(new ColorDrawable(Color.BLACK));
++                window.setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT);
++            }
++            // По кошке — закрыть. По надписи снизу — написать владельцу; она
++            // ловит нажатие сама и до этого обработчика не доходит.
++            photo.setOnClickListener(v -> dialog.dismiss());
++            dialog.show();
++        } catch (Exception ignored) {
++            // Пасхалка не то, ради чего можно ронять приложение.
++        }
++    }
++
++    /** Открывает переписку с владельцем и подставляет заготовку сообщения. */
++    private static void writeToOwner(Activity activity) {
++        try {
++            final String text = LocaleController.getString(R.string.MargeletCatAskText)
++                    + "…" + LocaleController.getString(R.string.MargeletCatAskTail);
++            Browser.openUrl(activity, "https://t.me/" + OWNER + "?text="
++                    + URLEncoder.encode(text, "UTF-8"));
++        } catch (Exception ignored) {
++        }
++    }
++}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
 new file mode 100644
-index 00000000..136839e1
+index 00000000..46a06acd
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
-@@ -0,0 +1,131 @@
+@@ -0,0 +1,156 @@
 +package org.telegram.margelet;
 +
 +import android.content.Context;
@@ -103,6 +234,31 @@ index 00000000..136839e1
 +
 +    public static void setInputOnTop(boolean top) {
 +        prefs().edit().putBoolean("input_on_top", top).apply();
++    }
++
++    /** Режим стримера: прятать номер телефона. */
++    public static boolean streamerMode() {
++        return prefs().getBoolean("streamer", false);
++    }
++
++    public static void setStreamerMode(boolean on) {
++        prefs().edit().putBoolean("streamer", on).apply();
++    }
++
++    public static boolean streamerHidesOthers() {
++        return prefs().getBoolean("streamer_others", false);
++    }
++
++    public static void setStreamerHidesOthers(boolean on) {
++        prefs().edit().putBoolean("streamer_others", on).apply();
++    }
++
++    public static boolean streamerHidesUsername() {
++        return prefs().getBoolean("streamer_username", false);
++    }
++
++    public static void setStreamerHidesUsername(boolean on) {
++        prefs().edit().putBoolean("streamer_username", on).apply();
 +    }
 +
 +    /** Правка тегов у музыки. По умолчанию включена. */
@@ -285,6 +441,83 @@ index 00000000..f3d81a4d
 +        } catch (Exception ignored) {
 +            // Звук — украшение. Не дала система — экран должен жить дальше.
 +        }
++    }
++}
+diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletPrivacy.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletPrivacy.java
+new file mode 100644
+index 00000000..ed158322
+--- /dev/null
++++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletPrivacy.java
+@@ -0,0 +1,71 @@
++package org.telegram.margelet;
++
++import org.telegram.messenger.UserConfig;
++
++/**
++ * Режим стримера: номер телефона и, если попросят, юзернейм закрываются
++ * точками всюду, где приложение их показывает.
++ *
++ * Настоящего спойлера, как в сообщениях, тут нет и быть не может: он умеет
++ * жить только в тех вьюшках телеграма, которые его рисуют, а номер в шапке
++ * профиля показывает простой текст. Поэтому замазка и общий показ по нажатию:
++ * тронул закрытый номер — открылось всё на полминуты.
++ */
++public class MargeletPrivacy {
++
++    private static final long REVEAL_MS = 30_000;
++
++    private static long revealedUntil;
++
++    public static boolean streamer() {
++        return MargeletConfig.streamerMode();
++    }
++
++    public static boolean revealed() {
++        return System.currentTimeMillis() < revealedUntil;
++    }
++
++    public static void reveal() {
++        revealedUntil = System.currentTimeMillis() + REVEAL_MS;
++    }
++
++    private static boolean own(long userId) {
++        return userId != 0 && userId == UserConfig.getInstance(UserConfig.selectedAccount).getClientUserId();
++    }
++
++    /** Номер телефона, уже отформатированный. userId — чей он. */
++    public static String phone(String formatted, long userId) {
++        if (formatted == null || !streamer() || revealed()) {
++            return formatted;
++        }
++        if (!own(userId) && !MargeletConfig.streamerHidesOthers()) {
++            return formatted;
++        }
++        return mask(formatted);
++    }
++
++    /** Юзернейм без собачки. */
++    public static String username(String name, long userId) {
++        if (name == null || !streamer() || revealed()) {
++            return name;
++        }
++        if (!own(userId) || !MargeletConfig.streamerHidesUsername()) {
++            return name;
++        }
++        return mask(name);
++    }
++
++    /**
++     * Цифры и буквы заменяются точками, а скобки, пробелы и плюс остаются:
++     * так видно, что это номер, и не видно какой. Полностью однородная строка
++     * читалась бы как ошибка отрисовки.
++     */
++    private static String mask(String value) {
++        final StringBuilder out = new StringBuilder(value.length());
++        for (int i = 0; i < value.length(); i++) {
++            final char c = value.charAt(i);
++            out.append(Character.isLetterOrDigit(c) ? '•' : c);
++        }
++        return out.toString();
 +    }
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletStrings.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletStrings.java
@@ -662,8 +895,21 @@ index df646cf4..b25e5001 100644
      }
  
      public static String getServerString(String key) {
+diff --git a/TMessagesProj/src/main/java/org/telegram/ui/Cells/ProfileSearchCell.java b/TMessagesProj/src/main/java/org/telegram/ui/Cells/ProfileSearchCell.java
+index af32ccff..165ea0bb 100644
+--- a/TMessagesProj/src/main/java/org/telegram/ui/Cells/ProfileSearchCell.java
++++ b/TMessagesProj/src/main/java/org/telegram/ui/Cells/ProfileSearchCell.java
+@@ -530,7 +530,7 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
+         nameString = AndroidUtilities.replaceNewLines(nameString);
+         if (TextUtils.isEmpty(nameString)) {
+             if (user != null && !TextUtils.isEmpty(user.phone)) {
+-                nameString = PhoneFormat.getInstance().format("+" + user.phone);
++                nameString = org.telegram.margelet.MargeletPrivacy.phone(PhoneFormat.getInstance().format("+" + user.phone), user.id);
+             } else {
+                 nameString = getString(R.string.HiddenName);
+             }
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
-index 6b8cddfe..e21b1667 100644
+index 6b8cddfe..851ccd78 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
 @@ -1199,6 +1199,8 @@ public class ChatActivity extends BaseFragment implements
@@ -701,6 +947,15 @@ index 6b8cddfe..e21b1667 100644
          if (topicsTabs != null) {
              topicsTabs.setSideMenuBackgroundMarginTop(0);//Math.max(0, paddingTop - blurredViewTopOffset - dp(5)));
          }
+@@ -19520,7 +19532,7 @@ public class ChatActivity extends BaseFragment implements
+                 avatarContainer.setTitle(LocaleController.getString(R.string.SavedMessages));
+             } else if (!MessagesController.isSupportUser(currentUser) && getContactsController().contactsDict.get(currentUser.id) == null && (getContactsController().contactsDict.size() != 0 || !getContactsController().isLoadingContacts())) {
+                 if (!TextUtils.isEmpty(currentUser.phone)) {
+-                    avatarContainer.setTitle(PhoneFormat.getInstance().format("+" + currentUser.phone), currentUser.scam, currentUser.fake, currentUser.verified, getMessagesController().isPremiumUser(currentUser), currentUser.emoji_status, animated);
++                    avatarContainer.setTitle(org.telegram.margelet.MargeletPrivacy.phone(PhoneFormat.getInstance().format("+" + currentUser.phone), currentUser.id), currentUser.scam, currentUser.fake, currentUser.verified, getMessagesController().isPremiumUser(currentUser), currentUser.emoji_status, animated);
+                 } else {
+                     avatarContainer.setTitle(AndroidUtilities.removeRTL(AndroidUtilities.removeDiacritics(UserObject.getUserName(currentUser))), currentUser.scam, currentUser.fake, currentUser.verified, getMessagesController().isPremiumUser(currentUser), currentUser.emoji_status, animated);
+                 }
 @@ -33379,6 +33391,10 @@ public class ChatActivity extends BaseFragment implements
                  undoView.showWithAction(0, UndoView.ACTION_MESSAGE_COPIED, null);
                  break;
@@ -930,6 +1185,23 @@ index 49bf8215..e9b242a0 100644
  
          public final String key;
          public final int background;
+diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MainTabsActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MainTabsActivity.java
+index 18411328..d7a2f80e 100644
+--- a/TMessagesProj/src/main/java/org/telegram/ui/MainTabsActivity.java
++++ b/TMessagesProj/src/main/java/org/telegram/ui/MainTabsActivity.java
+@@ -331,6 +331,12 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
+ 
+             final int position = indexToPosition(index);
+             tabs[index].setOnClickListener(v -> {
++                if (position == POSITION_CHATS) {
++                    // Пасхалка: если долбить по «Чатам», покажется кошка.
++                    // Считается здесь, до всех проверок ниже, — иначе повторные
++                    // нажатия по уже выбранной вкладке до счётчика не доходят.
++                    org.telegram.margelet.MargeletCats.tap(getParentActivity());
++                }
+                 if (viewPager.isManualScrolling() || viewPager.isTouch()) {
+                     return;
+                 }
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletInputActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletInputActivity.java
 new file mode 100644
 index 00000000..1d675319
@@ -1021,10 +1293,10 @@ index 00000000..1d675319
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletSettingsActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletSettingsActivity.java
 new file mode 100644
-index 00000000..62be4514
+index 00000000..3e5e7cb5
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletSettingsActivity.java
-@@ -0,0 +1,92 @@
+@@ -0,0 +1,99 @@
 +package org.telegram.ui;
 +
 +import android.view.View;
@@ -1056,6 +1328,7 @@ index 00000000..62be4514
 +    private static final int ID_CHANNEL = 3;
 +    private static final int ID_FORUM = 4;
 +    private static final int ID_TRACKS = 5;
++    private static final int ID_STREAMER = 6;
 +
 +    @Override
 +    protected CharSequence getTitle() {
@@ -1073,6 +1346,10 @@ index 00000000..62be4514
 +                    IconBackgroundColors.ORANGE_DEEP.top, IconBackgroundColors.ORANGE_DEEP.bottom,
 +                    R.drawable.settings_sounds, LocaleController.getString(R.string.MargeletSound), LocaleController.getString(R.string.MargeletSoundInfo)));
 +        }
++        items.add(SettingsActivity.SettingCell.Factory.of(ID_STREAMER,
++                IconBackgroundColors.RED.top, IconBackgroundColors.RED.bottom,
++                R.drawable.settings_privacy, LocaleController.getString(R.string.MargeletStreamer),
++                LocaleController.getString(R.string.MargeletStreamerInfo)));
 +        items.add(SettingsActivity.SettingCell.Factory.of(ID_TRACKS,
 +                IconBackgroundColors.PURPLE.top, IconBackgroundColors.PURPLE.bottom,
 +                R.drawable.settings_folders, LocaleController.getString(R.string.MargeletTracks),
@@ -1105,6 +1382,8 @@ index 00000000..62be4514
 +            presentFragment(new MargeletSoundActivity());
 +        } else if (item.id == ID_CHANNEL) {
 +            Browser.openUrl(getContext(), MargeletConfig.CHANNEL_URL);
++        } else if (item.id == ID_STREAMER) {
++            presentFragment(new MargeletStreamerActivity());
 +        } else if (item.id == ID_TRACKS) {
 +            presentFragment(new MargeletTracksActivity());
 +        } else if (item.id == ID_FORUM) {
@@ -1223,6 +1502,79 @@ index 00000000..6fd6827d
 +        MargeletConfig.setMeowPath(out.getAbsolutePath());
 +        listView.adapter.update(true);
 +        MargeletMeow.play(getContext());
++    }
++
++    @Override
++    protected boolean onLongClick(UItem item, View view, int position, float x, float y) {
++        return false;
++    }
++}
+diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletStreamerActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletStreamerActivity.java
+new file mode 100644
+index 00000000..884aad67
+--- /dev/null
++++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletStreamerActivity.java
+@@ -0,0 +1,67 @@
++package org.telegram.ui;
++
++import android.view.View;
++
++import org.telegram.margelet.MargeletConfig;
++import org.telegram.messenger.LocaleController;
++import org.telegram.messenger.R;
++import org.telegram.ui.Components.UItem;
++import org.telegram.ui.Components.UniversalAdapter;
++import org.telegram.ui.Components.UniversalFragment;
++
++import java.util.ArrayList;
++
++/** Ветка «Режим стримера»: что прятать на экране во время эфира. */
++public class MargeletStreamerActivity extends UniversalFragment {
++
++    private static final int ID_ON = 1;
++    private static final int ID_OTHERS = 2;
++    private static final int ID_USERNAME = 3;
++
++    @Override
++    protected CharSequence getTitle() {
++        return LocaleController.getString(R.string.MargeletStreamer);
++    }
++
++    @Override
++    public View createView(android.content.Context context) {
++        final View view = super.createView(context);
++        listView.setSections();
++        return view;
++    }
++
++    @Override
++    protected void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
++        items.add(UItem.asCheck(ID_ON, LocaleController.getString(R.string.MargeletStreamerOn))
++                .setChecked(MargeletConfig.streamerMode()));
++        // Остальные два появляются только при включённом режиме: сами по себе
++        // они ничего не делают, и включённый выключатель без последствий
++        // выглядит как поломка.
++        if (MargeletConfig.streamerMode()) {
++            items.add(UItem.asCheck(ID_OTHERS, LocaleController.getString(R.string.MargeletStreamerOthers))
++                    .setChecked(MargeletConfig.streamerHidesOthers()));
++            items.add(UItem.asCheck(ID_USERNAME, LocaleController.getString(R.string.MargeletStreamerUsername))
++                    .setChecked(MargeletConfig.streamerHidesUsername()));
++        }
++        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletStreamerAbout)));
++    }
++
++    @Override
++    protected void onClick(UItem item, View view, int position, float x, float y) {
++        if (item.id == ID_ON) {
++            MargeletConfig.setStreamerMode(!MargeletConfig.streamerMode());
++        } else if (item.id == ID_OTHERS) {
++            MargeletConfig.setStreamerHidesOthers(!MargeletConfig.streamerHidesOthers());
++        } else if (item.id == ID_USERNAME) {
++            MargeletConfig.setStreamerHidesUsername(!MargeletConfig.streamerHidesUsername());
++        } else {
++            return;
++        }
++        listView.adapter.update(true);
 +    }
 +
 +    @Override
@@ -1569,7 +1921,7 @@ index 00000000..60a2f81f
 +    }
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java
-index 40634647..c7dd2382 100644
+index 40634647..a9b48379 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java
 @@ -626,6 +626,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
@@ -1605,6 +1957,33 @@ index 40634647..c7dd2382 100644
                  chatRow = rowCount++;
                  privacyRow = rowCount++;
                  notificationRow = rowCount++;
+@@ -11420,7 +11425,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+                     nameTextView[a].setRightDrawable2(titleTextView.getRightDrawable2());
+                 } else if (a == 0 && user.id != getUserConfig().getClientUserId() && !MessagesController.isSupportUser(user) && user.phone != null && user.phone.length() != 0 && getContactsController().contactsDict.get(user.id) == null &&
+                         (getContactsController().contactsDict.size() != 0 || !getContactsController().isLoadingContacts())) {
+-                    nameTextView[a].setText(PhoneFormat.getInstance().format("+" + user.phone));
++                    nameTextView[a].setText(org.telegram.margelet.MargeletPrivacy.phone(PhoneFormat.getInstance().format("+" + user.phone), user.id));
+                 } else {
+                     nameTextView[a].setText(newString);
+                 }
+@@ -13491,7 +13496,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+                             text = PhoneFormat.getInstance().format("+" + vcardPhone);
+                             phoneNumber = vcardPhone;
+                         } else if (user != null && !TextUtils.isEmpty(user.phone)) {
+-                            text = PhoneFormat.getInstance().format("+" + user.phone);
++                            text = org.telegram.margelet.MargeletPrivacy.phone(PhoneFormat.getInstance().format("+" + user.phone), user.id);
+                             phoneNumber = user.phone;
+                         } else {
+                             text = LocaleController.getString(R.string.PhoneHidden);
+@@ -13585,7 +13590,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+                         TLRPC.User user = UserConfig.getInstance(currentAccount).getCurrentUser();
+                         String value;
+                         if (user != null && user.phone != null && user.phone.length() != 0) {
+-                            value = PhoneFormat.getInstance().format("+" + user.phone);
++                            value = org.telegram.margelet.MargeletPrivacy.phone(PhoneFormat.getInstance().format("+" + user.phone), user.id);
+                         } else {
+                             value = LocaleController.getString(R.string.NumberUnknown);
+                         }
 @@ -13839,6 +13844,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                          textCell.setTextAndIcon(LocaleController.getString(R.string.PrivacySettings), R.drawable.msg2_secret, true);
                      } else if (position == dataRow) {
@@ -1635,10 +2014,33 @@ index 40634647..c7dd2382 100644
                  return VIEW_TYPE_TEXT;
              } else if (position == notificationsDividerRow) {
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/SettingsActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/SettingsActivity.java
-index cbfb369a..8fe7f696 100644
+index cbfb369a..af1f6f89 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/SettingsActivity.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/SettingsActivity.java
-@@ -688,6 +688,10 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
+@@ -536,13 +536,20 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
+         titleView.setText(UserObject.getUserName(user));
+         final StringBuilder sb = new StringBuilder();
+         if (user != null) {
+-            sb.append(PhoneFormat.getInstance().format("+" + user.phone));
++            sb.append(org.telegram.margelet.MargeletPrivacy.phone(PhoneFormat.getInstance().format("+" + user.phone), user.id));
+         }
+         final String username = UserObject.getPublicUsername(user);
+         if (username != null) {
+-            sb.append(" • @").append(username);
++            sb.append(" • @").append(org.telegram.margelet.MargeletPrivacy.username(username, user == null ? 0 : user.id));
+         }
+         subtitleView.setText(sb);
++        // Нажатие на закрытый номер открывает всё на полминуты.
++        subtitleView.setOnClickListener(v -> {
++            if (org.telegram.margelet.MargeletPrivacy.streamer() && !org.telegram.margelet.MargeletPrivacy.revealed()) {
++                org.telegram.margelet.MargeletPrivacy.reveal();
++                setInfo(user);
++            }
++        });
+ 
+         versionView.setText(getVersionName());
+     }
+@@ -688,6 +695,10 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
              items.add(UItem.asShadow(null));
          }
  
@@ -1649,7 +2051,7 @@ index cbfb369a..8fe7f696 100644
          items.add(SettingCell.Factory.of(1, IconBackgroundColors.BLUE.top, IconBackgroundColors.BLUE.bottom, R.drawable.settings_account, getString(R.string.SettingsAccount), getString(R.string.SettingsAccountInfo)));
          items.add(SettingCell.Factory.of(2, IconBackgroundColors.ORANGE.top, IconBackgroundColors.ORANGE.bottom, R.drawable.settings_chat, getString(R.string.SettingsChat), getString(R.string.SettingsChatInfo)));
          items.add(SettingCell.Factory.of(3, IconBackgroundColors.GREEN.top, IconBackgroundColors.GREEN.bottom, R.drawable.settings_privacy, getString(R.string.SettingsPrivacySecurity), getString(R.string.SettingsPrivacySecurityInfo)));
-@@ -836,6 +840,9 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
+@@ -836,6 +847,9 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
              case 10:
                  presentSettingFragment(new LanguageSelectActivity());
                  break;
@@ -5227,7 +5629,7 @@ index 03d0ba33..17f98fa6 100644
      <string name="English">Inglês</string>
      <string name="LanguageNameInEnglish">Portuguese (Brazil)</string>
 diff --git a/TMessagesProj/src/main/res/values-ru/strings.xml b/TMessagesProj/src/main/res/values-ru/strings.xml
-index 24c56292..75a4c8f3 100644
+index 24c56292..c77d12b7 100644
 --- a/TMessagesProj/src/main/res/values-ru/strings.xml
 +++ b/TMessagesProj/src/main/res/values-ru/strings.xml
 @@ -1,7 +1,7 @@
@@ -5240,7 +5642,7 @@ index 24c56292..75a4c8f3 100644
      <string name="LanguageName">Русский</string>
      <string name="English">Английский</string>
      <string name="LanguageNameInEnglish">Russian</string>
-@@ -263,4 +263,44 @@
+@@ -263,4 +263,55 @@
      <string name="RemindTodayAt">\'Отправить сегодня в\' HH:mm</string>
      <string name="RemindDayAt">\'Отправить\' d MMM \'в\' HH:mm</string>
      <string name="RemindDayYearAt">\'Напомнить\' d MMM yyyy \'в\' HH:mm</string>
@@ -5284,6 +5686,17 @@ index 24c56292..75a4c8f3 100644
 +    <string name="MargeletIconSand">Песочная</string>
 +    <string name="MargeletIconSea">Морская</string>
 +    <string name="MargeletIconRose">Розовая</string>
++    <string name="MargeletCatAddYours">Хочешь свою кошку в Margelet? Напиши @narezany</string>
++    <string name="MargeletCatAskText">Привет! Хочу добавить свою кошку в Margelet. Описание: </string>
++    <string name="MargeletCatAskTail"> — фото прикладываю.</string>
++    <string name="MargeletCatOne">грецкий орех</string>
++    <string name="MargeletCatTwo">ыжвдвдыбабв\U0001F621\U0001F621\U0001F621</string>
++    <string name="MargeletStreamer">Режим стримера</string>
++    <string name="MargeletStreamerInfo">Прячет номер телефона на экране</string>
++    <string name="MargeletStreamerOn">Прятать мой номер</string>
++    <string name="MargeletStreamerOthers">Прятать и чужие номера</string>
++    <string name="MargeletStreamerUsername">Прятать мой юзернейм</string>
++    <string name="MargeletStreamerAbout">Номер закрывается точками всюду, где приложение его показывает. Нажатие на закрытый номер открывает всё на полминуты — хватит, чтобы прочитать самому, и мало, чтобы оставить это в эфире.</string>
  </resources>
 \ No newline at end of file
 diff --git a/TMessagesProj/src/main/res/values-uk/strings.xml b/TMessagesProj/src/main/res/values-uk/strings.xml
@@ -5301,7 +5714,7 @@ index d4683443..57d10109 100644
      <string name="English">Англійська</string>
      <string name="LanguageNameInEnglish">Ukrainian</string>
 diff --git a/TMessagesProj/src/main/res/values/strings.xml b/TMessagesProj/src/main/res/values/strings.xml
-index ffa4d566..c50737b4 100644
+index ffa4d566..3242438e 100644
 --- a/TMessagesProj/src/main/res/values/strings.xml
 +++ b/TMessagesProj/src/main/res/values/strings.xml
 @@ -1,7 +1,7 @@
@@ -5314,7 +5727,7 @@ index ffa4d566..c50737b4 100644
      <string name="LanguageName">English</string>
      <string name="English">English</string>
      <string name="LanguageNameInEnglish">English</string>
-@@ -11221,4 +11221,44 @@
+@@ -11221,4 +11221,55 @@
      <string name="UnsupportedMessageTitle">Unsupported Message</string>
      <string name="UnsupportedMessageMessage">Update Telegram to view this message</string>
      <string name="UnsupportedUpdate">Update</string>
@@ -5358,6 +5771,17 @@ index ffa4d566..c50737b4 100644
 +    <string name="MargeletIconSand">Sand</string>
 +    <string name="MargeletIconSea">Sea</string>
 +    <string name="MargeletIconRose">Rose</string>
++    <string name="MargeletCatAddYours">Want your cat in Margelet? Write to @narezany</string>
++    <string name="MargeletCatAskText">Hi! I want to add my cat to Margelet. Description: </string>
++    <string name="MargeletCatAskTail"> — photo attached.</string>
++    <string name="MargeletCatOne">walnut</string>
++    <string name="MargeletCatTwo">ыжвдвдыбабв\U0001F621\U0001F621\U0001F621</string>
++    <string name="MargeletStreamer">Streamer mode</string>
++    <string name="MargeletStreamerInfo">Hide the phone number on screen</string>
++    <string name="MargeletStreamerOn">Hide my number</string>
++    <string name="MargeletStreamerUsername">Hide my username</string>
++    <string name="MargeletStreamerAbout">The number is covered with dots wherever the app shows it. Tap a covered number to open everything for half a minute — enough to read it yourself, not enough to leave it on stream.</string>
++    <string name="MargeletStreamerOthers">Hide numbers of other people</string>
  </resources>
 diff --git a/TMessagesProj_App/build.gradle b/TMessagesProj_App/build.gradle
 index 2aa197cb..8fd9c9ec 100644

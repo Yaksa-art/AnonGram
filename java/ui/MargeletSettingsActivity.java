@@ -29,6 +29,7 @@ public class MargeletSettingsActivity extends UniversalFragment {
     private static final int ID_CHANNEL = 3;
     private static final int ID_FORUM = 4;
     private static final int ID_TRACKS = 5;
+    private static final int ID_STREAMER = 6;
 
     @Override
     protected CharSequence getTitle() {
@@ -46,6 +47,10 @@ public class MargeletSettingsActivity extends UniversalFragment {
                     IconBackgroundColors.ORANGE_DEEP.top, IconBackgroundColors.ORANGE_DEEP.bottom,
                     R.drawable.settings_sounds, LocaleController.getString(R.string.MargeletSound), LocaleController.getString(R.string.MargeletSoundInfo)));
         }
+        items.add(SettingsActivity.SettingCell.Factory.of(ID_STREAMER,
+                IconBackgroundColors.RED.top, IconBackgroundColors.RED.bottom,
+                R.drawable.settings_privacy, LocaleController.getString(R.string.MargeletStreamer),
+                LocaleController.getString(R.string.MargeletStreamerInfo)));
         items.add(SettingsActivity.SettingCell.Factory.of(ID_TRACKS,
                 IconBackgroundColors.PURPLE.top, IconBackgroundColors.PURPLE.bottom,
                 R.drawable.settings_folders, LocaleController.getString(R.string.MargeletTracks),
@@ -78,6 +83,8 @@ public class MargeletSettingsActivity extends UniversalFragment {
             presentFragment(new MargeletSoundActivity());
         } else if (item.id == ID_CHANNEL) {
             Browser.openUrl(getContext(), MargeletConfig.CHANNEL_URL);
+        } else if (item.id == ID_STREAMER) {
+            presentFragment(new MargeletStreamerActivity());
         } else if (item.id == ID_TRACKS) {
             presentFragment(new MargeletTracksActivity());
         } else if (item.id == ID_FORUM) {
