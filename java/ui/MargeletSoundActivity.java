@@ -4,6 +4,8 @@ import android.content.Intent;
 import android.net.Uri;
 import android.view.View;
 
+import org.telegram.messenger.LocaleController;
+import org.telegram.messenger.R;
 import org.telegram.margelet.MargeletConfig;
 import org.telegram.margelet.MargeletMeow;
 import org.telegram.messenger.ApplicationLoader;
@@ -28,7 +30,7 @@ public class MargeletSoundActivity extends UniversalFragment {
 
     @Override
     protected CharSequence getTitle() {
-        return "Звук";
+        return LocaleController.getString(R.string.MargeletSound);
     }
 
     @Override
@@ -40,20 +42,15 @@ public class MargeletSoundActivity extends UniversalFragment {
 
     @Override
     protected void fillItems(java.util.ArrayList<UItem> items, UniversalAdapter adapter) {
-        items.add(UItem.asCheck(ID_ENABLED, "Мяуканье").setChecked(MargeletConfig.meowEnabled()));
-        items.add(UItem.asShadow("Играет, если задержать палец на названии на главном экране "
-                + "примерно на полторы секунды."));
+        items.add(UItem.asCheck(ID_ENABLED, LocaleController.getString(R.string.MargeletMeow)).setChecked(MargeletConfig.meowEnabled()));
+        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletMeowAbout)));
 
         final boolean own = MargeletConfig.meowPath() != null;
-        items.add(UItem.asHeader("Какой звук"));
-        items.add(UItem.asRadio(ID_STANDARD, "Стандартный").setChecked(!own));
-        items.add(UItem.asRadio(ID_OWN, own ? "Свой файл" : "Выбрать свой файл").setChecked(own));
-        items.add(UItem.asButton(ID_PLAY, "Послушать"));
-        items.add(UItem.asShadow("Свой файл копируется внутрь приложения: ссылка на файл в "
-                + "галерее живёт до первой уборки, а копия — сколько нужно.\n\n"
-                + "Стандартный звук — запись под лицензией CC0, то есть автор отказался от "
-                + "прав на неё. Синтезированный вариант, который был здесь раньше, я убрал: "
-                + "он собирался вслепую и звучал плохо."));
+        items.add(UItem.asHeader(LocaleController.getString(R.string.MargeletWhichSound)));
+        items.add(UItem.asRadio(ID_STANDARD, LocaleController.getString(R.string.MargeletSoundBuiltIn)).setChecked(!own));
+        items.add(UItem.asRadio(ID_OWN, own ? LocaleController.getString(R.string.MargeletSoundOwn) : LocaleController.getString(R.string.MargeletSoundChoose)).setChecked(own));
+        items.add(UItem.asButton(ID_PLAY, LocaleController.getString(R.string.MargeletSoundPlay)));
+        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletSoundAbout)));
     }
 
     @Override

@@ -68,6 +68,15 @@ public class MargeletConfig {
         prefs().edit().putBoolean("input_on_top", top).apply();
     }
 
+    /** Правка тегов у музыки. По умолчанию включена. */
+    public static boolean tagsEnabled() {
+        return prefs().getBoolean("tags_enabled", true);
+    }
+
+    public static void setTagsEnabled(boolean enabled) {
+        prefs().edit().putBoolean("tags_enabled", enabled).apply();
+    }
+
     /**
      * Слышал ли человек мяуканье хоть раз. До этого раздела «Звук» в
      * настройках нет: настраивать то, о существовании чего не знаешь, незачем,

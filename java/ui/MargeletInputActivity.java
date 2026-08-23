@@ -2,6 +2,8 @@ package org.telegram.ui;
 
 import android.view.View;
 
+import org.telegram.messenger.LocaleController;
+import org.telegram.messenger.R;
 import org.telegram.margelet.MargeletConfig;
 import org.telegram.ui.Components.UItem;
 import org.telegram.ui.Components.UniversalAdapter;
@@ -29,36 +31,31 @@ public class MargeletInputActivity extends UniversalFragment {
 
     @Override
     protected CharSequence getTitle() {
-        return "Поле ввода";
+        return LocaleController.getString(R.string.MargeletInput);
     }
 
     @Override
     protected void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
-        items.add(UItem.asHeader("Сколько строк"));
+        items.add(UItem.asHeader(LocaleController.getString(R.string.MargeletLines)));
         String[] lines = new String[LINES.length];
         for (int i = 0; i < LINES.length; i++) {
-            lines[i] = LINES[i] == 0 ? "макс." : String.valueOf(LINES[i]);
+            lines[i] = LINES[i] == 0 ? LocaleController.getString(R.string.MargeletLinesMax) : String.valueOf(LINES[i]);
         }
         items.add(UItem.asSlideView(lines, indexOf(LINES, MargeletConfig.inputMaxLinesRaw(), 4),
                 i -> MargeletConfig.setInputMaxLines(LINES[i])));
-        items.add(UItem.asShadow("До скольких строк поле растёт, прежде чем начать прокручиваться. "
-                + "В оригинале их шесть. «Макс.» — расти, пока есть место на экране.\n\n"
-                + "Предел в 4096 знаков на сообщение остаётся: его держит сервер, а не приложение."));
+        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletLinesAbout)));
 
-        items.add(UItem.asHeader("Размер текста"));
+        items.add(UItem.asHeader(LocaleController.getString(R.string.MargeletTextSize)));
         String[] sizes = new String[SIZES.length];
         for (int i = 0; i < SIZES.length; i++) {
             sizes[i] = String.valueOf(SIZES[i]);
         }
         items.add(UItem.asSlideView(sizes, indexOf(SIZES, Math.round(MargeletConfig.inputTextSize()), 4),
                 i -> MargeletConfig.setInputTextSize(SIZES[i])));
-        items.add(UItem.asShadow("Применяется к следующему открытому чату."));
+        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletNextChat)));
 
-        items.add(UItem.asCheck(ID_TOP, "Поле ввода сверху").setChecked(MargeletConfig.inputOnTop()));
-        items.add(UItem.asShadow("Поле переезжает под шапку чата, место под него в списке "
-                + "сообщений тоже переезжает наверх. Клавиатура и панели остаются внизу — они "
-                + "принадлежат экрану, а не полю.\n\nПрименяется к следующему открытому чату: "
-                + "у уже открытого половина размеров посчитана от прежней стороны."));
+        items.add(UItem.asCheck(ID_TOP, LocaleController.getString(R.string.MargeletInputOnTop)).setChecked(MargeletConfig.inputOnTop()));
+        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletInputOnTopAbout)));
     }
 
     @Override

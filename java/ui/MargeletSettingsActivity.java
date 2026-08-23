@@ -3,6 +3,7 @@ package org.telegram.ui;
 import android.view.View;
 
 import org.telegram.margelet.MargeletConfig;
+import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.R;
 import org.telegram.messenger.browser.Browser;
 import org.telegram.ui.Components.IconBackgroundColors;
@@ -27,6 +28,7 @@ public class MargeletSettingsActivity extends UniversalFragment {
     private static final int ID_SOUND = 2;
     private static final int ID_CHANNEL = 3;
     private static final int ID_FORUM = 4;
+    private static final int ID_TRACKS = 5;
 
     @Override
     protected CharSequence getTitle() {
@@ -37,21 +39,26 @@ public class MargeletSettingsActivity extends UniversalFragment {
     protected void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
         items.add(SettingsActivity.SettingCell.Factory.of(ID_INPUT,
                 IconBackgroundColors.GREEN.top, IconBackgroundColors.GREEN.bottom,
-                R.drawable.settings_chat, "Поле ввода", "Строки, размер текста, положение"));
+                R.drawable.settings_chat, LocaleController.getString(R.string.MargeletInput), LocaleController.getString(R.string.MargeletInputInfo)));
         // Раздел «Звук» появляется, только когда мяуканье уже услышали.
         if (MargeletConfig.meowHeard()) {
             items.add(SettingsActivity.SettingCell.Factory.of(ID_SOUND,
                     IconBackgroundColors.ORANGE_DEEP.top, IconBackgroundColors.ORANGE_DEEP.bottom,
-                    R.drawable.settings_sounds, "Звук", "Мяуканье на главном экране"));
+                    R.drawable.settings_sounds, LocaleController.getString(R.string.MargeletSound), LocaleController.getString(R.string.MargeletSoundInfo)));
         }
         items.add(UItem.asShadow(null));
         items.add(SettingsActivity.SettingCell.Factory.of(ID_CHANNEL,
                 IconBackgroundColors.BLUE.top, IconBackgroundColors.BLUE.bottom,
-                R.drawable.settings_channel, "Канал", "t.me/margeletter"));
+                R.drawable.settings_channel, LocaleController.getString(R.string.MargeletChannel), "t.me/margeletter"));
         items.add(SettingsActivity.SettingCell.Factory.of(ID_FORUM,
                 IconBackgroundColors.ORANGE.top, IconBackgroundColors.ORANGE.bottom,
-                R.drawable.settings_group, "Форум", "t.me/margeletforum"));
+                R.drawable.settings_group, LocaleController.getString(R.string.MargeletForum), "t.me/margeletforum"));
         items.add(UItem.asShadow(null));
+        // Пункт-выключатель, а не ветка: настраивать тут больше нечего, а
+        // прятать один переключатель за отдельным экраном — лишний шаг.
+        items.add(UItem.asCheck(ID_TRACKS, LocaleController.getString(R.string.MargeletTracksEnabled))
+                .setChecked(MargeletConfig.tagsEnabled()));
+        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletTracksEnabledAbout)));
     }
 
     @Override
@@ -72,6 +79,9 @@ public class MargeletSettingsActivity extends UniversalFragment {
             presentFragment(new MargeletSoundActivity());
         } else if (item.id == ID_CHANNEL) {
             Browser.openUrl(getContext(), MargeletConfig.CHANNEL_URL);
+        } else if (item.id == ID_TRACKS) {
+            MargeletConfig.setTagsEnabled(!MargeletConfig.tagsEnabled());
+            listView.adapter.update(true);
         } else if (item.id == ID_FORUM) {
             Browser.openUrl(getContext(), MargeletConfig.FORUM_URL);
         }

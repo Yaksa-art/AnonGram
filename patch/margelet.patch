@@ -31,10 +31,10 @@ index 7cc3a8e3..533927ca 100644
              buildConfigField "String", "BETA_URL", "\"" + getProps("BETA_PRIVATE_URL") + "\""
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
 new file mode 100644
-index 00000000..9721af0c
+index 00000000..136839e1
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
-@@ -0,0 +1,122 @@
+@@ -0,0 +1,131 @@
 +package org.telegram.margelet;
 +
 +import android.content.Context;
@@ -103,6 +103,15 @@ index 00000000..9721af0c
 +
 +    public static void setInputOnTop(boolean top) {
 +        prefs().edit().putBoolean("input_on_top", top).apply();
++    }
++
++    /** Правка тегов у музыки. По умолчанию включена. */
++    public static boolean tagsEnabled() {
++        return prefs().getBoolean("tags_enabled", true);
++    }
++
++    public static void setTagsEnabled(boolean enabled) {
++        prefs().edit().putBoolean("tags_enabled", enabled).apply();
 +    }
 +
 +    /**
@@ -654,7 +663,7 @@ index df646cf4..b25e5001 100644
  
      public static String getServerString(String key) {
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
-index 6b8cddfe..5b385ef3 100644
+index 6b8cddfe..e21b1667 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
 @@ -1199,6 +1199,8 @@ public class ChatActivity extends BaseFragment implements
@@ -666,7 +675,7 @@ index 6b8cddfe..5b385ef3 100644
      public final static int OPTION_SAVE_TO_GALLERY = 4;
      public final static int OPTION_APPLY_LOCALIZATION_OR_THEME = 5;
      public final static int OPTION_SHARE = 6;
-@@ -12018,13 +12020,19 @@ public class ChatActivity extends BaseFragment implements
+@@ -12018,13 +12020,23 @@ public class ChatActivity extends BaseFragment implements
          if (isInsideContainer && parentChatActivity == null) {
              paddingBottom = AndroidUtilities.navigationBarHeight;
          } else {
@@ -682,23 +691,16 @@ index 6b8cddfe..5b385ef3 100644
  
 -        final int paddingTop = (int) chatListViewPaddingTop;
 +        int paddingTop = (int) chatListViewPaddingTop;
++        // Остров с полем ввода должен стоять под всем, что уже занято сверху:
++        // шапкой, закреплёнными, вкладками тем. Это ровно то, что посчитано в
++        // chatListViewPaddingTop, поэтому просто отдаём ему это число.
++        chatInputViewsContainer.setChatTopInset(chatListViewPaddingTop);
 +        if (chatInputViewsContainer.isInputOnTop()) {
 +            paddingTop += (int) (inputIslandHeightCurrent + dp(9 + 7));
 +        }
          if (topicsTabs != null) {
              topicsTabs.setSideMenuBackgroundMarginTop(0);//Math.max(0, paddingTop - blurredViewTopOffset - dp(5)));
          }
-@@ -20285,6 +20293,10 @@ public class ChatActivity extends BaseFragment implements
- 
-     @Override
-     public void onActivityResultFragment(int requestCode, int resultCode, Intent data) {
-+        if (resultCode == Activity.RESULT_OK && requestCode == MargeletTagsAlert.PICK_COVER) {
-+            MargeletTagsAlert.onCoverPicked(data);
-+            return;
-+        }
-         if (resultCode == Activity.RESULT_OK) {
-             if (requestCode == 0 || requestCode == 2) {
-                 createChatAttachView();
 @@ -33379,6 +33391,10 @@ public class ChatActivity extends BaseFragment implements
                  undoView.showWithAction(0, UndoView.ACTION_MESSAGE_COPIED, null);
                  break;
@@ -710,7 +712,7 @@ index 6b8cddfe..5b385ef3 100644
              case OPTION_SAVE_TO_GALLERY: {
                  if (Build.VERSION.SDK_INT >= 23 && (Build.VERSION.SDK_INT <= 28 || BuildVars.NO_SCOPED_STORAGE) && getParentActivity().checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
                      getParentActivity().requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 4);
-@@ -46097,6 +46113,20 @@ public class ChatActivity extends BaseFragment implements
+@@ -46097,6 +46113,21 @@ public class ChatActivity extends BaseFragment implements
                      }
                  }
  
@@ -722,8 +724,9 @@ index 6b8cddfe..5b385ef3 100644
 +                // «Сохранить в загрузки / Поделиться файлом» — а они повторяются
 +                // почти в каждой ветке слово в слово, и попал в файлы
 +                // локализации вместо музыки. Здесь условие одно и явное.
-+                if (selectedObject.isMusic() && !noforwardsOrPaidMedia) {
-+                    items.add("Теги трека");
++                if (selectedObject.isMusic() && !noforwardsOrPaidMedia
++                        && org.telegram.margelet.MargeletConfig.tagsEnabled()) {
++                    items.add(LocaleController.getString(R.string.MargeletTrackTags));
 +                    options.add(OPTION_MARGELET_TAGS);
 +                    icons.add(R.drawable.msg_edit);
 +                }
@@ -747,7 +750,7 @@ index ac402db5..2ab3931f 100644
          messageEditText.setPadding(0, dp(9), 0, dp(10));
          messageEditText.setBackgroundDrawable(null);
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/Components/chat/ChatInputViewsContainer.java b/TMessagesProj/src/main/java/org/telegram/ui/Components/chat/ChatInputViewsContainer.java
-index 78c3b9e1..fa2a4399 100644
+index 78c3b9e1..b820c3eb 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/Components/chat/ChatInputViewsContainer.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/Components/chat/ChatInputViewsContainer.java
 @@ -17,6 +17,9 @@ import android.widget.FrameLayout;
@@ -760,7 +763,7 @@ index 78c3b9e1..fa2a4399 100644
  import org.telegram.ui.Components.LayoutHelper;
  import org.telegram.ui.Components.blur3.BlurredBackgroundWithFadeDrawable;
  import org.telegram.ui.Components.blur3.drawable.BlurredBackgroundDrawable;
-@@ -31,6 +34,18 @@ public class ChatInputViewsContainer extends FrameLayout {
+@@ -31,6 +34,38 @@ public class ChatInputViewsContainer extends FrameLayout {
  
      private WindowInsetsProvider windowInsetsProvider;
  
@@ -771,15 +774,35 @@ index 78c3b9e1..fa2a4399 100644
 +     */
 +    private final boolean inputOnTop = MargeletConfig.inputOnTop();
 +
-+    /** Под шапкой чата: строка состояния плюс сама шапка. */
++    /**
++     * Сколько занято сверху. Правильное значение знает только сам чат: кроме
++     * шапки там бывает панель закреплённых сообщений, вкладки тем, строка
++     * поиска. Поэтому чат его сюда и передаёт; своя оценка остаётся запасной,
++     * на случай если передать не успели.
++     *
++     * Владелец увидел это сразу: поле сверху налезало на «Закреплённые».
++     */
++    private float chatTopInset;
++
++    public void setChatTopInset(float value) {
++        if (chatTopInset != value) {
++            chatTopInset = value;
++            checkViewsPositions();
++            invalidate();
++        }
++    }
++
 +    private int topOffset() {
++        if (chatTopInset > 0) {
++            return Math.round(chatTopInset);
++        }
 +        return AndroidUtilities.statusBarHeight + ActionBar.getCurrentActionBarHeight();
 +    }
 +
      private final View fadeView;
      private final FrameLayout inputIslandBubbleContainer;
      private final FrameLayout inAppKeyboardBubbleContainer;
-@@ -40,7 +55,8 @@ public class ChatInputViewsContainer extends FrameLayout {
+@@ -40,7 +75,8 @@ public class ChatInputViewsContainer extends FrameLayout {
  
          inputIslandBubbleContainer = new FrameLayout(context);
          addView(inputIslandBubbleContainer,
@@ -789,7 +812,7 @@ index 78c3b9e1..fa2a4399 100644
  
          inAppKeyboardBubbleContainer = new FrameLayout(context) {
              @Override
-@@ -182,7 +198,11 @@ public class ChatInputViewsContainer extends FrameLayout {
+@@ -182,7 +218,11 @@ public class ChatInputViewsContainer extends FrameLayout {
      }
  
      private void checkViewsPositions() {
@@ -802,7 +825,7 @@ index 78c3b9e1..fa2a4399 100644
          inAppKeyboardBubbleContainer.setTranslationY(inAppKeyboardBubbleContainer.getMeasuredHeight() - imeBottomInset);
      }
  
-@@ -231,9 +251,17 @@ public class ChatInputViewsContainer extends FrameLayout {
+@@ -231,9 +271,17 @@ public class ChatInputViewsContainer extends FrameLayout {
      }
  
      public float getInputBubbleBottom() {
@@ -820,7 +843,7 @@ index 78c3b9e1..fa2a4399 100644
      @Override
      protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
          super.onMeasure(widthMeasureSpec, heightMeasureSpec);
-@@ -257,7 +285,9 @@ public class ChatInputViewsContainer extends FrameLayout {
+@@ -257,7 +305,9 @@ public class ChatInputViewsContainer extends FrameLayout {
              Math.max(getMeasuredHeight(), getMeasuredHeight() - (int) imeBottomInset + dp(INPUT_KEYBOARD_RADIUS * 2))
          );
  
@@ -909,14 +932,16 @@ index 49bf8215..e9b242a0 100644
          public final int background;
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletInputActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletInputActivity.java
 new file mode 100644
-index 00000000..3304f089
+index 00000000..1d675319
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletInputActivity.java
-@@ -0,0 +1,86 @@
+@@ -0,0 +1,83 @@
 +package org.telegram.ui;
 +
 +import android.view.View;
 +
++import org.telegram.messenger.LocaleController;
++import org.telegram.messenger.R;
 +import org.telegram.margelet.MargeletConfig;
 +import org.telegram.ui.Components.UItem;
 +import org.telegram.ui.Components.UniversalAdapter;
@@ -944,36 +969,31 @@ index 00000000..3304f089
 +
 +    @Override
 +    protected CharSequence getTitle() {
-+        return "Поле ввода";
++        return LocaleController.getString(R.string.MargeletInput);
 +    }
 +
 +    @Override
 +    protected void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
-+        items.add(UItem.asHeader("Сколько строк"));
++        items.add(UItem.asHeader(LocaleController.getString(R.string.MargeletLines)));
 +        String[] lines = new String[LINES.length];
 +        for (int i = 0; i < LINES.length; i++) {
-+            lines[i] = LINES[i] == 0 ? "макс." : String.valueOf(LINES[i]);
++            lines[i] = LINES[i] == 0 ? LocaleController.getString(R.string.MargeletLinesMax) : String.valueOf(LINES[i]);
 +        }
 +        items.add(UItem.asSlideView(lines, indexOf(LINES, MargeletConfig.inputMaxLinesRaw(), 4),
 +                i -> MargeletConfig.setInputMaxLines(LINES[i])));
-+        items.add(UItem.asShadow("До скольких строк поле растёт, прежде чем начать прокручиваться. "
-+                + "В оригинале их шесть. «Макс.» — расти, пока есть место на экране.\n\n"
-+                + "Предел в 4096 знаков на сообщение остаётся: его держит сервер, а не приложение."));
++        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletLinesAbout)));
 +
-+        items.add(UItem.asHeader("Размер текста"));
++        items.add(UItem.asHeader(LocaleController.getString(R.string.MargeletTextSize)));
 +        String[] sizes = new String[SIZES.length];
 +        for (int i = 0; i < SIZES.length; i++) {
 +            sizes[i] = String.valueOf(SIZES[i]);
 +        }
 +        items.add(UItem.asSlideView(sizes, indexOf(SIZES, Math.round(MargeletConfig.inputTextSize()), 4),
 +                i -> MargeletConfig.setInputTextSize(SIZES[i])));
-+        items.add(UItem.asShadow("Применяется к следующему открытому чату."));
++        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletNextChat)));
 +
-+        items.add(UItem.asCheck(ID_TOP, "Поле ввода сверху").setChecked(MargeletConfig.inputOnTop()));
-+        items.add(UItem.asShadow("Поле переезжает под шапку чата, место под него в списке "
-+                + "сообщений тоже переезжает наверх. Клавиатура и панели остаются внизу — они "
-+                + "принадлежат экрану, а не полю.\n\nПрименяется к следующему открытому чату: "
-+                + "у уже открытого половина размеров посчитана от прежней стороны."));
++        items.add(UItem.asCheck(ID_TOP, LocaleController.getString(R.string.MargeletInputOnTop)).setChecked(MargeletConfig.inputOnTop()));
++        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletInputOnTopAbout)));
 +    }
 +
 +    @Override
@@ -1001,15 +1021,16 @@ index 00000000..3304f089
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletSettingsActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletSettingsActivity.java
 new file mode 100644
-index 00000000..de99db1e
+index 00000000..258afa70
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletSettingsActivity.java
-@@ -0,0 +1,84 @@
+@@ -0,0 +1,94 @@
 +package org.telegram.ui;
 +
 +import android.view.View;
 +
 +import org.telegram.margelet.MargeletConfig;
++import org.telegram.messenger.LocaleController;
 +import org.telegram.messenger.R;
 +import org.telegram.messenger.browser.Browser;
 +import org.telegram.ui.Components.IconBackgroundColors;
@@ -1034,6 +1055,7 @@ index 00000000..de99db1e
 +    private static final int ID_SOUND = 2;
 +    private static final int ID_CHANNEL = 3;
 +    private static final int ID_FORUM = 4;
++    private static final int ID_TRACKS = 5;
 +
 +    @Override
 +    protected CharSequence getTitle() {
@@ -1044,21 +1066,26 @@ index 00000000..de99db1e
 +    protected void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
 +        items.add(SettingsActivity.SettingCell.Factory.of(ID_INPUT,
 +                IconBackgroundColors.GREEN.top, IconBackgroundColors.GREEN.bottom,
-+                R.drawable.settings_chat, "Поле ввода", "Строки, размер текста, положение"));
++                R.drawable.settings_chat, LocaleController.getString(R.string.MargeletInput), LocaleController.getString(R.string.MargeletInputInfo)));
 +        // Раздел «Звук» появляется, только когда мяуканье уже услышали.
 +        if (MargeletConfig.meowHeard()) {
 +            items.add(SettingsActivity.SettingCell.Factory.of(ID_SOUND,
 +                    IconBackgroundColors.ORANGE_DEEP.top, IconBackgroundColors.ORANGE_DEEP.bottom,
-+                    R.drawable.settings_sounds, "Звук", "Мяуканье на главном экране"));
++                    R.drawable.settings_sounds, LocaleController.getString(R.string.MargeletSound), LocaleController.getString(R.string.MargeletSoundInfo)));
 +        }
 +        items.add(UItem.asShadow(null));
 +        items.add(SettingsActivity.SettingCell.Factory.of(ID_CHANNEL,
 +                IconBackgroundColors.BLUE.top, IconBackgroundColors.BLUE.bottom,
-+                R.drawable.settings_channel, "Канал", "t.me/margeletter"));
++                R.drawable.settings_channel, LocaleController.getString(R.string.MargeletChannel), "t.me/margeletter"));
 +        items.add(SettingsActivity.SettingCell.Factory.of(ID_FORUM,
 +                IconBackgroundColors.ORANGE.top, IconBackgroundColors.ORANGE.bottom,
-+                R.drawable.settings_group, "Форум", "t.me/margeletforum"));
++                R.drawable.settings_group, LocaleController.getString(R.string.MargeletForum), "t.me/margeletforum"));
 +        items.add(UItem.asShadow(null));
++        // Пункт-выключатель, а не ветка: настраивать тут больше нечего, а
++        // прятать один переключатель за отдельным экраном — лишний шаг.
++        items.add(UItem.asCheck(ID_TRACKS, LocaleController.getString(R.string.MargeletTracksEnabled))
++                .setChecked(MargeletConfig.tagsEnabled()));
++        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletTracksEnabledAbout)));
 +    }
 +
 +    @Override
@@ -1079,6 +1106,9 @@ index 00000000..de99db1e
 +            presentFragment(new MargeletSoundActivity());
 +        } else if (item.id == ID_CHANNEL) {
 +            Browser.openUrl(getContext(), MargeletConfig.CHANNEL_URL);
++        } else if (item.id == ID_TRACKS) {
++            MargeletConfig.setTagsEnabled(!MargeletConfig.tagsEnabled());
++            listView.adapter.update(true);
 +        } else if (item.id == ID_FORUM) {
 +            Browser.openUrl(getContext(), MargeletConfig.FORUM_URL);
 +        }
@@ -1091,16 +1121,18 @@ index 00000000..de99db1e
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletSoundActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletSoundActivity.java
 new file mode 100644
-index 00000000..4cb67025
+index 00000000..6fd6827d
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletSoundActivity.java
-@@ -0,0 +1,110 @@
+@@ -0,0 +1,107 @@
 +package org.telegram.ui;
 +
 +import android.content.Intent;
 +import android.net.Uri;
 +import android.view.View;
 +
++import org.telegram.messenger.LocaleController;
++import org.telegram.messenger.R;
 +import org.telegram.margelet.MargeletConfig;
 +import org.telegram.margelet.MargeletMeow;
 +import org.telegram.messenger.ApplicationLoader;
@@ -1125,7 +1157,7 @@ index 00000000..4cb67025
 +
 +    @Override
 +    protected CharSequence getTitle() {
-+        return "Звук";
++        return LocaleController.getString(R.string.MargeletSound);
 +    }
 +
 +    @Override
@@ -1137,20 +1169,15 @@ index 00000000..4cb67025
 +
 +    @Override
 +    protected void fillItems(java.util.ArrayList<UItem> items, UniversalAdapter adapter) {
-+        items.add(UItem.asCheck(ID_ENABLED, "Мяуканье").setChecked(MargeletConfig.meowEnabled()));
-+        items.add(UItem.asShadow("Играет, если задержать палец на названии на главном экране "
-+                + "примерно на полторы секунды."));
++        items.add(UItem.asCheck(ID_ENABLED, LocaleController.getString(R.string.MargeletMeow)).setChecked(MargeletConfig.meowEnabled()));
++        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletMeowAbout)));
 +
 +        final boolean own = MargeletConfig.meowPath() != null;
-+        items.add(UItem.asHeader("Какой звук"));
-+        items.add(UItem.asRadio(ID_STANDARD, "Стандартный").setChecked(!own));
-+        items.add(UItem.asRadio(ID_OWN, own ? "Свой файл" : "Выбрать свой файл").setChecked(own));
-+        items.add(UItem.asButton(ID_PLAY, "Послушать"));
-+        items.add(UItem.asShadow("Свой файл копируется внутрь приложения: ссылка на файл в "
-+                + "галерее живёт до первой уборки, а копия — сколько нужно.\n\n"
-+                + "Стандартный звук — запись под лицензией CC0, то есть автор отказался от "
-+                + "прав на неё. Синтезированный вариант, который был здесь раньше, я убрал: "
-+                + "он собирался вслепую и звучал плохо."));
++        items.add(UItem.asHeader(LocaleController.getString(R.string.MargeletWhichSound)));
++        items.add(UItem.asRadio(ID_STANDARD, LocaleController.getString(R.string.MargeletSoundBuiltIn)).setChecked(!own));
++        items.add(UItem.asRadio(ID_OWN, own ? LocaleController.getString(R.string.MargeletSoundOwn) : LocaleController.getString(R.string.MargeletSoundChoose)).setChecked(own));
++        items.add(UItem.asButton(ID_PLAY, LocaleController.getString(R.string.MargeletSoundPlay)));
++        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletSoundAbout)));
 +    }
 +
 +    @Override
@@ -1207,29 +1234,33 @@ index 00000000..4cb67025
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletTagsAlert.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletTagsAlert.java
 new file mode 100644
-index 00000000..e847e23c
+index 00000000..eb78327b
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletTagsAlert.java
-@@ -0,0 +1,186 @@
+@@ -0,0 +1,262 @@
 +package org.telegram.ui;
 +
 +import static org.telegram.messenger.AndroidUtilities.dp;
 +
 +import android.app.Activity;
-+import android.content.Intent;
 +import android.graphics.Bitmap;
-+import android.graphics.BitmapFactory;
-+import android.net.Uri;
++import android.graphics.Canvas;
++import android.graphics.Paint;
++import android.graphics.PorterDuff;
++import android.graphics.PorterDuffXfermode;
++import android.graphics.RectF;
++import android.os.Bundle;
 +import android.util.TypedValue;
 +import android.view.Gravity;
++import android.view.View;
++import android.widget.FrameLayout;
++import android.widget.ImageView;
 +import android.widget.LinearLayout;
 +import android.widget.TextView;
 +
 +import org.telegram.margelet.MargeletTags;
-+import org.telegram.messenger.AndroidUtilities;
-+import org.telegram.messenger.ApplicationLoader;
-+import org.telegram.messenger.DocumentObject;
 +import org.telegram.messenger.FileLoader;
++import org.telegram.messenger.LocaleController;
 +import org.telegram.messenger.MessageObject;
 +import org.telegram.messenger.R;
 +import org.telegram.messenger.SendMessagesHelper;
@@ -1242,7 +1273,7 @@ index 00000000..e847e23c
 +
 +import java.io.ByteArrayOutputStream;
 +import java.io.File;
-+import java.io.InputStream;
++import java.util.ArrayList;
 +
 +/**
 + * Правка тегов у аудио прямо из чата: название, исполнитель, обложка.
@@ -1252,142 +1283,214 @@ index 00000000..e847e23c
 + * пишутся в копию файла, копия отправляется в тот же чат. Исходное сообщение
 + * не трогаем: чужое сообщение править нельзя, а своё телеграм разрешает менять
 + * только текстом, не файлом.
++ *
++ * Обложка выбирается телеграмовским выбором фотографий и кадрируется его же
++ * экраном — тем самым, что режет аватарки. Системный выбор файлов, стоявший
++ * здесь сначала, выглядел чужеродно, а обрезать в нём было нечем.
 + */
 +public class MargeletTagsAlert {
 +
-+    public static final int PICK_COVER = 4802;
-+
++    /** Живой разбор переживает открытие выбора фото: экран уходит и приходит. */
 +    private static MargeletTagsAlert current;
 +
 +    private final ChatActivity fragment;
 +    private final MessageObject message;
-+    private final EditTextBoldCursor titleField;
-+    private final EditTextBoldCursor artistField;
-+    private final TextView coverButton;
++
++    private String title = "";
++    private String artist = "";
 +    private byte[] cover;
++    private Bitmap coverPreview;
++
++    private EditTextBoldCursor titleField;
++    private EditTextBoldCursor artistField;
++    private ImageView coverView;
++    private TextView coverHint;
 +
 +    private MargeletTagsAlert(ChatActivity fragment, MessageObject message) {
 +        this.fragment = fragment;
 +        this.message = message;
-+
-+        final Activity context = fragment.getParentActivity();
-+        titleField = field(context, "Название");
-+        artistField = field(context, "Исполнитель");
-+
 +        final TLRPC.Document document = message.getDocument();
 +        if (document != null) {
 +            for (TLRPC.DocumentAttribute a : document.attributes) {
 +                if (a instanceof TLRPC.TL_documentAttributeAudio) {
-+                    titleField.setText(a.title == null ? "" : a.title);
-+                    artistField.setText(a.performer == null ? "" : a.performer);
++                    title = a.title == null ? "" : a.title;
++                    artist = a.performer == null ? "" : a.performer;
 +                }
 +            }
 +        }
-+
-+        coverButton = new TextView(context);
-+        coverButton.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
-+        coverButton.setTextColor(Theme.getColor(Theme.key_dialogTextBlue2));
-+        coverButton.setText("Выбрать обложку");
-+        coverButton.setPadding(0, dp(12), 0, dp(4));
-+        coverButton.setOnClickListener(v -> pickCover());
-+    }
-+
-+    private static EditTextBoldCursor field(Activity context, String hint) {
-+        final EditTextBoldCursor edit = new EditTextBoldCursor(context);
-+        edit.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
-+        edit.setTextColor(Theme.getColor(Theme.key_dialogTextBlack));
-+        edit.setHintColor(Theme.getColor(Theme.key_dialogTextHint));
-+        edit.setHintText(hint);
-+        edit.setBackgroundDrawable(null);
-+        edit.setLineColors(Theme.getColor(Theme.key_dialogInputField),
-+                Theme.getColor(Theme.key_dialogInputFieldActivated),
-+                Theme.getColor(Theme.key_text_RedRegular));
-+        edit.setSingleLine(true);
-+        edit.setPadding(0, dp(4), 0, dp(6));
-+        return edit;
 +    }
 +
 +    public static void show(ChatActivity fragment, MessageObject message) {
 +        if (fragment == null || fragment.getParentActivity() == null || message == null) {
 +            return;
 +        }
-+        final MargeletTagsAlert alert = new MargeletTagsAlert(fragment, message);
-+        current = alert;
++        current = new MargeletTagsAlert(fragment, message);
++        current.open();
++    }
 +
-+        final LinearLayout layout = new LinearLayout(fragment.getParentActivity());
++    private static EditTextBoldCursor field(Activity context, CharSequence hint, String value) {
++        final EditTextBoldCursor edit = new EditTextBoldCursor(context);
++        edit.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
++        edit.setTextColor(Theme.getColor(Theme.key_dialogTextBlack));
++        edit.setHintColor(Theme.getColor(Theme.key_dialogTextHint));
++        edit.setHintText(hint == null ? "" : hint.toString());
++        edit.setBackgroundDrawable(null);
++        edit.setLineColors(Theme.getColor(Theme.key_dialogInputField),
++                Theme.getColor(Theme.key_dialogInputFieldActivated),
++                Theme.getColor(Theme.key_text_RedRegular));
++        edit.setSingleLine(true);
++        edit.setPadding(0, dp(4), 0, dp(6));
++        edit.setText(value);
++        return edit;
++    }
++
++    private void open() {
++        final Activity context = fragment.getParentActivity();
++        if (context == null) {
++            return;
++        }
++
++        // Слева квадрат обложки, справа два поля. Так видно, что получится, —
++        // а не только названия полей.
++        coverView = new ImageView(context);
++        coverView.setScaleType(ImageView.ScaleType.CENTER_CROP);
++        coverView.setBackgroundColor(Theme.getColor(Theme.key_dialogInputField));
++        coverView.setOnClickListener(v -> pickCover());
++
++        coverHint = new TextView(context);
++        coverHint.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
++        coverHint.setTextColor(Theme.getColor(Theme.key_dialogTextBlue2));
++        coverHint.setGravity(Gravity.CENTER);
++        coverHint.setOnClickListener(v -> pickCover());
++
++        titleField = field(context, LocaleController.getString(R.string.MargeletTrackTitle), title);
++        artistField = field(context, LocaleController.getString(R.string.MargeletTrackArtist), artist);
++
++        final LinearLayout fields = new LinearLayout(context);
++        fields.setOrientation(LinearLayout.VERTICAL);
++        fields.addView(titleField, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 40));
++        fields.addView(artistField, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 40, 0, 10, 0, 0));
++
++        final LinearLayout top = new LinearLayout(context);
++        top.setOrientation(LinearLayout.HORIZONTAL);
++        top.addView(coverView, LayoutHelper.createLinear(76, 76, Gravity.TOP, 0, 6, 14, 0));
++        top.addView(fields, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
++
++        final LinearLayout layout = new LinearLayout(context);
 +        layout.setOrientation(LinearLayout.VERTICAL);
-+        layout.addView(alert.titleField, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 40));
-+        layout.addView(alert.artistField, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 40, 0, 8, 0, 0));
-+        layout.addView(alert.coverButton, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT,
-+                LayoutHelper.WRAP_CONTENT, Gravity.LEFT));
++        layout.addView(top, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
++        layout.addView(coverHint, LayoutHelper.createLinear(76, LayoutHelper.WRAP_CONTENT, Gravity.LEFT, 0, 6, 0, 0));
 +
-+        new AlertDialog.Builder(fragment.getParentActivity())
-+                .setTitle("Теги трека")
++        updateCoverView();
++
++        new AlertDialog.Builder(context)
++                .setTitle(LocaleController.getString(R.string.MargeletTrackTags))
 +                .setView(layout)
-+                .setPositiveButton("Отправить", (d, w) -> alert.apply())
-+                .setNegativeButton("Отмена", null)
++                .setPositiveButton(LocaleController.getString(R.string.MargeletTrackSend), (d, w) -> apply())
++                .setNegativeButton(LocaleController.getString(R.string.Cancel), null)
 +                .show();
 +    }
 +
-+    private void pickCover() {
-+        try {
-+            final Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
-+            intent.setType("image/*");
-+            intent.addCategory(Intent.CATEGORY_OPENABLE);
-+            fragment.startActivityForResult(intent, PICK_COVER);
-+        } catch (Exception ignored) {
-+            // Не на каждом телефоне есть чем открыть выбор файла.
-+        }
-+    }
-+
-+    /** Вызывается из ChatActivity, когда система вернула выбранную картинку. */
-+    public static void onCoverPicked(Intent data) {
-+        if (current == null || data == null || data.getData() == null) {
++    private void updateCoverView() {
++        if (coverView == null) {
 +            return;
 +        }
-+        current.readCover(data.getData());
++        if (coverPreview != null) {
++            coverView.setImageBitmap(coverPreview);
++            coverHint.setText(LocaleController.getString(R.string.MargeletTrackCoverChosen));
++        } else {
++            coverView.setImageResource(R.drawable.msg_round_file_s);
++            coverView.setColorFilter(Theme.getColor(Theme.key_dialogTextHint));
++            coverHint.setText(LocaleController.getString(R.string.MargeletTrackCover));
++        }
 +    }
 +
-+    private void readCover(Uri uri) {
-+        try (InputStream in = ApplicationLoader.applicationContext.getContentResolver().openInputStream(uri)) {
-+            Bitmap bitmap = BitmapFactory.decodeStream(in);
-+            if (bitmap == null) {
-+                return;
-+            }
-+            // Обложку ужимаем: в тег иногда кладут снимок с камеры на пять
-+            // мегабайт, и он едет вместе с песней каждому получателю.
-+            final int max = 800;
-+            if (bitmap.getWidth() > max || bitmap.getHeight() > max) {
-+                final float scale = Math.min(max / (float) bitmap.getWidth(), max / (float) bitmap.getHeight());
-+                bitmap = Bitmap.createScaledBitmap(bitmap,
-+                        Math.round(bitmap.getWidth() * scale), Math.round(bitmap.getHeight() * scale), true);
-+            }
-+            final ByteArrayOutputStream out = new ByteArrayOutputStream();
-+            bitmap.compress(Bitmap.CompressFormat.JPEG, 87, out);
-+            cover = out.toByteArray();
-+            coverButton.setText("Обложка выбрана");
-+        } catch (Exception ignored) {
++    /** Запоминаем набранное: диалог сейчас закроется, а вернуться надо к нему же. */
++    private void remember() {
++        if (titleField != null) {
++            title = titleField.getText().toString();
 +        }
++        if (artistField != null) {
++            artist = artistField.getText().toString();
++        }
++    }
++
++    private void pickCover() {
++        remember();
++        final PhotoAlbumPickerActivity picker =
++                new PhotoAlbumPickerActivity(PhotoAlbumPickerActivity.SELECT_TYPE_AVATAR, false, false, null);
++        picker.setMaxSelectedPhotos(1, false);
++        picker.setDelegate(new PhotoAlbumPickerActivity.PhotoAlbumPickerActivityDelegate() {
++            @Override
++            public void didSelectPhotos(ArrayList<SendMessagesHelper.SendingMediaInfo> photos, boolean notify, int scheduleDate) {
++                if (photos == null || photos.isEmpty()) {
++                    return;
++                }
++                openCrop(photos.get(0));
++            }
++
++            @Override
++            public void startPhotoSelectActivity() {
++            }
++        });
++        fragment.presentFragment(picker);
++    }
++
++    private void openCrop(SendMessagesHelper.SendingMediaInfo info) {
++        final Bundle args = new Bundle();
++        if (info.path != null) {
++            args.putString("photoPath", info.path);
++        } else if (info.uri != null) {
++            args.putParcelable("photoUri", info.uri);
++        } else {
++            return;
++        }
++        final PhotoCropActivity crop = new PhotoCropActivity(args);
++        crop.setDelegate(bitmap -> {
++            takeCover(bitmap);
++            // Экран кадрирования закрывает себя сам, сразу после этого вызова.
++            // Поэтому окно тегов открываем чуть позже: иначе оно всплыло бы
++            // поверх уходящего экрана. Стек при этом не трогаем — вызов
++            // removeSelfFromStack у fragment убрал бы сам чат, а не картинку.
++            org.telegram.messenger.AndroidUtilities.runOnUIThread(this::open, 220);
++        });
++        fragment.presentFragment(crop, true);
++    }
++
++    private void takeCover(Bitmap bitmap) {
++        if (bitmap == null) {
++            return;
++        }
++        // Обложку ужимаем: в тег иногда кладут снимок с камеры на пять
++        // мегабайт, и он поедет вместе с песней каждому получателю.
++        final int max = 800;
++        Bitmap out = bitmap;
++        if (out.getWidth() > max || out.getHeight() > max) {
++            final float scale = Math.min(max / (float) out.getWidth(), max / (float) out.getHeight());
++            out = Bitmap.createScaledBitmap(out,
++                    Math.round(out.getWidth() * scale), Math.round(out.getHeight() * scale), true);
++        }
++        final ByteArrayOutputStream bytes = new ByteArrayOutputStream();
++        out.compress(Bitmap.CompressFormat.JPEG, 87, bytes);
++        cover = bytes.toByteArray();
++        coverPreview = out;
 +    }
 +
 +    private void apply() {
++        remember();
 +        final File src = FileLoader.getInstance(fragment.getCurrentAccount())
 +                .getPathToMessage(message.messageOwner);
 +        if (src == null || !src.exists()) {
 +            BulletinFactory.of(fragment).createSimpleBulletin(R.raw.error,
-+                    "Сначала скачай файл — теги пишутся в него, а его ещё нет на телефоне.").show();
++                    LocaleController.getString(R.string.MargeletTrackNeedFile)).show();
 +            return;
 +        }
 +        final String name = message.getDocumentName();
 +        final File dst = new File(FileLoader.getDirectory(FileLoader.MEDIA_DIR_CACHE),
 +                (name == null || name.isEmpty() ? "track.mp3" : name));
-+        final boolean ok = MargeletTags.write(src, dst,
-+                titleField.getText().toString().trim(),
-+                artistField.getText().toString().trim(),
-+                cover);
-+        if (!ok) {
++        if (!MargeletTags.write(src, dst, title.trim(), artist.trim(), cover)) {
 +            BulletinFactory.of(fragment).createSimpleBulletin(R.raw.error,
-+                    "Не получилось записать теги в файл.").show();
++                    LocaleController.getString(R.string.MargeletTrackWriteFailed)).show();
 +            return;
 +        }
 +        SendMessagesHelper.prepareSendingDocument(fragment.getAccountInstance(),
@@ -5056,7 +5159,7 @@ index 03d0ba33..17f98fa6 100644
      <string name="English">Inglês</string>
      <string name="LanguageNameInEnglish">Portuguese (Brazil)</string>
 diff --git a/TMessagesProj/src/main/res/values-ru/strings.xml b/TMessagesProj/src/main/res/values-ru/strings.xml
-index 24c56292..a8863cdd 100644
+index 24c56292..75a4c8f3 100644
 --- a/TMessagesProj/src/main/res/values-ru/strings.xml
 +++ b/TMessagesProj/src/main/res/values-ru/strings.xml
 @@ -1,7 +1,7 @@
@@ -5069,6 +5172,52 @@ index 24c56292..a8863cdd 100644
      <string name="LanguageName">Русский</string>
      <string name="English">Английский</string>
      <string name="LanguageNameInEnglish">Russian</string>
+@@ -263,4 +263,44 @@
+     <string name="RemindTodayAt">\'Отправить сегодня в\' HH:mm</string>
+     <string name="RemindDayAt">\'Отправить\' d MMM \'в\' HH:mm</string>
+     <string name="RemindDayYearAt">\'Напомнить\' d MMM yyyy \'в\' HH:mm</string>
++    <string name="MargeletSettings">Настройки форка</string>
++    <string name="MargeletInput">Поле ввода</string>
++    <string name="MargeletInputInfo">Строки, размер текста, положение</string>
++    <string name="MargeletSound">Звук</string>
++    <string name="MargeletSoundInfo">Мяуканье на главном экране</string>
++    <string name="MargeletChannel">Канал</string>
++    <string name="MargeletForum">Форум</string>
++    <string name="MargeletTracks">Теги музыки</string>
++    <string name="MargeletTracksInfo">Правка названия, исполнителя и обложки</string>
++    <string name="MargeletLines">Сколько строк</string>
++    <string name="MargeletLinesMax">макс.</string>
++    <string name="MargeletLinesAbout">До скольких строк поле растёт, прежде чем начать прокручиваться. В оригинале их шесть. «Макс.» — расти, пока есть место на экране.\n\nПредел в 4096 знаков на сообщение остаётся: его держит сервер, а не приложение.</string>
++    <string name="MargeletTextSize">Размер текста</string>
++    <string name="MargeletNextChat">Применяется к следующему открытому чату.</string>
++    <string name="MargeletInputOnTop">Поле ввода сверху</string>
++    <string name="MargeletInputOnTopAbout">Поле переезжает под шапку чата, место под него в списке сообщений тоже переезжает наверх. Клавиатура и панели остаются внизу — они принадлежат экрану, а не полю.\n\nПрименяется к следующему открытому чату: у уже открытого половина размеров посчитана от прежней стороны.</string>
++    <string name="MargeletMeow">Мяуканье</string>
++    <string name="MargeletMeowAbout">Играет по нажатию на название на главном экране.</string>
++    <string name="MargeletWhichSound">Какой звук</string>
++    <string name="MargeletSoundBuiltIn">Стандартный</string>
++    <string name="MargeletSoundOwn">Свой файл</string>
++    <string name="MargeletSoundChoose">Выбрать свой файл</string>
++    <string name="MargeletSoundPlay">Послушать</string>
++    <string name="MargeletSoundAbout">Свой файл копируется внутрь приложения: ссылка на файл в галерее живёт до первой уборки, а копия — сколько нужно.\n\nСтандартный звук — запись под лицензией CC0, то есть автор отказался от прав на неё.</string>
++    <string name="MargeletTrackTags">Теги трека</string>
++    <string name="MargeletTrackTitle">Название</string>
++    <string name="MargeletTrackArtist">Исполнитель</string>
++    <string name="MargeletTrackCover">Выбрать обложку</string>
++    <string name="MargeletTrackCoverChosen">Обложка выбрана</string>
++    <string name="MargeletTrackSend">Отправить</string>
++    <string name="MargeletTrackNeedFile">Сначала скачай файл — теги пишутся в него, а его ещё нет на телефоне.</string>
++    <string name="MargeletTrackWriteFailed">Не получилось записать теги в файл.</string>
++    <string name="MargeletTracksEnabled">Теги музыки</string>
++    <string name="MargeletTracksEnabledAbout">Добавляет пункт «Теги трека» в меню у музыки. Файл должен быть скачан: теги пишутся в него. В избранных сообщениях тоже работает.</string>
++    <string name="MargeletIconGreen">Зелёная</string>
++    <string name="MargeletIconNight">Ночная</string>
++    <string name="MargeletIconLavender">Лавандовая</string>
++    <string name="MargeletIconSand">Песочная</string>
++    <string name="MargeletIconSea">Морская</string>
++    <string name="MargeletIconRose">Розовая</string>
+ </resources>
+\ No newline at end of file
 diff --git a/TMessagesProj/src/main/res/values-uk/strings.xml b/TMessagesProj/src/main/res/values-uk/strings.xml
 index d4683443..57d10109 100644
 --- a/TMessagesProj/src/main/res/values-uk/strings.xml
@@ -5084,7 +5233,7 @@ index d4683443..57d10109 100644
      <string name="English">Англійська</string>
      <string name="LanguageNameInEnglish">Ukrainian</string>
 diff --git a/TMessagesProj/src/main/res/values/strings.xml b/TMessagesProj/src/main/res/values/strings.xml
-index ffa4d566..7d896a25 100644
+index ffa4d566..c50737b4 100644
 --- a/TMessagesProj/src/main/res/values/strings.xml
 +++ b/TMessagesProj/src/main/res/values/strings.xml
 @@ -1,7 +1,7 @@
@@ -5097,21 +5246,51 @@ index ffa4d566..7d896a25 100644
      <string name="LanguageName">English</string>
      <string name="English">English</string>
      <string name="LanguageNameInEnglish">English</string>
-@@ -5766,6 +5766,14 @@
-     <string name="BioLimitSubtitle">Add more symbols and use links in your bio.</string>
-     <string name="AppIcon">App Icon</string>
-     <string name="AppIconDefault">Default</string>
-+    <!-- Названия иконок форка. Ключи новые: те, что у телеграма, приходят с
-+         сервера вместе с языковым пакетом и перекрыли бы наши значения. -->
-+    <string name="MargeletIconGreen">Зелёная</string>
-+    <string name="MargeletIconNight">Ночная</string>
-+    <string name="MargeletIconLavender">Лавандовая</string>
-+    <string name="MargeletIconSand">Песочная</string>
-+    <string name="MargeletIconSea">Морская</string>
-+    <string name="MargeletIconRose">Розовая</string>
-     <string name="AppIconVintage">Vintage</string>
-     <string name="AppIconAqua">Aqua</string>
-     <string name="AppIconPremium">Premium</string>
+@@ -11221,4 +11221,44 @@
+     <string name="UnsupportedMessageTitle">Unsupported Message</string>
+     <string name="UnsupportedMessageMessage">Update Telegram to view this message</string>
+     <string name="UnsupportedUpdate">Update</string>
++    <string name="MargeletSettings">Fork settings</string>
++    <string name="MargeletInput">Message field</string>
++    <string name="MargeletInputInfo">Lines, text size, position</string>
++    <string name="MargeletSound">Sound</string>
++    <string name="MargeletSoundInfo">The cat on the main screen</string>
++    <string name="MargeletChannel">Channel</string>
++    <string name="MargeletForum">Forum</string>
++    <string name="MargeletTracks">Music tags</string>
++    <string name="MargeletTracksInfo">Edit title, artist and cover</string>
++    <string name="MargeletLines">How many lines</string>
++    <string name="MargeletLinesMax">max</string>
++    <string name="MargeletLinesAbout">How far the field grows before it starts scrolling. Six lines in the original. \"max\" means grow while there is room on the screen.\n\nThe 4096 character limit per message stays: that one belongs to the server, not to the app.</string>
++    <string name="MargeletTextSize">Text size</string>
++    <string name="MargeletNextChat">Applies to the next chat you open.</string>
++    <string name="MargeletInputOnTop">Field at the top</string>
++    <string name="MargeletInputOnTopAbout">The field moves under the chat header, and the room for it in the message list moves up as well. The keyboard and the panels stay at the bottom — they belong to the screen, not to the field.\n\nApplies to the next chat you open: in an open one half the sizes are already counted from the old side.</string>
++    <string name="MargeletMeow">Meow</string>
++    <string name="MargeletMeowAbout">Plays when you tap the name on the main screen.</string>
++    <string name="MargeletWhichSound">Which sound</string>
++    <string name="MargeletSoundBuiltIn">Built-in</string>
++    <string name="MargeletSoundOwn">Your own file</string>
++    <string name="MargeletSoundChoose">Choose your own file</string>
++    <string name="MargeletSoundPlay">Play it</string>
++    <string name="MargeletSoundAbout">Your file is copied inside the app: a link to a file in the gallery lives until the first cleanup, a copy lives as long as it is needed.\n\nThe built-in sound is a CC0 recording — its author gave up the rights to it.</string>
++    <string name="MargeletTrackTags">Track tags</string>
++    <string name="MargeletTrackTitle">Title</string>
++    <string name="MargeletTrackArtist">Artist</string>
++    <string name="MargeletTrackCover">Choose a cover</string>
++    <string name="MargeletTrackCoverChosen">Cover chosen</string>
++    <string name="MargeletTrackSend">Send</string>
++    <string name="MargeletTrackNeedFile">Download the file first — the tags are written into it, and it is not on the phone yet.</string>
++    <string name="MargeletTrackWriteFailed">Could not write the tags into the file.</string>
++    <string name="MargeletTracksEnabled">Music tags</string>
++    <string name="MargeletTracksEnabledAbout">Adds \"Track tags\" to the menu of a music message. The file has to be downloaded — the tags are written into it. Works in Saved Messages too.</string>
++    <string name="MargeletIconGreen">Green</string>
++    <string name="MargeletIconNight">Night</string>
++    <string name="MargeletIconLavender">Lavender</string>
++    <string name="MargeletIconSand">Sand</string>
++    <string name="MargeletIconSea">Sea</string>
++    <string name="MargeletIconRose">Rose</string>
+ </resources>
 diff --git a/TMessagesProj_App/build.gradle b/TMessagesProj_App/build.gradle
 index 2aa197cb..8fd9c9ec 100644
 --- a/TMessagesProj_App/build.gradle
