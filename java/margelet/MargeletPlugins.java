@@ -3,6 +3,7 @@ package org.telegram.margelet;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.text.SpannableStringBuilder;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -10,6 +11,7 @@ import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.R;
+import org.telegram.ui.ActionBar.AlertDialog;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -69,9 +71,23 @@ public class MargeletPlugins {
             return new File(folder, "main.py");
         }
 
+        private Bitmap icon;
+        private boolean iconRead;
+
+        /**
+         * Значок плагина, если автор его положил. Читается один раз: список
+         * перерисовывается на каждое переключение, и разбирать png заново
+         * каждый раз незачем.
+         */
         public Bitmap icon() {
-            final File file = new File(folder, "icon.png");
-            return file.exists() ? BitmapFactory.decodeFile(file.getAbsolutePath()) : null;
+            if (!iconRead) {
+                iconRead = true;
+                final File file = new File(folder, "icon.png");
+                if (file.exists()) {
+                    icon = BitmapFactory.decodeFile(file.getAbsolutePath());
+                }
+            }
+            return icon;
         }
 
         public boolean enabled() {
@@ -120,10 +136,10 @@ public class MargeletPlugins {
             }
             return new Plugin(
                     json.optString("id", folder.getName()),
-                    json.optString("name", folder.getName()),
+                    localized(json, "name", folder.getName()),
                     json.optString("version", "?"),
                     json.optString("author", "?"),
-                    json.optString("description", ""),
+                    localized(json, "description", ""),
                     permissions,
                     folder);
         } catch (Exception e) {
@@ -293,5 +309,88 @@ public class MargeletPlugins {
             return LocaleController.getString(R.string.MargeletPluginPermUi);
         }
         return key;
+    }
+
+    /**
+     * Имя или описание на языке приложения: рядом с «name» автор может
+     * положить «name_en», «name_zh» и любое другое. Нет перевода — берём то,
+     * что есть; выдумывать за автора нечего.
+     */
+    private static String localized(JSONObject json, String key, String fallback) {
+        String language = null;
+        try {
+            language = LocaleController.getInstance().getCurrentLocale().getLanguage();
+        } catch (Exception ignored) {
+        }
+        if (language != null) {
+            final String value = json.optString(key + "_" + language, null);
+            if (value != null && value.length() > 0) {
+                return value;
+            }
+        }
+        return json.optString(key, fallback);
+    }
+
+    /**
+     * Окно установки: кто автор, что заявлено, и честная строка о том, что
+     * заявленное никем не проверяется.
+     *
+     * Живёт здесь, а не на экране плагинов, потому что ставить умеют оба
+     * входа — экран настроек и нажатие на файл .marp прямо в переписке.
+     * Один текст на два места лучше, чем два текста, которые разойдутся.
+     *
+     * @param whenInstalled что сделать после установки; может быть null.
+     * @return false, если это не плагин — тогда звать было не за чем.
+     */
+    public static boolean askInstall(Context context, InputStream source, Runnable whenInstalled) {
+        final Plugin[] staged = { stage(context, source) };
+        if (staged[0] == null) {
+            return false;
+        }
+        final Plugin plugin = staged[0];
+        final SpannableStringBuilder text = new SpannableStringBuilder();
+        text.append(LocaleController.formatString(R.string.MargeletPluginBy, plugin.author)).append("\n\n");
+        text.append(LocaleController.getString(R.string.MargeletPluginDeclares));
+        if (plugin.permissions.isEmpty()) {
+            text.append("\n— ").append(LocaleController.getString(R.string.MargeletPluginPermNone));
+        } else {
+            for (String permission : plugin.permissions) {
+                text.append("\n— ").append(permissionName(permission));
+            }
+        }
+        text.append("\n\n").append(LocaleController.getString(R.string.MargeletPluginInstallWarn));
+
+        new AlertDialog.Builder(context)
+                .setTitle(plugin.name + " " + plugin.version)
+                .setMessage(text)
+                .setPositiveButton(LocaleController.getString(R.string.MargeletPluginInstallOk), (d, w) -> {
+                    commit(staged[0]);
+                    staged[0] = null;
+                    if (whenInstalled != null) {
+                        whenInstalled.run();
+                    }
+                })
+                .setNegativeButton(LocaleController.getString(R.string.Cancel), null)
+                // Отказ бывает и кнопкой «назад» — распакованное не должно
+                // остаться лежать в папке.
+                .setOnDismissListener(d -> {
+                    discard(staged[0]);
+                    staged[0] = null;
+                })
+                .show();
+        return true;
+    }
+
+    /**
+     * Нажали на файл .marp в переписке. Открывать его нечем — это наш
+     * формат, — поэтому предлагаем поставить.
+     */
+    public static boolean offerInstall(Context context, File file) {
+        try {
+            return askInstall(context, new java.io.FileInputStream(file), null);
+        } catch (Exception e) {
+            FileLog.e(e);
+            return false;
+        }
     }
 }

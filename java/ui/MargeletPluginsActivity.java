@@ -44,8 +44,6 @@ public class MargeletPluginsActivity extends UniversalFragment {
     private static final int PICK_FILE = 4831;
 
     private List<MargeletPlugins.Plugin> plugins = new ArrayList<>();
-    /** Что распаковано и ждёт ответа на окне установки. */
-    private MargeletPlugins.Plugin staged;
 
     @Override
     protected CharSequence getTitle() {
@@ -71,8 +69,7 @@ public class MargeletPluginsActivity extends UniversalFragment {
             items.add(UItem.asHeader(LocaleController.getString(R.string.MargeletPluginsInstalled)));
             for (int i = 0; i < plugins.size(); i++) {
                 final MargeletPlugins.Plugin plugin = plugins.get(i);
-                items.add(UItem.asButtonCheck(ID_PLUGIN + i, plugin.name, subtitle(plugin))
-                        .setChecked(plugin.enabled()));
+                items.add(MargeletPluginCell.Factory.of(ID_PLUGIN + i, plugin, plugin.enabled()));
             }
             items.add(UItem.asShadow(LocaleController.getString(
                     MargeletConfig.pluginsEnabled()
@@ -88,10 +85,6 @@ public class MargeletPluginsActivity extends UniversalFragment {
         items.add(UItem.asShadow(null));
     }
 
-    private CharSequence subtitle(MargeletPlugins.Plugin plugin) {
-        return plugin.version + " · " + plugin.author;
-    }
-
     @Override
     protected void onClick(UItem item, View view, int position, float x, float y) {
         if (item.id == ID_MASTER) {
@@ -101,7 +94,7 @@ public class MargeletPluginsActivity extends UniversalFragment {
         } else if (item.id == ID_CONSOLE) {
             presentFragment(new MargeletPluginConsoleActivity());
         } else if (item.id == ID_DOCS) {
-            Browser.openUrl(getContext(), MargeletConfig.PLUGINS_DOCS_URL);
+            Browser.openUrl(getContext(), MargeletConfig.pluginsDocsUrl());
         } else if (item.id == ID_FORUM) {
             Browser.openUrl(getContext(), MargeletConfig.FORUM_URL);
         } else if (item.id >= ID_PLUGIN) {
@@ -208,58 +201,20 @@ public class MargeletPluginsActivity extends UniversalFragment {
             return;
         }
         final Uri uri = data.getData();
-        MargeletPlugins.Plugin plugin = null;
+        boolean known = false;
         try (InputStream in = ApplicationLoader.applicationContext.getContentResolver().openInputStream(uri)) {
             if (in != null) {
-                plugin = MargeletPlugins.stage(getContext(), in);
+                known = MargeletPlugins.askInstall(getContext(), in, () -> {
+                    listView.adapter.update(true);
+                    BulletinFactory.of(this).createSimpleBulletin(R.raw.info,
+                            LocaleController.getString(R.string.MargeletPluginInstalled)).show();
+                });
             }
         } catch (Exception ignored) {
         }
-        if (plugin == null) {
+        if (!known) {
             BulletinFactory.of(this).createSimpleBulletin(R.raw.error,
                     LocaleController.getString(R.string.MargeletPluginBadFile)).show();
-            return;
         }
-        confirm(plugin);
-    }
-
-    /**
-     * Окно установки. Здесь написано главное: разрешения — слова автора, а
-     * плагин технически может всё. Тому, кто это читает, решать самому.
-     */
-    private void confirm(MargeletPlugins.Plugin plugin) {
-        staged = plugin;
-        final SpannableStringBuilder text = new SpannableStringBuilder();
-        text.append(LocaleController.formatString(R.string.MargeletPluginBy, plugin.author)).append("\n\n");
-        text.append(LocaleController.getString(R.string.MargeletPluginDeclares));
-        if (plugin.permissions.isEmpty()) {
-            text.append("\n— ").append(LocaleController.getString(R.string.MargeletPluginPermNone));
-        } else {
-            for (String permission : plugin.permissions) {
-                text.append("\n— ").append(MargeletPlugins.permissionName(permission));
-            }
-        }
-        text.append("\n\n").append(LocaleController.getString(R.string.MargeletPluginInstallWarn));
-
-        new AlertDialog.Builder(getContext())
-                .setTitle(plugin.name + " " + plugin.version)
-                .setMessage(text)
-                .setPositiveButton(LocaleController.getString(R.string.MargeletPluginInstallOk), (d, w) -> {
-                    final MargeletPlugins.Plugin installed = MargeletPlugins.commit(staged);
-                    staged = null;
-                    listView.adapter.update(true);
-                    if (installed != null) {
-                        BulletinFactory.of(this).createSimpleBulletin(R.raw.info,
-                                LocaleController.getString(R.string.MargeletPluginInstalled)).show();
-                    }
-                })
-                // Отказ бывает и кнопкой «назад» — распакованное всё равно
-                // не должно остаться лежать в папке.
-                .setNegativeButton(LocaleController.getString(R.string.Cancel), null)
-                .setOnDismissListener(d -> {
-                    MargeletPlugins.discard(staged);
-                    staged = null;
-                })
-                .show();
     }
 }

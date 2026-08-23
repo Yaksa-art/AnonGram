@@ -171,7 +171,7 @@ check them. The install dialog says exactly that. In exchange the forum rule
 applies: **plugin code is not obfuscated**, anyone must be able to read it.
 
 Plugins are off entirely by default, and a new one is installed disabled.
-Documentation for authors: [docs/plugins.md](docs/plugins.md) (in Russian).
+Documentation for authors: [docs/plugins.md](docs/plugins.md).
 </details>
 
 ## Building it yourself

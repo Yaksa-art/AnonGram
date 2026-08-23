@@ -149,7 +149,7 @@ Margelet 的频道和论坛也各有一枚。那里的徽章回答的是「这�
 混淆**，任何人都应能读到它。
 
 插件默认整体关闭，新装的插件也是关闭状态。作者文档：
-[docs/plugins.md](docs/plugins.md)（俄文）。
+[docs/plugins.zh.md](docs/plugins.zh.md)。
 </details>
 
 ## 自行构建

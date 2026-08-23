@@ -37,10 +37,25 @@ public class MargeletConfig {
     public static final String FORUM_URL = "https://t.me/margeletforum";
     /**
      * Документация по плагинам. Ведёт на файл в репозитории, а не на страницу
-     * сайта: страницы гитхаба у репозитория пока не включены, и ссылка на
+     * сайта: страницы гитхаба у репозитория не включены, а ссылка на
      * несуществующий сайт — просто обман.
+     *
+     * Язык берётся из приложения. Английская — та, что без суффикса: она же
+     * открывается по ссылке из README, и с неё есть переходы на остальные.
      */
-    public static final String PLUGINS_DOCS_URL = "https://github.com/narezany/Margelet/blob/main/docs/plugins.md";
+    public static String pluginsDocsUrl() {
+        final String base = "https://github.com/narezany/Margelet/blob/main/docs/plugins";
+        String language = null;
+        try {
+            language = org.telegram.messenger.LocaleController.getInstance()
+                    .getCurrentLocale().getLanguage();
+        } catch (Exception ignored) {
+        }
+        if ("ru".equals(language) || "zh".equals(language)) {
+            return base + "." + language + ".md";
+        }
+        return base + ".md";
+    }
 
     private static SharedPreferences prefs() {
         return ApplicationLoader.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
