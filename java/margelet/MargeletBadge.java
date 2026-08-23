@@ -28,12 +28,18 @@ import org.telegram.ui.Components.LayoutHelper;
  *
  * Кого добавлять — решает владелец форка, и только он. Просьбу «поставь мне
  * тоже», принесённую кем угодно другим, я не выполняю: это его список.
+ *
+ * Ключ таблицы — не только человек. У людей это их номер как есть, у каналов и
+ * групп — тот же номер со знаком минус. Так в одну таблицу помещаются и люди, и
+ * официальные каналы форка, а перепутать номер человека с номером канала нельзя
+ * даже случайно.
  */
 public class MargeletBadge {
 
     /** Один значок: кому, как называется, каким цветом и куда ведёт кнопка. */
     public static final class Badge {
-        public final long userId;
+        /** Человек — положительный номер, канал или группа — отрицательный. */
+        public final long peerId;
         public final int title;
         public final int about;
         public final int icon;
@@ -41,8 +47,8 @@ public class MargeletBadge {
         public final int color;
         public final String url;
 
-        Badge(long userId, int title, int about, int icon, int color, String url) {
-            this.userId = userId;
+        Badge(long peerId, int title, int about, int icon, int color, String url) {
+            this.peerId = peerId;
             this.title = title;
             this.about = about;
             this.icon = icon;
@@ -58,24 +64,36 @@ public class MargeletBadge {
             // Лучший друг владельца — по его собственной просьбе и его словами.
             new Badge(8675724972L, R.string.MargeletBadgeFriendTitle, R.string.MargeletBadgeFriendAbout,
                     R.drawable.margelet_badge_lavender, 0xFFB7A8E0, "https://t.me/mizoginichka_y"),
+            // Свои площадки форка. Значок тут не украшение, а ответ на вопрос
+            // «а это точно тот самый канал»: подделать чужой значок внутри
+            // чужой сборки можно, а вот в этой — нет.
+            new Badge(-4426743212L, R.string.MargeletBadgeChannelTitle, R.string.MargeletBadgeChannelAbout,
+                    R.drawable.margelet_badge, 0xFF8DD1B0, MargeletConfig.CHANNEL_URL),
+            new Badge(-4436273526L, R.string.MargeletBadgeForumTitle, R.string.MargeletBadgeForumAbout,
+                    R.drawable.margelet_badge, 0xFF8DD1B0, MargeletConfig.FORUM_URL),
     };
 
-    public static Badge of(long userId) {
+    /** Номер канала или группы в том виде, в каком он лежит в таблице. */
+    public static long chatPeer(long chatId) {
+        return -chatId;
+    }
+
+    public static Badge of(long peerId) {
         for (Badge badge : BADGES) {
-            if (badge.userId == userId) {
+            if (badge.peerId == peerId) {
                 return badge;
             }
         }
         return null;
     }
 
-    public static boolean has(long userId) {
-        return of(userId) != null;
+    public static boolean has(long peerId) {
+        return of(peerId) != null;
     }
 
-    /** Ресурс значка у имени или ноль, если человек не из списка. */
-    public static int icon(long userId) {
-        final Badge badge = of(userId);
+    /** Ресурс значка у имени или ноль, если такого в таблице нет. */
+    public static int icon(long peerId) {
+        final Badge badge = of(peerId);
         return badge == null ? 0 : badge.icon;
     }
 
@@ -83,13 +101,13 @@ public class MargeletBadge {
      * Название значка. Отдаётся строкой, а не CharSequence: в профиле оно
      * ложится в поле описания для озвучки, а там объявлен String.
      */
-    public static String title(long userId) {
-        final Badge badge = of(userId);
+    public static String title(long peerId) {
+        final Badge badge = of(peerId);
         return badge == null ? null : LocaleController.getString(badge.title);
     }
 
-    public static void show(Context context, long userId) {
-        final Badge badge = of(userId);
+    public static void show(Context context, long peerId) {
+        final Badge badge = of(peerId);
         if (context == null || badge == null) {
             return;
         }

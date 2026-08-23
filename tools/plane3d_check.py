@@ -36,9 +36,10 @@ def build():
                        nor, GREEN_SIDE, 'body'))
     for z,nor,mirror in ((HALF_DEPTH+0.004,(0,0,1),False), (-HALF_DEPTH-0.004,(0,0,-1),True)):
         k = -1.0 if mirror else 1.0
-        up = -0.01
-        nose=(0,0.56+up,z); left=(-0.52*k,-0.30+up,z); right=(0.52*k,-0.30+up,z)
-        keelL=(-0.04*k,-0.14+up,z); keelR=(0.04*k,-0.14+up,z); tail=(0,-0.24+up,z)
+        up = -0.08
+        m = 1.30
+        nose=(0,0.56*m+up,z); left=(-0.52*k*m,-0.30*m+up,z); right=(0.52*k*m,-0.30*m+up,z)
+        keelL=(-0.04*k*m,-0.14*m+up,z); keelR=(0.04*k*m,-0.14*m+up,z); tail=(0,-0.24*m+up,z)
         pieces.append(([nose,left,keelL], nor, WING_R if mirror else WING_L, 'decal'))
         pieces.append(([nose,keelR,right], nor, WING_L if mirror else WING_R, 'decal'))
         pieces.append(([nose,keelL,tail,keelR], nor, KEEL, 'decal'))
@@ -59,7 +60,7 @@ def render(pieces, angle, size, mode):
     img = Image.new("RGB",(size,size),(30,30,34))
     d = ImageDraw.Draw(img)
     cx = cy = size/2
-    focal = CAM_Z*size*0.40
+    focal = CAM_Z*size*0.43
     sa,ca = math.sin(math.radians(angle)), math.cos(math.radians(angle))
     st,ct = math.sin(math.radians(TILT)), math.cos(math.radians(TILT))
     vis = []

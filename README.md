@@ -104,8 +104,12 @@ none of them behind Premium.
 <summary><b>Badges</b></summary>
 
 The person who made the fork, and their best friend, get a badge next to their
-name. Tapping it opens a window with the icon spinning in 3D — green and
-lavender respectively.
+name — in the profile, as its own block under the details, and in the chat list.
+Tapping it opens a window with the icon spinning in 3D: green and lavender
+respectively.
+
+The Margelet channel and forum carry one too. There it answers "is this really
+the right channel": the ids are compiled into the build.
 
 The badge certifies nothing and asks no server: whoever builds their own fork
 puts their own people in. The window says so.

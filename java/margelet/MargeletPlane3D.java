@@ -191,19 +191,25 @@ public class MargeletPlane3D extends View {
      * На плоском знаке центр самолёта поднят на три процента: вся его масса
      * внизу, в развале крыльев, и посаженный по геометрическому центру он
      * выглядит съехавшим. В объёме тот же подъём читается как «слишком
-     * высоко» — так и сказал владелец. Здесь самолёт сидит чуть ниже
-     * геометрического центра; я отрисовал четыре варианта подъёма и выбрал
-     * тот, что смотрится ровно (tools/plane3d_check.py).
+     * высоко» — так и сказал владелец. Здесь самолёт сидит ниже
+     * геометрического центра.
+     *
+     * Размер тоже другой. На плоском знаке самолёт занимает половину поля, а в
+     * объёме плашка не упирается в края кадра, и тот же самолёт внутри неё
+     * читается мельче. Поэтому он увеличен почти на треть — чтобы в кадре
+     * выглядеть так же, как на иконке. Варианты размера и подъёма отрисованы
+     * рядом с плоским знаком (tools/plane3d_check.py) и выбраны глазами.
      */
     private void addPlane(float z, float[] normal, boolean mirror) {
         final float k = mirror ? -1f : 1f;
-        final float up = -0.01f;
-        final float[] nose = {0f, 0.56f + up, z};
-        final float[] left = {-0.52f * k, -0.30f + up, z};
-        final float[] right = {0.52f * k, -0.30f + up, z};
-        final float[] keelL = {-0.04f * k, -0.14f + up, z};
-        final float[] keelR = {0.04f * k, -0.14f + up, z};
-        final float[] tail = {0f, -0.24f + up, z};
+        final float up = -0.08f;
+        final float m = 1.30f;
+        final float[] nose = {0f, 0.56f * m + up, z};
+        final float[] left = {-0.52f * m * k, -0.30f * m + up, z};
+        final float[] right = {0.52f * m * k, -0.30f * m + up, z};
+        final float[] keelL = {-0.04f * m * k, -0.14f * m + up, z};
+        final float[] keelR = {0.04f * m * k, -0.14f * m + up, z};
+        final float[] tail = {0f, -0.24f * m + up, z};
 
         // Крылья и ребро сгиба разной светлоты — иначе плоскости сливаются.
         pieces.add(new Piece(new float[][]{nose, left, keelL}, normal,
@@ -248,8 +254,10 @@ public class MargeletPlane3D extends View {
             return;
         }
         final float cx = w / 2f, cy = h / 2f;
-        // Полкадра на половину знака с запасом на толщину при развороте боком.
-        final float focal = CAM_Z * Math.min(w, h) * 0.40f;
+        // Плашка занимает почти весь кадр, как иконка на своём поле. Запас
+        // оставлен на перспективу: при развороте ближний край подходит к
+        // камере и вырастает.
+        final float focal = CAM_Z * Math.min(w, h) * 0.43f;
 
         final double a = Math.toRadians(angle), t = Math.toRadians(TILT);
         final float sinA = (float) Math.sin(a), cosA = (float) Math.cos(a);
