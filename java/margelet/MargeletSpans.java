@@ -253,6 +253,21 @@ public class MargeletSpans {
             return width;
         }
 
+        /**
+         * Попадает ли касание в нарисованную плашку.
+         *
+         * Отсчёты знаков тут не при чём: плашку рисуем мы сами и знаем, где
+         * именно она лежит. Через отсчёты кнопка ловилась через раз — в
+         * сообщении, где кроме неё ничего нет, не ловилась вовсе, — а
+         * прямоугольник врать не умеет.
+         */
+        public boolean hit(float x, float y) {
+            final float slack = org.telegram.messenger.AndroidUtilities.dp(4);
+            return !rect.isEmpty()
+                    && x >= rect.left - slack && x <= rect.right + slack
+                    && y >= rect.top - slack && y <= rect.bottom + slack;
+        }
+
         @Override
         public void draw(@NonNull Canvas canvas, CharSequence text, int start, int end,
                          float x, int top, int y, int bottom, @NonNull Paint paint) {
@@ -294,5 +309,26 @@ public class MargeletSpans {
                          float x, int top, int y, int bottom, @NonNull Paint paint) {
             // Ничего.
         }
+    }
+
+    /** Кнопка форка под этой точкой или null. Точка — в отсчётах разметки. */
+    public static Button buttonAt(CharSequence text, float x, float y) {
+        if (!(text instanceof android.text.Spanned)) {
+            return null;
+        }
+        final Button[] buttons = ((android.text.Spanned) text)
+                .getSpans(0, text.length(), Button.class);
+        for (Button button : buttons) {
+            if (button.hit(x, y)) {
+                return button;
+            }
+        }
+        return null;
+    }
+
+    /** Есть ли в сообщении хоть одна кнопка форка. */
+    public static boolean hasButton(CharSequence text) {
+        return text instanceof android.text.Spanned
+                && ((android.text.Spanned) text).getSpans(0, text.length(), Button.class).length > 0;
     }
 }

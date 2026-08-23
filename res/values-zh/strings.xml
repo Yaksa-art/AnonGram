@@ -90,9 +90,6 @@
     <string name="MargeletMarkdownAbout">关掉的那一种会照你打的原样留在文本里。\n\n下划线和引用的简写是本分支自己的，但格式本身是真的，会发到服务器：所有人都看得见，不只是 Margelet。</string>
     <string name="MargeletBadgeGallery">所有徽章</string>
     <string name="MargeletBadgeGalleryInfo">看看都有些什么</string>
-    <string name="MargeletBadgePreview">试戴</string>
-    <string name="MargeletBadgePreviewOff">不试了</string>
-    <string name="MargeletBadgePreviewAbout">试戴的徽章只有你自己看得到，而且只在这个应用里。别人看不见。</string>
     <string name="MargeletFreeEmoji">没有会员也能用会员表情</string>
     <string name="MargeletFreeEmojiAbout">把付费表情放进你的消息。只有 Margelet 会显示它们：服务器不接受非会员账号的这个标记，其他人看到的是替代字符。</string>
     <string name="MargeletEmojiWarnTitle">会员表情</string>
@@ -109,7 +106,6 @@
     <string name="MargeletWatermarkOff">还是关掉</string>
     <string name="MargeletStickers">Margelet 贴纸</string>
     <string name="MargeletStickersAdd">添加贴纸包</string>
-    <string name="MargeletMarkupButtonTesting">按钮（测试中）</string>
     <string name="MargeletStickersAbout">会在 Telegram 里打开这个贴纸包，之后就和别的包一样添加。</string>
     <string name="MargeletWatermarksAbout">带格式的消息末尾那行指向本分支的字。没装本分支的人会看到它。</string>
     <string name="MargeletCopyFormatted">带格式复制</string>
@@ -155,4 +151,8 @@
     <string name="MargeletPluginPermProfile">修改个人资料</string>
     <string name="MargeletPluginPermUi">添加自己的界面</string>
     <string name="MargeletPluginStopHint">它不会再启动了。已经跑起来的会活到重启为止。</string>
+    <string name="MargeletDonatePage">捐款页面</string>
+    <string name="MargeletDonatePageAbout">在浏览器里打开：那边是现成的表单，不用手动粘贴数字。</string>
+    <string name="MargeletChannelOnTop">分支频道置顶</string>
+    <string name="MargeletChannelOnTopAbout">聊天列表的第一行，即使你没有订阅。</string>
 </resources>

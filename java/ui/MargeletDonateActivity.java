@@ -31,6 +31,7 @@ public class MargeletDonateActivity extends UniversalFragment {
     private static final int ID_YOOMONEY = 1;
     private static final int ID_ROBLOX = 2;
     private static final int ID_GIFT = 3;
+    private static final int ID_PAGE = 4;
 
     @Override
     protected CharSequence getTitle() {
@@ -64,12 +65,19 @@ public class MargeletDonateActivity extends UniversalFragment {
         items.add(UItem.asButton(ID_GIFT, LocaleController.getString(R.string.MargeletDonateGift),
                 "@" + MargeletConfig.DONATE_GIFT_USERNAME));
         items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletDonateAbout)));
+        // Страница открывается, а не копируется: там готовая форма перевода.
+        items.add(UItem.asButton(ID_PAGE, LocaleController.getString(R.string.MargeletDonatePage)));
+        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletDonatePageAbout)));
     }
 
     @Override
     protected void onClick(UItem item, View view, int position, float x, float y) {
         if (item.id == ID_GIFT) {
             openGift();
+            return;
+        }
+        if (item.id == ID_PAGE) {
+            Browser.openUrl(getContext(), MargeletConfig.DONATE_PAGE);
             return;
         }
         final String value = item.id == ID_YOOMONEY ? MargeletConfig.DONATE_YOOMONEY

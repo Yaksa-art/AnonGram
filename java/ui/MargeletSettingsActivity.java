@@ -46,6 +46,7 @@ public class MargeletSettingsActivity extends UniversalFragment {
     private static final int ID_HELP = 13;
     private static final int ID_STICKERS = 14;
     private static final int ID_PLUGINS = 15;
+    private static final int ID_CHANNEL_TOP = 16;
 
     /** Объёмный значок в шапке. Пользы ноль, и в этом вся мысль. */
     private FrameLayout header;
@@ -105,6 +106,9 @@ public class MargeletSettingsActivity extends UniversalFragment {
         items.add(UItem.asButton(ID_STICKERS, LocaleController.getString(R.string.MargeletStickers),
                 LocaleController.getString(R.string.MargeletStickersAdd)));
         items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletStickersAbout)));
+        items.add(UItem.asCheck(ID_CHANNEL_TOP, LocaleController.getString(R.string.MargeletChannelOnTop))
+                .setChecked(MargeletConfig.channelOnTop()));
+        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletChannelOnTopAbout)));
         items.add(UItem.asCheck(ID_SEIZURE, LocaleController.getString(R.string.MargeletSeizure))
                 .setChecked(MargeletSeizure.enabled()));
         items.add(UItem.asShadow(null));
@@ -164,6 +168,9 @@ public class MargeletSettingsActivity extends UniversalFragment {
             presentFragment(new MargeletMarkupActivity());
         } else if (item.id == ID_DONATE) {
             presentFragment(new MargeletDonateActivity());
+        } else if (item.id == ID_CHANNEL_TOP) {
+            MargeletConfig.setChannelOnTop(!MargeletConfig.channelOnTop());
+            listView.adapter.update(true);
         } else if (item.id == ID_SEIZURE) {
             toggleSeizure();
         } else if (item.id == ID_INPUT) {

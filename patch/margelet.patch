@@ -51,10 +51,10 @@ index aeab02b2..f3fb03ca 100644
 \ No newline at end of file
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletBadge.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletBadge.java
 new file mode 100644
-index 00000000..e52cd0a9
+index 00000000..1f5cac95
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletBadge.java
-@@ -0,0 +1,227 @@
+@@ -0,0 +1,217 @@
 +package org.telegram.margelet;
 +
 +import android.content.Context;
@@ -149,38 +149,34 @@ index 00000000..e52cd0a9
 +        return -chatId;
 +    }
 +
-+    /** Вся таблица: нужна витрине значков. */
-+    public static Badge[] list() {
-+        return BADGES;
-+    }
-+
 +    /**
-+     * Примеренный значок: человек выбрал его в витрине, чтобы посмотреть на
-+     * себе. Виден только ему и только внутри приложения — на сервер ничего не
-+     * уходит, и никому другому он не показывается.
++     * Виды значков — по одному на вид, а не по одному на человека.
++     *
++     * В таблице «кот в Margelet» стоит дважды: котов двое, у каждого свой
++     * хозяин. Витрине это не нужно — она показывает, какие значки бывают, и
++     * два одинаковых «Кот в Margelet» там выглядят ошибкой. Ею и были.
 +     */
-+    private static Badge previewed() {
-+        final int index = MargeletConfig.badgePreview();
-+        return index >= 0 && index < BADGES.length ? BADGES[index] : null;
-+    }
-+
-+    private static boolean isSelf(long peerId) {
-+        try {
-+            return peerId > 0 && peerId == org.telegram.messenger.UserConfig
-+                    .getInstance(org.telegram.messenger.UserConfig.selectedAccount)
-+                    .getClientUserId();
-+        } catch (Throwable t) {
-+            return false;
++    public static Badge[] list() {
++        final List<Badge> kinds = new ArrayList<>();
++        for (Badge badge : BADGES) {
++            boolean seen = false;
++            for (Badge already : kinds) {
++                if (already.title == badge.title) {
++                    seen = true;
++                    break;
++                }
++            }
++            if (!seen) {
++                kinds.add(badge);
++            }
 +        }
++        return kinds.toArray(new Badge[0]);
 +    }
 +
 +    /** Старший значок — тот, что стоит у имени. Первый в таблице и есть старший. */
 +    public static Badge of(long peerId) {
 +        if (!MargeletConfig.badgesEnabled()) {
 +            return null;
-+        }
-+        if (isSelf(peerId) && previewed() != null) {
-+            return previewed();
 +        }
 +        for (Badge badge : BADGES) {
 +            if (badge.peerId == peerId) {
@@ -196,13 +192,7 @@ index 00000000..e52cd0a9
 +        if (!MargeletConfig.badgesEnabled()) {
 +            return found;
 +        }
-+        if (isSelf(peerId) && previewed() != null) {
-+            found.add(previewed());
-+        }
 +        for (Badge badge : BADGES) {
-+            if (found.contains(badge)) {
-+                continue;
-+            }
 +            if (badge.peerId == peerId) {
 +                found.add(badge);
 +            }
@@ -442,12 +432,110 @@ index 00000000..3c8132c5
 +        }
 +    }
 +}
+diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletChannel.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletChannel.java
+new file mode 100644
+index 00000000..04611260
+--- /dev/null
++++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletChannel.java
+@@ -0,0 +1,92 @@
++package org.telegram.margelet;
++
++import org.telegram.messenger.MessagesController;
++import org.telegram.tgnet.TLRPC;
++
++import java.util.ArrayList;
++
++/**
++ * Канал форка первой строкой в списке чатов.
++ *
++ * Подписки он не требует: строка появляется, даже если человек в канале не
++ * состоит, — нажатие открывает его обычным предпросмотром с кнопкой
++ * «подписаться». Выключается в настройках форка, по умолчанию включён.
++ *
++ * Настоящий список чатов при этом не трогается: строка добавляется в копию,
++ * которую видит только список. Влезать в хранилище телеграма ради украшения
++ * нельзя — там лежит переписка, а не наше место под баннер.
++ */
++public class MargeletChannel {
++
++    /**
++     * Номер канала в том виде, в каком его понимает список чатов.
++     *
++     * У каналов номер переписки — это «минус триллион минус номер канала»;
++     * в таблице значков лежит тот же канал, но в другой записи, поэтому
++     * держим одно число здесь и одно там, а не одно на два смысла.
++     */
++    public static final long CHANNEL_ID = 4426743212L;
++    public static final long DIALOG_ID = -1000000000000L - CHANNEL_ID;
++
++    private static TLRPC.TL_dialog own;
++    private static boolean asked;
++
++    /**
++     * Список чатов с каналом форка первой строкой.
++     *
++     * Возвращает тот же список, если добавлять нечего: лишняя копия на каждой
++     * перерисовке списка чатов — не то место, где стоит сорить.
++     */
++    public static ArrayList<TLRPC.Dialog> onTop(int account, ArrayList<TLRPC.Dialog> array,
++                                                int dialogsType, int folderId) {
++        if (array == null || dialogsType != 0 || folderId != 0 || !MargeletConfig.channelOnTop()) {
++            return array;
++        }
++        TLRPC.Dialog existing = null;
++        for (TLRPC.Dialog dialog : array) {
++            if (dialog != null && dialog.id == DIALOG_ID) {
++                existing = dialog;
++                break;
++            }
++        }
++        if (existing == null && !load(account)) {
++            return array;   // канал ещё не загружен — рисовать нечего
++        }
++        if (existing != null && !array.isEmpty() && array.get(0) == existing) {
++            return array;   // и так первый
++        }
++        final ArrayList<TLRPC.Dialog> out = new ArrayList<>(array.size() + 1);
++        out.add(existing != null ? existing : own);
++        for (TLRPC.Dialog dialog : array) {
++            if (dialog != existing) {
++                out.add(dialog);
++            }
++        }
++        return out;
++    }
++
++    /**
++     * Готовит строку канала. Пока канал не подгружен, строке неоткуда взять
++     * ни имени, ни снимка, поэтому её просто нет — пустая серая полоска в
++     * начале списка выглядела бы поломкой.
++     */
++    private static boolean load(int account) {
++        final MessagesController controller = MessagesController.getInstance(account);
++        if (controller.getChat(CHANNEL_ID) == null) {
++            if (!asked) {
++                asked = true;
++                controller.getUserNameResolver().resolve("margeletter", id -> {
++                    // Ответ нам не нужен: важно, что канал после этого лежит
++                    // в памяти приложения и его можно показать.
++                });
++            }
++            return false;
++        }
++        if (own == null) {
++            own = new TLRPC.TL_dialog();
++            own.id = DIALOG_ID;
++            own.folder_id = 0;
++        }
++        return true;
++    }
++}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
 new file mode 100644
-index 00000000..e3788723
+index 00000000..fccecb6b
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
-@@ -0,0 +1,362 @@
+@@ -0,0 +1,371 @@
 +package org.telegram.margelet;
 +
 +import android.content.Context;
@@ -476,6 +564,12 @@ index 00000000..e3788723
 +     */
 +    public static final String DONATE_YOOMONEY = "2204120143055305";
 +    public static final String DONATE_ROBLOX = "h4ru_456";
++    /**
++     * Страница пожертвований. В отличие от номера кошелька её не копируют, а
++     * открывают: там уже готовая форма, и человеку не нужно никуда вставлять
++     * цифры руками.
++     */
++    public static final String DONATE_PAGE = "https://yoomoney.ru/to/4100118196133693";
 +    /** Кому дарить подарок за звёзды. Ник нужен на случай, если номера нет в кэше. */
 +    public static final long DONATE_GIFT_USER = 7826361017L;
 +    public static final String DONATE_GIFT_USERNAME = "narezany";
@@ -603,13 +697,16 @@ index 00000000..e3788723
 +        prefs().edit().putBoolean("markdown_" + kind, on).apply();
 +    }
 +
-+    /** Примеренный значок из витрины: номер в таблице или -1. */
-+    public static int badgePreview() {
-+        return prefs().getInt("badge_preview", -1);
++    /**
++     * Держать ли канал форка первой строкой в списке чатов. По умолчанию да:
++     * узнать о том, что происходит с форком, больше особо неоткуда.
++     */
++    public static boolean channelOnTop() {
++        return prefs().getBoolean("channel_on_top", true);
 +    }
 +
-+    public static void setBadgePreview(int index) {
-+        prefs().edit().putInt("badge_preview", index).apply();
++    public static void setChannelOnTop(boolean on) {
++        prefs().edit().putBoolean("channel_on_top", on).apply();
 +    }
 +
 +    /**
@@ -3213,10 +3310,10 @@ index 00000000..8a3b8ef8
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletSpans.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletSpans.java
 new file mode 100644
-index 00000000..635136f4
+index 00000000..f0a0dfbe
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletSpans.java
-@@ -0,0 +1,298 @@
+@@ -0,0 +1,334 @@
 +package org.telegram.margelet;
 +
 +import android.graphics.Canvas;
@@ -3472,6 +3569,21 @@ index 00000000..635136f4
 +            return width;
 +        }
 +
++        /**
++         * Попадает ли касание в нарисованную плашку.
++         *
++         * Отсчёты знаков тут не при чём: плашку рисуем мы сами и знаем, где
++         * именно она лежит. Через отсчёты кнопка ловилась через раз — в
++         * сообщении, где кроме неё ничего нет, не ловилась вовсе, — а
++         * прямоугольник врать не умеет.
++         */
++        public boolean hit(float x, float y) {
++            final float slack = org.telegram.messenger.AndroidUtilities.dp(4);
++            return !rect.isEmpty()
++                    && x >= rect.left - slack && x <= rect.right + slack
++                    && y >= rect.top - slack && y <= rect.bottom + slack;
++        }
++
 +        @Override
 +        public void draw(@NonNull Canvas canvas, CharSequence text, int start, int end,
 +                         float x, int top, int y, int bottom, @NonNull Paint paint) {
@@ -3513,6 +3625,27 @@ index 00000000..635136f4
 +                         float x, int top, int y, int bottom, @NonNull Paint paint) {
 +            // Ничего.
 +        }
++    }
++
++    /** Кнопка форка под этой точкой или null. Точка — в отсчётах разметки. */
++    public static Button buttonAt(CharSequence text, float x, float y) {
++        if (!(text instanceof android.text.Spanned)) {
++            return null;
++        }
++        final Button[] buttons = ((android.text.Spanned) text)
++                .getSpans(0, text.length(), Button.class);
++        for (Button button : buttons) {
++            if (button.hit(x, y)) {
++                return button;
++            }
++        }
++        return null;
++    }
++
++    /** Есть ли в сообщении хоть одна кнопка форка. */
++    public static boolean hasButton(CharSequence text) {
++        return text instanceof android.text.Spanned
++                && ((android.text.Spanned) text).getSpans(0, text.length(), Button.class).length > 0;
 +    }
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletStrings.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletStrings.java
@@ -4087,6 +4220,72 @@ index 52790dfd..c8e63ade 100644
          if (!ignoreAnimation && animatingColors != null) {
              int index = animatingColors.indexOfKey(key);
              if (index >= 0) {
+diff --git a/TMessagesProj/src/main/java/org/telegram/ui/Adapters/DialogsAdapter.java b/TMessagesProj/src/main/java/org/telegram/ui/Adapters/DialogsAdapter.java
+index cd393c4d..4173e938 100644
+--- a/TMessagesProj/src/main/java/org/telegram/ui/Adapters/DialogsAdapter.java
++++ b/TMessagesProj/src/main/java/org/telegram/ui/Adapters/DialogsAdapter.java
+@@ -1207,7 +1207,12 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
+     }
+ 
+     public void moveDialogs(RecyclerListView recyclerView, int fromPosition, int toPosition) {
+-        ArrayList<TLRPC.Dialog> dialogs = parentFragment.getDialogsArray(currentAccount, dialogsType, folderId, false);
++        // Тот же список, что видит экран: со строкой канала форка наверху.
++        // Иначе отсчёты строк и отсчёты списка разъедутся на единицу, и
++        // перетаскивание закреплённого чата переставит соседний.
++        ArrayList<TLRPC.Dialog> dialogs = org.telegram.margelet.MargeletChannel.onTop(currentAccount,
++                parentFragment.getDialogsArray(currentAccount, dialogsType, folderId, false),
++                dialogsType, folderId);
+         int fromIndex = fixPosition(fromPosition);
+         int toIndex = fixPosition(toPosition);
+         TLRPC.Dialog fromDialog = dialogs.get(fromIndex);
+@@ -1623,6 +1628,9 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
+             if (array == null) {
+                 array = new ArrayList<>();
+             }
++            // Канал форка первой строкой. Список берётся копией: настоящий
++            // принадлежит телеграму, и дописывать в него своё нельзя.
++            array = org.telegram.margelet.MargeletChannel.onTop(currentAccount, array, dialogsType, folderId);
+         }
+ 
+         dialogsCount = array.size();
+diff --git a/TMessagesProj/src/main/java/org/telegram/ui/Cells/ChatMessageCell.java b/TMessagesProj/src/main/java/org/telegram/ui/Cells/ChatMessageCell.java
+index bcc7fe85..a00d3b48 100644
+--- a/TMessagesProj/src/main/java/org/telegram/ui/Cells/ChatMessageCell.java
++++ b/TMessagesProj/src/main/java/org/telegram/ui/Cells/ChatMessageCell.java
+@@ -2401,7 +2401,12 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
+         if (event.getAction() == MotionEvent.ACTION_DOWN || event.getAction() == MotionEvent.ACTION_UP && (pressedLinkType == 1 || pressedCopyCode != null)) {
+             int x = (int) getEventX(event);
+             int y = (int) getEventY(event);
+-            if (x >= textX && y >= textY && x <= textX + currentMessageObject.textWidth && y <= textY + currentMessageObject.textHeight(transitionParams)) {
++            // У кнопки форка плашка шире и выше строки, а рамка проверки
++            // считается по тексту. Без запаса край плашки оказывается «вне
++            // сообщения», и нажатие туда просто не доходит до разбора.
++            final int margeletSlack = org.telegram.margelet.MargeletSpans
++                    .hasButton(currentMessageObject.messageText) ? dp(12) : 0;
++            if (x >= textX - margeletSlack && y >= textY && x <= textX + currentMessageObject.textWidth + margeletSlack && y <= textY + currentMessageObject.textHeight(transitionParams) + margeletSlack) {
+                 y -= textY;
+                 int blockNum = 0;
+                 for (int a = 0; a < currentMessageObject.textLayoutBlocks.size(); a++) {
+@@ -2431,6 +2436,19 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
+                         return true;
+                     }
+ 
++                    // Кнопку форка ловим по нарисованной плашке, а не по
++                    // отсчётам знаков: плашку рисуем мы и точно знаем, где
++                    // она. Через отсчёты она ловилась через раз.
++                    final org.telegram.margelet.MargeletSpans.Button margeletButton =
++                            org.telegram.margelet.MargeletSpans.buttonAt(
++                                    currentMessageObject.messageText, x, y - block.padTop);
++                    if (margeletButton != null && margeletButton.url() != null) {
++                        if (event.getAction() == MotionEvent.ACTION_UP) {
++                            org.telegram.messenger.browser.Browser.openUrl(getContext(), margeletButton.url());
++                        }
++                        return true;
++                    }
++
+                     final int line = block.textLayout.getLineForVertical(y);
+                     final int off = block.charactersOffset + block.textLayout.getOffsetForHorizontal(line, x);
+ 
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/Cells/DialogCell.java b/TMessagesProj/src/main/java/org/telegram/ui/Cells/DialogCell.java
 index 790e4493..663cb2a8 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/Cells/DialogCell.java
@@ -4226,8 +4425,30 @@ index af32ccff..165ea0bb 100644
              } else {
                  nameString = getString(R.string.HiddenName);
              }
+diff --git a/TMessagesProj/src/main/java/org/telegram/ui/ChannelAdminLogActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/ChannelAdminLogActivity.java
+index 7804a161..fddfd674 100644
+--- a/TMessagesProj/src/main/java/org/telegram/ui/ChannelAdminLogActivity.java
++++ b/TMessagesProj/src/main/java/org/telegram/ui/ChannelAdminLogActivity.java
+@@ -2936,7 +2936,7 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
+                         } else if (BuildVars.isHuaweiStoreApp()) {
+                             Browser.openUrl(getContext(), BuildVars.HUAWEI_STORE_URL);
+                         } else {
+-                            Browser.openUrl(getContext(), BuildVars.PLAYSTORE_APP_URL);
++                            Browser.openUrl(getContext(), org.telegram.margelet.MargeletConfig.CHANNEL_URL);
+                         }
+                     }
+ 
+@@ -3427,7 +3427,7 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
+                         } else if (BuildVars.isHuaweiStoreApp()) {
+                             Browser.openUrl(getContext(), BuildVars.HUAWEI_STORE_URL);
+                         } else {
+-                            Browser.openUrl(getContext(), BuildVars.PLAYSTORE_APP_URL);
++                            Browser.openUrl(getContext(), org.telegram.margelet.MargeletConfig.CHANNEL_URL);
+                         }
+                     }
+                 });
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
-index 6b8cddfe..8caf76e9 100644
+index 6b8cddfe..7f31eb6b 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
 @@ -1199,6 +1199,9 @@ public class ChatActivity extends BaseFragment implements
@@ -4313,7 +4534,7 @@ index 6b8cddfe..8caf76e9 100644
                  } else {
                      avatarContainer.setTitle(AndroidUtilities.removeRTL(AndroidUtilities.removeDiacritics(UserObject.getUserName(currentUser))), currentUser.scam, currentUser.fake, currentUser.verified, getMessagesController().isPremiumUser(currentUser), currentUser.emoji_status, animated);
                  }
-@@ -27588,6 +27616,22 @@ public class ChatActivity extends BaseFragment implements
+@@ -27588,6 +27616,17 @@ public class ChatActivity extends BaseFragment implements
          if (includeSpoilers) {
              menu.add(R.id.menu_groupbolditalic, R.id.menu_spoiler, order++, LocaleController.getString(R.string.Spoiler));
          }
@@ -4326,17 +4547,12 @@ index 6b8cddfe..8caf76e9 100644
 +        menu.add(R.id.menu_groupbolditalic, R.id.menu_margelet_size, order++, wand + LocaleController.getString(R.string.MargeletMarkupSize));
 +        menu.add(R.id.menu_groupbolditalic, R.id.menu_margelet_dim, order++, wand + LocaleController.getString(R.string.MargeletMarkupDim));
 +        menu.add(R.id.menu_groupbolditalic, R.id.menu_margelet_rainbow, order++, wand + LocaleController.getString(R.string.MargeletMarkupRainbow));
-+        // Кнопки заморожены: показывать умеем, создавать пока нет. Пункт
-+        // оставлен на месте и виден, но выключен и подписан «в тестировании» —
-+        // так честнее, чем спрятать и сделать вид, что его не было.
-+        final android.view.MenuItem buttonItem = menu.add(R.id.menu_groupbolditalic,
-+                R.id.menu_margelet_button, order++,
-+                wand + LocaleController.getString(R.string.MargeletMarkupButtonTesting));
-+        buttonItem.setEnabled(false);
++        menu.add(R.id.menu_groupbolditalic, R.id.menu_margelet_button, order++,
++                wand + LocaleController.getString(R.string.MargeletMarkupButton));
  
          SpannableStringBuilder stringBuilder = new SpannableStringBuilder(LocaleController.getString(R.string.Bold));
          stringBuilder.setSpan(new TypefaceSpan(AndroidUtilities.bold()), 0, stringBuilder.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-@@ -33379,6 +33423,19 @@ public class ChatActivity extends BaseFragment implements
+@@ -33379,6 +33418,19 @@ public class ChatActivity extends BaseFragment implements
                  undoView.showWithAction(0, UndoView.ACTION_MESSAGE_COPIED, null);
                  break;
              }
@@ -4356,7 +4572,16 @@ index 6b8cddfe..8caf76e9 100644
              case OPTION_SAVE_TO_GALLERY: {
                  if (Build.VERSION.SDK_INT >= 23 && (Build.VERSION.SDK_INT <= 28 || BuildVars.NO_SCOPED_STORAGE) && getParentActivity().checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
                      getParentActivity().requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 4);
-@@ -46097,6 +46154,33 @@ public class ChatActivity extends BaseFragment implements
+@@ -41614,7 +41666,7 @@ public class ChatActivity extends BaseFragment implements
+             } else if (BuildVars.isHuaweiStoreApp()) {
+                 Browser.openUrl(getContext(), BuildVars.HUAWEI_STORE_URL);
+             } else {
+-                Browser.openUrl(getContext(), BuildVars.PLAYSTORE_APP_URL);
++                Browser.openUrl(getContext(), org.telegram.margelet.MargeletConfig.CHANNEL_URL);
+             }
+         }
+ 
+@@ -46097,6 +46149,33 @@ public class ChatActivity extends BaseFragment implements
                      }
                  }
  
@@ -4390,6 +4615,32 @@ index 6b8cddfe..8caf76e9 100644
                  final boolean canForward = !selectedObject.isSponsored()
                      && !isQuickRepliesOrWelcomeMessagesMode()
                      && chatMode != MODE_SCHEDULED
+diff --git a/TMessagesProj/src/main/java/org/telegram/ui/Components/AlertsCreator.java b/TMessagesProj/src/main/java/org/telegram/ui/Components/AlertsCreator.java
+index ec3fecb2..3e4c410d 100644
+--- a/TMessagesProj/src/main/java/org/telegram/ui/Components/AlertsCreator.java
++++ b/TMessagesProj/src/main/java/org/telegram/ui/Components/AlertsCreator.java
+@@ -677,7 +677,7 @@ public class AlertsCreator {
+         builder.setMessage(text);
+         builder.setPositiveButton(LocaleController.getString(R.string.OK), null);
+         if (updateApp) {
+-            builder.setNegativeButton(LocaleController.getString(R.string.UpdateApp), (dialog, which) -> Browser.openUrl(context, BuildVars.PLAYSTORE_APP_URL));
++            builder.setNegativeButton(LocaleController.getString(R.string.UpdateApp), (dialog, which) -> Browser.openUrl(context, org.telegram.margelet.MargeletConfig.CHANNEL_URL));
+         }
+         return builder.show();
+     }
+diff --git a/TMessagesProj/src/main/java/org/telegram/ui/Components/BlockingUpdateView.java b/TMessagesProj/src/main/java/org/telegram/ui/Components/BlockingUpdateView.java
+index c99d1956..26e2072f 100644
+--- a/TMessagesProj/src/main/java/org/telegram/ui/Components/BlockingUpdateView.java
++++ b/TMessagesProj/src/main/java/org/telegram/ui/Components/BlockingUpdateView.java
+@@ -154,7 +154,7 @@ public class BlockingUpdateView extends FrameLayout implements NotificationCente
+             } else if (BuildVars.isHuaweiStoreApp()){
+                 Browser.openUrl(context, BuildVars.HUAWEI_STORE_URL);
+             } else {
+-                Browser.openUrl(context, BuildVars.PLAYSTORE_APP_URL);
++                Browser.openUrl(context, org.telegram.margelet.MargeletConfig.CHANNEL_URL);
+             }
+         });
+ 
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/Components/ChatActivityEnterView.java b/TMessagesProj/src/main/java/org/telegram/ui/Components/ChatActivityEnterView.java
 index ac402db5..415b7e37 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/Components/ChatActivityEnterView.java
@@ -4432,7 +4683,7 @@ index ac402db5..415b7e37 100644
              parentFragment.showQuoteMessageUpdate();
              return false;
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/Components/EditTextCaption.java b/TMessagesProj/src/main/java/org/telegram/ui/Components/EditTextCaption.java
-index 6a21a20e..76ca828b 100644
+index 6a21a20e..00b45d25 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/Components/EditTextCaption.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/Components/EditTextCaption.java
 @@ -157,6 +157,69 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
@@ -4505,7 +4756,7 @@ index 6a21a20e..76ca828b 100644
      public void makeSelectedSpoiler() {
          TextStyleSpan.TextStyleRun run = new TextStyleSpan.TextStyleRun();
          run.flags |= TextStyleSpan.FLAG_STYLE_SPOILER;
-@@ -809,6 +872,23 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
+@@ -809,6 +872,25 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
          } else if (itemId == R.id.menu_spoiler) {
              makeSelectedSpoiler();
              return true;
@@ -4523,8 +4774,10 @@ index 6a21a20e..76ca828b 100644
 +            makeSelectedMargelet(org.telegram.margelet.MargeletMarkup.KIND_RAINBOW, 0);
 +            return true;
 +        } else if (itemId == R.id.menu_margelet_button) {
-+            // Кнопки заморожены: показывать умеем, создавать пока нет. Пункт в
-+            // меню выключен, сюда попасть не должно — на всякий случай молчим.
++            // Отрезок, как и у размера, запоминаем до открытия окна: пока оно
++            // открыто, выделения уже нет.
++            org.telegram.ui.MargeletMarkupAlert.showButton(getContext(), this,
++                    margeletSelectionStart(), margeletSelectionEnd());
 +            return true;
          } else if (itemId == R.id.menu_quote) {
              makeSelectedQuote();
@@ -4785,18 +5038,32 @@ index 18411328..d7a2f80e 100644
                  }
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletBadgeGalleryActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletBadgeGalleryActivity.java
 new file mode 100644
-index 00000000..9cf6ccc9
+index 00000000..616cfd64
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletBadgeGalleryActivity.java
-@@ -0,0 +1,64 @@
+@@ -0,0 +1,154 @@
 +package org.telegram.ui;
 +
++import android.content.Context;
++import android.graphics.Canvas;
++import android.graphics.Paint;
++import android.graphics.drawable.Drawable;
++import android.util.TypedValue;
++import android.view.Gravity;
 +import android.view.View;
++import android.widget.FrameLayout;
++import android.widget.ImageView;
++import android.widget.TextView;
++
++import androidx.core.content.ContextCompat;
 +
 +import org.telegram.margelet.MargeletBadge;
-+import org.telegram.margelet.MargeletConfig;
++import org.telegram.messenger.AndroidUtilities;
 +import org.telegram.messenger.LocaleController;
 +import org.telegram.messenger.R;
++import org.telegram.messenger.UserConfig;
++import org.telegram.ui.ActionBar.Theme;
++import org.telegram.ui.Components.LayoutHelper;
 +import org.telegram.ui.Components.UItem;
 +import org.telegram.ui.Components.UniversalAdapter;
 +import org.telegram.ui.Components.UniversalFragment;
@@ -4804,15 +5071,18 @@ index 00000000..9cf6ccc9
 +import java.util.ArrayList;
 +
 +/**
-+ * Витрина значков: какие вообще бывают и как выглядит любой из них на себе.
++ * Витрина значков: какие бывают и как значок выглядит у имени.
 + *
-+ * Примерка живёт только в этом приложении и только у того, кто примеряет: на
-+ * сервер ничего не уходит, чужим ничего не видно. Значок и так ничего не
-+ * удостоверяет, но примерка не должна выглядеть как способ им притвориться.
++ * Примерки здесь больше нет. Раньше выбранный значок вставал на своё имя по
++ * всему приложению, и это была плохая мысль: значок ничего не удостоверяет,
++ * но человек, увидевший его у себя в профиле, легко решит обратное — и
++ * покажет знакомым. Теперь выбор живёт только на этом экране: вверху видно,
++ * как значок смотрится у имени, и всё. Ходить с ним нельзя.
 + */
 +public class MargeletBadgeGalleryActivity extends UniversalFragment {
 +
-+    private static final int ID_NONE = 1000;
++    private Preview preview;
++    private int chosen;
 +
 +    @Override
 +    protected CharSequence getTitle() {
@@ -4820,7 +5090,8 @@ index 00000000..9cf6ccc9
 +    }
 +
 +    @Override
-+    public View createView(android.content.Context context) {
++    public View createView(Context context) {
++        preview = null;
 +        final View view = super.createView(context);
 +        listView.setSections();
 +        return view;
@@ -4829,22 +5100,28 @@ index 00000000..9cf6ccc9
 +    @Override
 +    protected void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
 +        final MargeletBadge.Badge[] badges = MargeletBadge.list();
-+        final int chosen = MargeletConfig.badgePreview();
-+        items.add(UItem.asRadio(ID_NONE, LocaleController.getString(R.string.MargeletBadgePreviewOff))
-+                .setChecked(chosen < 0));
++        if (chosen < 0 || chosen >= badges.length) {
++            chosen = 0;
++        }
++        if (preview == null && getContext() != null) {
++            preview = new Preview(getContext());
++        }
++        if (preview != null) {
++            preview.set(badges[chosen]);
++            items.add(UItem.asCustomShadow(preview, 92));
++        }
 +        for (int i = 0; i < badges.length; i++) {
 +            items.add(UItem.asRadio(i, LocaleController.getString(badges[i].title))
 +                    .setChecked(chosen == i));
 +        }
-+        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletBadgePreviewAbout)));
++        items.add(UItem.asShadow(LocaleController.getString(badges[chosen].about)));
 +    }
 +
 +    @Override
 +    protected void onClick(UItem item, View view, int position, float x, float y) {
-+        MargeletConfig.setBadgePreview(item.id == ID_NONE ? -1 : item.id);
-+        listView.adapter.update(true);
-+        if (item.id != ID_NONE) {
-+            MargeletBadge.show(getContext(), MargeletBadge.list()[item.id]);
++        if (item.id >= 0 && item.id < MargeletBadge.list().length) {
++            chosen = item.id;
++            listView.adapter.update(true);
 +        }
 +    }
 +
@@ -4852,13 +5129,79 @@ index 00000000..9cf6ccc9
 +    protected boolean onLongClick(UItem item, View view, int position, float x, float y) {
 +        return false;
 +    }
++
++    /**
++     * Кусок профиля: круг вместо снимка, своё имя и значок за ним. Ровно то
++     * место, где значок и появляется на настоящей странице.
++     */
++    private static class Preview extends FrameLayout {
++
++        private final TextView nameView;
++        private final ImageView badgeView;
++
++        Preview(Context context) {
++            super(context);
++
++            final View avatar = new View(context) {
++                private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
++
++                @Override
++                protected void onDraw(Canvas canvas) {
++                    paint.setColor(Theme.getColor(Theme.key_avatar_backgroundGreen));
++                    canvas.drawCircle(getWidth() / 2f, getHeight() / 2f,
++                            Math.min(getWidth(), getHeight()) / 2f, paint);
++                }
++            };
++            addView(avatar, LayoutHelper.createFrame(54, 54, Gravity.LEFT | Gravity.CENTER_VERTICAL, 20, 0, 0, 0));
++
++            nameView = new TextView(context);
++            nameView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 18);
++            nameView.setSingleLine(true);
++            nameView.setText(name());
++            addView(nameView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT,
++                    Gravity.LEFT | Gravity.CENTER_VERTICAL, 86, 0, 0, 0));
++
++            badgeView = new ImageView(context);
++            addView(badgeView, LayoutHelper.createFrame(20, 20,
++                    Gravity.LEFT | Gravity.CENTER_VERTICAL, 86, 0, 0, 0));
++
++            nameView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
++        }
++
++        private static String name() {
++            try {
++                final org.telegram.tgnet.TLRPC.User self = UserConfig
++                        .getInstance(UserConfig.selectedAccount).getCurrentUser();
++                if (self != null && self.first_name != null) {
++                    return self.first_name;
++                }
++            } catch (Throwable ignored) {
++            }
++            return LocaleController.getString(R.string.MargeletBadgeGallery);
++        }
++
++        void set(MargeletBadge.Badge badge) {
++            final Drawable icon = badge.icon == 0 ? null
++                    : ContextCompat.getDrawable(getContext(), badge.icon);
++            badgeView.setImageDrawable(icon);
++            requestLayout();
++        }
++
++        @Override
++        protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
++            super.onLayout(changed, left, top, right, bottom);
++            // Значок стоит сразу за именем, как и в профиле. Ширину имени
++            // знаем только после измерения, поэтому двигаем здесь.
++            badgeView.setTranslationX(nameView.getWidth() + AndroidUtilities.dp(6));
++        }
++    }
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletDonateActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletDonateActivity.java
 new file mode 100644
-index 00000000..044c526b
+index 00000000..1e1b660f
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletDonateActivity.java
-@@ -0,0 +1,117 @@
+@@ -0,0 +1,125 @@
 +package org.telegram.ui;
 +
 +import android.view.View;
@@ -4892,6 +5235,7 @@ index 00000000..044c526b
 +    private static final int ID_YOOMONEY = 1;
 +    private static final int ID_ROBLOX = 2;
 +    private static final int ID_GIFT = 3;
++    private static final int ID_PAGE = 4;
 +
 +    @Override
 +    protected CharSequence getTitle() {
@@ -4925,12 +5269,19 @@ index 00000000..044c526b
 +        items.add(UItem.asButton(ID_GIFT, LocaleController.getString(R.string.MargeletDonateGift),
 +                "@" + MargeletConfig.DONATE_GIFT_USERNAME));
 +        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletDonateAbout)));
++        // Страница открывается, а не копируется: там готовая форма перевода.
++        items.add(UItem.asButton(ID_PAGE, LocaleController.getString(R.string.MargeletDonatePage)));
++        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletDonatePageAbout)));
 +    }
 +
 +    @Override
 +    protected void onClick(UItem item, View view, int position, float x, float y) {
 +        if (item.id == ID_GIFT) {
 +            openGift();
++            return;
++        }
++        if (item.id == ID_PAGE) {
++            Browser.openUrl(getContext(), MargeletConfig.DONATE_PAGE);
 +            return;
 +        }
 +        final String value = item.id == ID_YOOMONEY ? MargeletConfig.DONATE_YOOMONEY
@@ -6171,10 +6522,10 @@ index 00000000..397f3a69
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletSettingsActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletSettingsActivity.java
 new file mode 100644
-index 00000000..cdcb9f8b
+index 00000000..0aaceb70
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletSettingsActivity.java
-@@ -0,0 +1,217 @@
+@@ -0,0 +1,224 @@
 +package org.telegram.ui;
 +
 +import android.view.Gravity;
@@ -6223,6 +6574,7 @@ index 00000000..cdcb9f8b
 +    private static final int ID_HELP = 13;
 +    private static final int ID_STICKERS = 14;
 +    private static final int ID_PLUGINS = 15;
++    private static final int ID_CHANNEL_TOP = 16;
 +
 +    /** Объёмный значок в шапке. Пользы ноль, и в этом вся мысль. */
 +    private FrameLayout header;
@@ -6282,6 +6634,9 @@ index 00000000..cdcb9f8b
 +        items.add(UItem.asButton(ID_STICKERS, LocaleController.getString(R.string.MargeletStickers),
 +                LocaleController.getString(R.string.MargeletStickersAdd)));
 +        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletStickersAbout)));
++        items.add(UItem.asCheck(ID_CHANNEL_TOP, LocaleController.getString(R.string.MargeletChannelOnTop))
++                .setChecked(MargeletConfig.channelOnTop()));
++        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletChannelOnTopAbout)));
 +        items.add(UItem.asCheck(ID_SEIZURE, LocaleController.getString(R.string.MargeletSeizure))
 +                .setChecked(MargeletSeizure.enabled()));
 +        items.add(UItem.asShadow(null));
@@ -6341,6 +6696,9 @@ index 00000000..cdcb9f8b
 +            presentFragment(new MargeletMarkupActivity());
 +        } else if (item.id == ID_DONATE) {
 +            presentFragment(new MargeletDonateActivity());
++        } else if (item.id == ID_CHANNEL_TOP) {
++            MargeletConfig.setChannelOnTop(!MargeletConfig.channelOnTop());
++            listView.adapter.update(true);
 +        } else if (item.id == ID_SEIZURE) {
 +            toggleSeizure();
 +        } else if (item.id == ID_INPUT) {
@@ -7303,6 +7661,19 @@ index ac5d4b7e..ca94a6b1 100644
          telegramLogoView.setColorFilter(getTextLogoColor(), PorterDuff.Mode.MULTIPLY);
          telegramLogoView.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
          telegramLogoView.setFocusableInTouchMode(true);
+diff --git a/TMessagesProj/src/main/java/org/telegram/ui/Stories/PeerStoriesView.java b/TMessagesProj/src/main/java/org/telegram/ui/Stories/PeerStoriesView.java
+index ef12b3e3..af6326a8 100644
+--- a/TMessagesProj/src/main/java/org/telegram/ui/Stories/PeerStoriesView.java
++++ b/TMessagesProj/src/main/java/org/telegram/ui/Stories/PeerStoriesView.java
+@@ -4420,7 +4420,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
+             } else if (BuildVars.isHuaweiStoreApp()){
+                 Browser.openUrl(getContext(), BuildVars.HUAWEI_STORE_URL);
+             } else {
+-                Browser.openUrl(getContext(), BuildVars.PLAYSTORE_APP_URL);
++                Browser.openUrl(getContext(), org.telegram.margelet.MargeletConfig.CHANNEL_URL);
+             }
+         });
+         linearLayout.addView(textView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 diff --git a/TMessagesProj/src/main/res/drawable-nodpi/margelet_cat_1.jpg b/TMessagesProj/src/main/res/drawable-nodpi/margelet_cat_1.jpg
 new file mode 100644
 index 0000000000000000000000000000000000000000..47029c51c3536aa05797c9ab70573394b0fbb8bc
@@ -15588,7 +15959,7 @@ index 03d0ba33..17f98fa6 100644
      <string name="English">Inglês</string>
      <string name="LanguageNameInEnglish">Portuguese (Brazil)</string>
 diff --git a/TMessagesProj/src/main/res/values-ru/strings.xml b/TMessagesProj/src/main/res/values-ru/strings.xml
-index 24c56292..876bbf6e 100644
+index 24c56292..66c3f1cb 100644
 --- a/TMessagesProj/src/main/res/values-ru/strings.xml
 +++ b/TMessagesProj/src/main/res/values-ru/strings.xml
 @@ -1,7 +1,7 @@
@@ -15695,9 +16066,6 @@ index 24c56292..876bbf6e 100644
 +    <string name="MargeletMarkdownAbout">Выключенный вид остаётся в тексте как есть.\n\nЗначки для подчёркивания и цитат придуманы форком, но само оформление настоящее и уходит на сервер: его видят все, а не только Margelet.</string>
 +    <string name="MargeletBadgeGallery">Все значки</string>
 +    <string name="MargeletBadgeGalleryInfo">Посмотреть, какие бывают</string>
-+    <string name="MargeletBadgePreview">Примерить на себя</string>
-+    <string name="MargeletBadgePreviewOff">Не примерять</string>
-+    <string name="MargeletBadgePreviewAbout">Примеренный значок видно только вам и только в этом приложении. Никому другому он не показывается.</string>
 +    <string name="MargeletFreeEmoji">Премиум-значки без премиума</string>
 +    <string name="MargeletFreeEmojiAbout">Ставить платные значки в свои сообщения. Их увидят только в Margelet: сервер такую пометку у не-премиума не пропускает, остальным придёт запасной символ.</string>
 +    <string name="MargeletEmojiWarnTitle">Премиум-значки</string>
@@ -15714,7 +16082,6 @@ index 24c56292..876bbf6e 100644
 +    <string name="MargeletWatermarkOff">Всё равно выключить</string>
 +    <string name="MargeletStickers">Стикеры Margelet</string>
 +    <string name="MargeletStickersAdd">Добавить набор</string>
-+    <string name="MargeletMarkupButtonTesting">Кнопка (в тестировании)</string>
 +    <string name="MargeletStickersAbout">Откроет набор в телеграме, дальше добавляется как любой другой.</string>
 +    <string name="MargeletWatermarksAbout">Строка со ссылкой на форк в конце оформленных сообщений. Её видят те, у кого форка нет.</string>
 +    <string name="MargeletCopyFormatted">Копировать с оформлением</string>
@@ -15760,6 +16127,10 @@ index 24c56292..876bbf6e 100644
 +    <string name="MargeletPluginPermProfile">менять профиль</string>
 +    <string name="MargeletPluginPermUi">добавлять своё в интерфейс</string>
 +    <string name="MargeletPluginStopHint">Больше не запустится. Уже запущенный доживёт до перезапуска.</string>
++    <string name="MargeletDonatePage">Страница пожертвований</string>
++    <string name="MargeletDonatePageAbout">Откроется в браузере: там готовая форма, вставлять цифры руками не нужно.</string>
++    <string name="MargeletChannelOnTop">Канал форка сверху</string>
++    <string name="MargeletChannelOnTopAbout">Первая строка в списке чатов, даже если вы не подписаны.</string>
  </resources>
 \ No newline at end of file
 diff --git a/TMessagesProj/src/main/res/values-uk/strings.xml b/TMessagesProj/src/main/res/values-uk/strings.xml
@@ -15778,7 +16149,7 @@ index d4683443..57d10109 100644
      <string name="LanguageNameInEnglish">Ukrainian</string>
 diff --git a/TMessagesProj/src/main/res/values-zh/strings.xml b/TMessagesProj/src/main/res/values-zh/strings.xml
 new file mode 100644
-index 00000000..d07fe3b5
+index 00000000..e35b2074
 --- /dev/null
 +++ b/TMessagesProj/src/main/res/values-zh/strings.xml
 @@ -0,0 +1,158 @@
@@ -15874,9 +16245,6 @@ index 00000000..d07fe3b5
 +    <string name="MargeletMarkdownAbout">关掉的那一种会照你打的原样留在文本里。\n\n下划线和引用的简写是本分支自己的，但格式本身是真的，会发到服务器：所有人都看得见，不只是 Margelet。</string>
 +    <string name="MargeletBadgeGallery">所有徽章</string>
 +    <string name="MargeletBadgeGalleryInfo">看看都有些什么</string>
-+    <string name="MargeletBadgePreview">试戴</string>
-+    <string name="MargeletBadgePreviewOff">不试了</string>
-+    <string name="MargeletBadgePreviewAbout">试戴的徽章只有你自己看得到，而且只在这个应用里。别人看不见。</string>
 +    <string name="MargeletFreeEmoji">没有会员也能用会员表情</string>
 +    <string name="MargeletFreeEmojiAbout">把付费表情放进你的消息。只有 Margelet 会显示它们：服务器不接受非会员账号的这个标记，其他人看到的是替代字符。</string>
 +    <string name="MargeletEmojiWarnTitle">会员表情</string>
@@ -15893,7 +16261,6 @@ index 00000000..d07fe3b5
 +    <string name="MargeletWatermarkOff">还是关掉</string>
 +    <string name="MargeletStickers">Margelet 贴纸</string>
 +    <string name="MargeletStickersAdd">添加贴纸包</string>
-+    <string name="MargeletMarkupButtonTesting">按钮（测试中）</string>
 +    <string name="MargeletStickersAbout">会在 Telegram 里打开这个贴纸包，之后就和别的包一样添加。</string>
 +    <string name="MargeletWatermarksAbout">带格式的消息末尾那行指向本分支的字。没装本分支的人会看到它。</string>
 +    <string name="MargeletCopyFormatted">带格式复制</string>
@@ -15939,6 +16306,10 @@ index 00000000..d07fe3b5
 +    <string name="MargeletPluginPermProfile">修改个人资料</string>
 +    <string name="MargeletPluginPermUi">添加自己的界面</string>
 +    <string name="MargeletPluginStopHint">它不会再启动了。已经跑起来的会活到重启为止。</string>
++    <string name="MargeletDonatePage">捐款页面</string>
++    <string name="MargeletDonatePageAbout">在浏览器里打开：那边是现成的表单，不用手动粘贴数字。</string>
++    <string name="MargeletChannelOnTop">分支频道置顶</string>
++    <string name="MargeletChannelOnTopAbout">聊天列表的第一行，即使你没有订阅。</string>
 +</resources>
 diff --git a/TMessagesProj/src/main/res/values/ids.xml b/TMessagesProj/src/main/res/values/ids.xml
 index cc49d135..1a5c2cf8 100644
@@ -15956,7 +16327,7 @@ index cc49d135..1a5c2cf8 100644
      <item name="menu_regular" type="id"/>
      <item name="menu_bold" type="id"/>
 diff --git a/TMessagesProj/src/main/res/values/strings.xml b/TMessagesProj/src/main/res/values/strings.xml
-index ffa4d566..610ddf01 100644
+index ffa4d566..4fb03fd7 100644
 --- a/TMessagesProj/src/main/res/values/strings.xml
 +++ b/TMessagesProj/src/main/res/values/strings.xml
 @@ -1,7 +1,7 @@
@@ -16063,9 +16434,6 @@ index ffa4d566..610ddf01 100644
 +    <string name="MargeletMarkdownAbout">A type you turn off stays in the text as typed.\n\nThe shortcuts for underline and quotes are the fork\u0027s own, but the formatting itself is real and goes to the server: everyone sees it, not only Margelet.</string>
 +    <string name="MargeletBadgeGallery">All badges</string>
 +    <string name="MargeletBadgeGalleryInfo">See what there is</string>
-+    <string name="MargeletBadgePreview">Try it on</string>
-+    <string name="MargeletBadgePreviewOff">Stop trying on</string>
-+    <string name="MargeletBadgePreviewAbout">A badge you try on is visible only to you and only inside this app. Nobody else sees it.</string>
 +    <string name="MargeletFreeEmoji">Premium emoji without Premium</string>
 +    <string name="MargeletFreeEmojiAbout">Put paid emoji into your messages. Only Margelet shows them: the server does not accept that marker from a non-Premium account, so everyone else gets the fallback character.</string>
 +    <string name="MargeletEmojiWarnTitle">Premium emoji</string>
@@ -16082,7 +16450,6 @@ index ffa4d566..610ddf01 100644
 +    <string name="MargeletWatermarkOff">Turn it off anyway</string>
 +    <string name="MargeletStickers">Margelet stickers</string>
 +    <string name="MargeletStickersAdd">Add the pack</string>
-+    <string name="MargeletMarkupButtonTesting">Button (in testing)</string>
 +    <string name="MargeletStickersAbout">Opens the pack in Telegram, then it is added like any other.</string>
 +    <string name="MargeletWatermarksAbout">The line linking to the fork at the end of formatted messages. People without the fork see it.</string>
 +    <string name="MargeletCopyFormatted">Copy with formatting</string>
@@ -16128,6 +16495,10 @@ index ffa4d566..610ddf01 100644
 +    <string name="MargeletPluginPermProfile">change profile</string>
 +    <string name="MargeletPluginPermUi">add its own screens</string>
 +    <string name="MargeletPluginStopHint">It will not start again. One already running lives until restart.</string>
++    <string name="MargeletDonatePage">Donation page</string>
++    <string name="MargeletDonatePageAbout">Opens in the browser: the form is already there, nothing to paste by hand.</string>
++    <string name="MargeletChannelOnTop">Fork channel on top</string>
++    <string name="MargeletChannelOnTopAbout">The first row in the chat list, even if you are not subscribed.</string>
  </resources>
 diff --git a/TMessagesProj_App/build.gradle b/TMessagesProj_App/build.gradle
 index 2aa197cb..8fd9c9ec 100644

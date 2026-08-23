@@ -92,38 +92,34 @@ public class MargeletBadge {
         return -chatId;
     }
 
-    /** Вся таблица: нужна витрине значков. */
-    public static Badge[] list() {
-        return BADGES;
-    }
-
     /**
-     * Примеренный значок: человек выбрал его в витрине, чтобы посмотреть на
-     * себе. Виден только ему и только внутри приложения — на сервер ничего не
-     * уходит, и никому другому он не показывается.
+     * Виды значков — по одному на вид, а не по одному на человека.
+     *
+     * В таблице «кот в Margelet» стоит дважды: котов двое, у каждого свой
+     * хозяин. Витрине это не нужно — она показывает, какие значки бывают, и
+     * два одинаковых «Кот в Margelet» там выглядят ошибкой. Ею и были.
      */
-    private static Badge previewed() {
-        final int index = MargeletConfig.badgePreview();
-        return index >= 0 && index < BADGES.length ? BADGES[index] : null;
-    }
-
-    private static boolean isSelf(long peerId) {
-        try {
-            return peerId > 0 && peerId == org.telegram.messenger.UserConfig
-                    .getInstance(org.telegram.messenger.UserConfig.selectedAccount)
-                    .getClientUserId();
-        } catch (Throwable t) {
-            return false;
+    public static Badge[] list() {
+        final List<Badge> kinds = new ArrayList<>();
+        for (Badge badge : BADGES) {
+            boolean seen = false;
+            for (Badge already : kinds) {
+                if (already.title == badge.title) {
+                    seen = true;
+                    break;
+                }
+            }
+            if (!seen) {
+                kinds.add(badge);
+            }
         }
+        return kinds.toArray(new Badge[0]);
     }
 
     /** Старший значок — тот, что стоит у имени. Первый в таблице и есть старший. */
     public static Badge of(long peerId) {
         if (!MargeletConfig.badgesEnabled()) {
             return null;
-        }
-        if (isSelf(peerId) && previewed() != null) {
-            return previewed();
         }
         for (Badge badge : BADGES) {
             if (badge.peerId == peerId) {
@@ -139,13 +135,7 @@ public class MargeletBadge {
         if (!MargeletConfig.badgesEnabled()) {
             return found;
         }
-        if (isSelf(peerId) && previewed() != null) {
-            found.add(previewed());
-        }
         for (Badge badge : BADGES) {
-            if (found.contains(badge)) {
-                continue;
-            }
             if (badge.peerId == peerId) {
                 found.add(badge);
             }
