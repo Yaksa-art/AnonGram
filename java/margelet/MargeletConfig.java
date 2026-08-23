@@ -20,6 +20,7 @@ public class MargeletConfig {
     public static final String APP_NAME = "Margelet";
 
     public static final String CHANNEL_URL = "https://t.me/margeletter";
+    public static final String SOURCE_URL = "https://github.com/narezany/Margelet";
     public static final String FORUM_URL = "https://t.me/margeletforum";
 
     private static SharedPreferences prefs() {
@@ -66,6 +67,28 @@ public class MargeletConfig {
 
     public static void setInputOnTop(boolean top) {
         prefs().edit().putBoolean("input_on_top", top).apply();
+    }
+
+    /**
+     * Удалённые подарки в каталоге. По умолчанию выключено: это добавляет к
+     * списку то, чего телеграм там не показывает, и включать такое за человека
+     * молча неправильно.
+     */
+    public static boolean giftsEnabled() {
+        return prefs().getBoolean("gifts", false);
+    }
+
+    public static void setGiftsEnabled(boolean on) {
+        prefs().edit().putBoolean("gifts", on).apply();
+    }
+
+    /** Показывать айди в профилях людей, групп, каналов и ботов. */
+    public static boolean showIds() {
+        return prefs().getBoolean("show_ids", true);
+    }
+
+    public static void setShowIds(boolean on) {
+        prefs().edit().putBoolean("show_ids", on).apply();
     }
 
     /** Режим стримера: прятать номер телефона. */

@@ -30,6 +30,9 @@ public class MargeletSettingsActivity extends UniversalFragment {
     private static final int ID_FORUM = 4;
     private static final int ID_TRACKS = 5;
     private static final int ID_STREAMER = 6;
+    private static final int ID_GIFTS = 7;
+    private static final int ID_SOURCE = 8;
+    private static final int ID_PROFILES = 9;
 
     @Override
     protected CharSequence getTitle() {
@@ -55,6 +58,14 @@ public class MargeletSettingsActivity extends UniversalFragment {
                 IconBackgroundColors.PURPLE.top, IconBackgroundColors.PURPLE.bottom,
                 R.drawable.settings_folders, LocaleController.getString(R.string.MargeletTracks),
                 LocaleController.getString(R.string.MargeletTracksInfo)));
+        items.add(SettingsActivity.SettingCell.Factory.of(ID_PROFILES,
+                IconBackgroundColors.BLUE_DEEP.top, IconBackgroundColors.BLUE_DEEP.bottom,
+                R.drawable.settings_account, LocaleController.getString(R.string.MargeletProfiles),
+                LocaleController.getString(R.string.MargeletProfilesInfo)));
+        items.add(SettingsActivity.SettingCell.Factory.of(ID_GIFTS,
+                IconBackgroundColors.ORANGE.top, IconBackgroundColors.ORANGE.bottom,
+                R.drawable.settings_gift, LocaleController.getString(R.string.MargeletGifts),
+                LocaleController.getString(R.string.MargeletGiftsInfo)));
         items.add(UItem.asShadow(null));
         items.add(SettingsActivity.SettingCell.Factory.of(ID_CHANNEL,
                 IconBackgroundColors.BLUE.top, IconBackgroundColors.BLUE.bottom,
@@ -62,6 +73,10 @@ public class MargeletSettingsActivity extends UniversalFragment {
         items.add(SettingsActivity.SettingCell.Factory.of(ID_FORUM,
                 IconBackgroundColors.ORANGE.top, IconBackgroundColors.ORANGE.bottom,
                 R.drawable.settings_group, LocaleController.getString(R.string.MargeletForum), "t.me/margeletforum"));
+        items.add(SettingsActivity.SettingCell.Factory.of(ID_SOURCE,
+                IconBackgroundColors.GRAY.top, IconBackgroundColors.GRAY.bottom,
+                R.drawable.settings_features, LocaleController.getString(R.string.MargeletSource),
+                LocaleController.getString(R.string.MargeletSourceInfo)));
         items.add(UItem.asShadow(null));
     }
 
@@ -83,10 +98,16 @@ public class MargeletSettingsActivity extends UniversalFragment {
             presentFragment(new MargeletSoundActivity());
         } else if (item.id == ID_CHANNEL) {
             Browser.openUrl(getContext(), MargeletConfig.CHANNEL_URL);
+        } else if (item.id == ID_PROFILES) {
+            presentFragment(new MargeletProfilesActivity());
+        } else if (item.id == ID_GIFTS) {
+            presentFragment(new MargeletGiftsActivity());
         } else if (item.id == ID_STREAMER) {
             presentFragment(new MargeletStreamerActivity());
         } else if (item.id == ID_TRACKS) {
             presentFragment(new MargeletTracksActivity());
+        } else if (item.id == ID_SOURCE) {
+            Browser.openUrl(getContext(), MargeletConfig.SOURCE_URL);
         } else if (item.id == ID_FORUM) {
             Browser.openUrl(getContext(), MargeletConfig.FORUM_URL);
         }
