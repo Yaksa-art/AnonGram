@@ -178,6 +178,21 @@ public class MargeletCopy {
         return org.telegram.margelet.MargeletConfig.markdownEnabled(kind) ? token : null;
     }
 
+    /** Знак цитаты для набора видов, действующих на этом отрезке. */
+    private static String quoteToken(java.util.List<TLRPC.MessageEntity> active) {
+        for (TLRPC.MessageEntity entity : active) {
+            if (entity instanceof TLRPC.TL_messageEntityBlockquote) {
+                final boolean collapsed = ((TLRPC.TL_messageEntityBlockquote) entity).collapsed;
+                final String kind = collapsed ? "quote_collapsed" : "quote";
+                if (!org.telegram.margelet.MargeletConfig.markdownEnabled(kind)) {
+                    return null;
+                }
+                return collapsed ? ">>" : ">";
+            }
+        }
+        return null;
+    }
+
     /** То же разрезание по границам, что и в HTML, только значками телеграма. */
     public static String markdown(CharSequence text, ArrayList<TLRPC.MessageEntity> entities) {
         if (text == null) {
@@ -189,7 +204,8 @@ public class MargeletCopy {
         bounds.add(text.length());
         if (entities != null) {
             for (TLRPC.MessageEntity entity : entities) {
-                if (token(entity) != null && entity.offset >= 0 && entity.length > 0
+                final boolean quote = entity instanceof TLRPC.TL_messageEntityBlockquote;
+                if ((token(entity) != null || quote) && entity.offset >= 0 && entity.length > 0
                         && entity.offset + entity.length <= text.length()) {
                     usable.add(entity);
                     bounds.add(entity.offset);
@@ -220,16 +236,34 @@ public class MargeletCopy {
                 same++;
             }
             while (stack.size() > same) {
-                out.append(token(stack.remove(stack.size() - 1)));
+                final String close = token(stack.remove(stack.size() - 1));
+                if (close != null) {
+                    out.append(close);
+                }
             }
             for (int i = same; i < want.size(); i++) {
-                out.append(token(want.get(i)));
+                final String open = token(want.get(i));
+                if (open != null) {
+                    out.append(open);
+                }
                 stack.add(want.get(i));
             }
-            out.append(text, from, to);
+            // Цитата помечается не обёрткой, а знаком в начале каждой своей
+            // строки — как её пишут руками. Поэтому её и не было в копии:
+            // подчёркивание оборачивается, а цитата так не умеет.
+            final String quote = quoteToken(want);
+            for (int i = from; i < to; i++) {
+                if (quote != null && (out.length() == 0 || out.charAt(out.length() - 1) == '\n')) {
+                    out.append(quote);
+                }
+                out.append(text.charAt(i));
+            }
         }
         while (!stack.isEmpty()) {
-            out.append(token(stack.remove(stack.size() - 1)));
+            final String close = token(stack.remove(stack.size() - 1));
+            if (close != null) {
+                out.append(close);
+            }
         }
         return out.toString();
     }

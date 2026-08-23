@@ -411,7 +411,15 @@ public class MargeletMarkup {
                     // на её краю — а разметку с исключающими краями в её
                     // собственных краях не находят. Кнопка рисовалась и не
                     // нажималась вовсе; владелец сказал «ей похуй», и был прав.
-                    text.setSpan(new org.telegram.ui.Components.URLSpanReplacement(url),
+                    //
+                    // Разметка ровно та же, какой телеграм делает обычные
+                    // ссылки в сообщениях, и с тем же вторым доводом —
+                    // описанием стиля. Сначала я позвал упрощённый вид без
+                    // него; в телеграме такой не создаётся нигде, и нажатие не
+                    // срабатывало. Делать «похоже» там, где рядом лежит рабочий
+                    // образец, — плохая идея.
+                    text.setSpan(new org.telegram.ui.Components.URLSpanBrowser(url,
+                                    new org.telegram.ui.Components.TextStyleSpan.TextStyleRun()),
                             run.start, run.end, Spanned.SPAN_INCLUSIVE_INCLUSIVE);
                 }
                 continue;
