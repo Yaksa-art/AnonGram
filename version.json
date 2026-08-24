@@ -1,7 +1,7 @@
 {
-  "version": "0.2.1",
+  "version": "0.2.2",
   "apk": "https://github.com/narezany/margelet/raw/apk/margelet.apk",
-  "about": "Update checks now run on a schedule you choose, with a Check now button.",
-  "about_ru": "Обновления проверяются по расписанию, интервал выбираешь сам, плюс кнопка «Проверить сейчас».",
-  "about_zh": "更新检查现在按你选择的间隔运行，并新增“立即检查”按钮。"
+  "about": "Text outline, your own font for the whole app.",
+  "about_ru": "Обводка текста и свой шрифт на всё приложение.",
+  "about_zh": "文字描边，以及可用于整个应用的自定义字体。"
 }
