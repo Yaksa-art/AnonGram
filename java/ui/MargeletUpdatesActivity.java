@@ -4,6 +4,7 @@ import android.view.View;
 
 import org.telegram.margelet.MargeletConfig;
 import org.telegram.margelet.MargeletUpdate;
+import org.telegram.messenger.BuildVars;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
@@ -59,8 +60,13 @@ public class MargeletUpdatesActivity extends UniversalFragment {
         }
         items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletUpdatesAbout)));
         items.add(UItem.asButton(ID_CHECK_NOW, LocaleController.getString(R.string.MargeletUpdatesNow)));
+        // Показываем и свой номер, и версию телеграма, на которой собрано:
+        // без второго числа непонятно, из какого исходника выросла сборка.
         items.add(UItem.asShadow(LocaleController.formatString(R.string.MargeletUpdatesCurrent,
-                MargeletConfig.APP_VERSION)));
+                MargeletConfig.APP_VERSION)
+                + "\n"
+                + LocaleController.formatString(R.string.MargeletUpdatesBased,
+                        BuildVars.BUILD_VERSION_STRING)));
     }
 
     @Override

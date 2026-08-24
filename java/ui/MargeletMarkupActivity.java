@@ -23,6 +23,7 @@ public class MargeletMarkupActivity extends UniversalFragment {
     private static final int ID_SIZE = 1;
     private static final int ID_DIM = 2;
     private static final int ID_RAINBOW = 3;
+    private static final int ID_OUTLINE = 90;
     private static final int ID_WATERMARKS = 4;
     private static final int ID_COPY = 5;
     private static final int ID_BUTTON = 6;
@@ -50,6 +51,8 @@ public class MargeletMarkupActivity extends UniversalFragment {
                 .setChecked(MargeletConfig.markupEnabled(MargeletMarkup.KIND_DIM)));
         items.add(UItem.asCheck(ID_RAINBOW, LocaleController.getString(R.string.MargeletMarkupRainbow))
                 .setChecked(MargeletConfig.markupEnabled(MargeletMarkup.KIND_RAINBOW)));
+        items.add(UItem.asCheck(ID_OUTLINE, LocaleController.getString(R.string.MargeletMarkupOutline))
+                .setChecked(MargeletConfig.markupEnabled(MargeletMarkup.KIND_OUTLINE)));
         items.add(UItem.asCheck(ID_BUTTON, LocaleController.getString(R.string.MargeletMarkupButton))
                 .setChecked(MargeletConfig.markupEnabled(MargeletMarkup.KIND_BUTTON)));
         items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletMarkupAbout)));
@@ -107,6 +110,7 @@ public class MargeletMarkupActivity extends UniversalFragment {
         } else {
             final int kind = item.id == ID_SIZE ? MargeletMarkup.KIND_SIZE
                     : item.id == ID_DIM ? MargeletMarkup.KIND_DIM
+                    : item.id == ID_OUTLINE ? MargeletMarkup.KIND_OUTLINE
                     : MargeletMarkup.KIND_RAINBOW;
             MargeletConfig.setMarkupEnabled(kind, !MargeletConfig.markupEnabled(kind));
         }

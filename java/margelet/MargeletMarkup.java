@@ -64,6 +64,8 @@ public class MargeletMarkup {
     public static final int KIND_BUTTON = 3;
     /** Премиум-значок: в нагрузке номер документа. */
     public static final int KIND_EMOJI = 4;
+    /** Обводка: буквы становятся полыми, наружу идёт контур цветом текста. */
+    public static final int KIND_OUTLINE = 5;
 
     /**
      * Длина нагрузки в разрядах и разрядов на байт.

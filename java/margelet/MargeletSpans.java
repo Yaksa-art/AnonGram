@@ -71,6 +71,8 @@ public class MargeletSpans {
                 return new Dim(value);
             case MargeletMarkup.KIND_RAINBOW:
                 return new Rainbow(value);
+            case MargeletMarkup.KIND_OUTLINE:
+                return new Outline(value);
             default:
                 return null;
         }
@@ -177,6 +179,46 @@ public class MargeletSpans {
             MargeletSeizure.poke();
             hsv[0] = (System.currentTimeMillis() % CYCLE_MS) * 360f / CYCLE_MS;
             paint.setColor(Color.HSVToColor(hsv));
+        }
+    }
+
+    /**
+     * Обводка: буквы рисуются одним контуром, без заливки.
+     *
+     * Внутри буквы остаётся то, что под текстом, — фон пузыря или темы.
+     * Поэтому на тёмной теме белое слово выглядит чёрным с белым контуром, а
+     * на светлой чёрное слово — белым с чёрным: ровно то выворачивание,
+     * которого просил владелец, и достаётся оно одной строкой вместо
+     * рисования текста дважды.
+     *
+     * Толщина контура считается от размера букв, а не берётся числом: на
+     * мелком тексте постоянная толщина съедает букву целиком, на крупном
+     * теряется.
+     */
+    public static class Outline extends Base {
+        private final int value;
+
+        public Outline(int value) {
+            this.value = value;
+        }
+
+        @Override
+        public int kind() {
+            return MargeletMarkup.KIND_OUTLINE;
+        }
+
+        @Override
+        public int value() {
+            return value;
+        }
+
+        @Override
+        public void updateDrawState(TextPaint paint) {
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(Math.max(1f, paint.getTextSize() / 14f));
+            // Углы букв без этого выглядят обрубленными.
+            paint.setStrokeJoin(Paint.Join.ROUND);
+            paint.setStrokeCap(Paint.Cap.ROUND);
         }
     }
 

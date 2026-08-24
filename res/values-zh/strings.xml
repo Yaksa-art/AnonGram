@@ -20,6 +20,18 @@
     <string name="MargeletUpdatesLatest">已是最新版本</string>
     <string name="MargeletUpdatesFound">新版本 %1$s 已发布</string>
     <string name="MargeletUpdatesCurrent">已安装：%1$s</string>
+    <string name="MargeletUpdatesBased">基于 Telegram %1$s</string>
+    <string name="MargeletFonts">字体</string>
+    <string name="MargeletFontsInfo">更改整个应用的字体</string>
+    <string name="MargeletFontsHeader">字体</string>
+    <string name="MargeletFontsDefault">与 Telegram 一致</string>
+    <string name="MargeletFontsAbout">所选字体将用于应用的每一处。粗体和斜体由它生成，因此没有这些字重的字体同样可用。</string>
+    <string name="MargeletFontsAdd">添加自己的字体</string>
+    <string name="MargeletFontsAddAbout">.ttf 或 .otf 文件。它会被复制到应用内部，之后可以删除原文件。长按自己的字体即可移除。</string>
+    <string name="MargeletFontsBad">系统无法将此文件识别为字体</string>
+    <string name="MargeletFontsRestart">更改字体需要重启应用。</string>
+    <string name="MargeletFontsRestartNow">重启</string>
+    <string name="MargeletFontsRemoveAbout">要从字体库中移除它吗？</string>
     <string name="MargeletLines">最多几行</string>
     <string name="MargeletLinesMax">不限</string>
     <string name="MargeletLinesAbout">输入框长到几行才开始滚动。原版是六行。“不限”表示只要屏幕还有地方就继续长。</string>
@@ -91,6 +103,7 @@
     <string name="MargeletMarkupSizeExample">像这样</string>
     <string name="MargeletMarkupDim">变暗</string>
     <string name="MargeletMarkupRainbow">彩虹</string>
+    <string name="MargeletMarkupOutline">描边</string>
     <string name="MargeletMarkupButton">按钮</string>
     <string name="MargeletMarkupButtonHint">链接：网址或 t.me/…</string>
     <string name="MargeletMarkupButtonNoLink">按钮需要一个链接</string>
