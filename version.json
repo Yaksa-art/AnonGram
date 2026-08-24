@@ -1,7 +1,7 @@
 {
-  "version": "0.2",
+  "version": "0.2.1",
   "apk": "https://github.com/narezany/margelet/raw/apk/margelet.apk",
-  "about": "The app now notices new versions itself and offers to install them.",
-  "about_ru": "Приложение само замечает новые версии и предлагает поставить.",
-  "about_zh": "应用现在会自己发现新版本并提示安装。"
+  "about": "Update checks now run on a schedule you choose, with a Check now button.",
+  "about_ru": "Обновления проверяются по расписанию, интервал выбираешь сам, плюс кнопка «Проверить сейчас».",
+  "about_zh": "更新检查现在按你选择的间隔运行，并新增“立即检查”按钮。"
 }
