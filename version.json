@@ -1,7 +1,7 @@
 {
-  "version": "0.2.3",
+  "version": "0.2.4",
   "apk": "https://github.com/narezany/margelet/raw/apk/margelet.apk",
-  "about": "Outline without the extra ring inside letters, and the font now applies across the app.",
-  "about_ru": "Обводка без лишнего кольца внутри букв, шрифт применяется по всему приложению.",
-  "about_zh": "描边不再在字母内部多出一圈，字体现在应用于整个程序。"
+  "about": "Plugins get events and their own memory; installing over an installed plugin no longer runs it twice.",
+  "about_ru": "Плагины получили события и свою память; установка поверх уже стоящего больше не запускает его дважды.",
+  "about_zh": "插件获得了事件与自己的存储；覆盖安装不会再让同一个插件运行两次。"
 }
