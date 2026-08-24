@@ -1,7 +1,7 @@
 {
-  "version": "0.1.6",
+  "version": "0.2",
   "apk": "https://github.com/narezany/margelet/raw/apk/margelet.apk",
-  "about": "Badges are read from badges.json now.",
-  "about_ru": "Значки читаются из badges.json.",
-  "about_zh": "徽章现在从 badges.json 读取。"
+  "about": "The app now notices new versions itself and offers to install them.",
+  "about_ru": "Приложение само замечает новые версии и предлагает поставить.",
+  "about_zh": "应用现在会自己发现新版本并提示安装。"
 }
