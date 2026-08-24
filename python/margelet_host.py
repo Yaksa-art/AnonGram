@@ -76,8 +76,14 @@ def run_plugin(plugin_id, name, folder):
         if hasattr(module, "on_start"):
             module.on_start()
         _Host.log(name, "запущен", False)
-    except Exception:
-        _Host.log(name, traceback.format_exc(), True)
+    except Exception as error:
+        # Первый кадр разбора — сам этот файл, автору плагина он ничего не
+        # говорит. Показываем только то, что в его коде.
+        frames = error.__traceback__
+        if frames is not None and frames.tb_next is not None:
+            frames = frames.tb_next
+        _Host.log(name, "".join(
+            traceback.format_exception(type(error), error, frames)), True)
     finally:
         sys.stdout.flush()
         sys.stderr.flush()

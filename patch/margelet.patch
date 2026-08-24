@@ -16753,10 +16753,10 @@ index 00000000..810298c3
 +    margelet.log("папка плагина:", margelet.folder)
 diff --git a/TMessagesProj_AppStandalone/src/main/python/margelet_host.py b/TMessagesProj_AppStandalone/src/main/python/margelet_host.py
 new file mode 100644
-index 00000000..c343f6b2
+index 00000000..72fe36c3
 --- /dev/null
 +++ b/TMessagesProj_AppStandalone/src/main/python/margelet_host.py
-@@ -0,0 +1,84 @@
+@@ -0,0 +1,90 @@
 +# -*- coding: utf-8 -*-
 +"""Прослойка между приложением и плагинами Margelet.
 +
@@ -16835,8 +16835,14 @@ index 00000000..c343f6b2
 +        if hasattr(module, "on_start"):
 +            module.on_start()
 +        _Host.log(name, "запущен", False)
-+    except Exception:
-+        _Host.log(name, traceback.format_exc(), True)
++    except Exception as error:
++        # Первый кадр разбора — сам этот файл, автору плагина он ничего не
++        # говорит. Показываем только то, что в его коде.
++        frames = error.__traceback__
++        if frames is not None and frames.tb_next is not None:
++            frames = frames.tb_next
++        _Host.log(name, "".join(
++            traceback.format_exception(type(error), error, frames)), True)
 +    finally:
 +        sys.stdout.flush()
 +        sys.stderr.flush()
