@@ -1,8 +1,10 @@
 package org.telegram.margelet;
 
+import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
 
+import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.FileLog;
 
@@ -149,6 +151,67 @@ public class MargeletPluginHost {
      * прямая ссылка сломала бы сборку всех остальных, где движка нет. Если
      * класса нет, ошибка попадёт в консоль как есть — молча не пропадёт.
      */
+    /**
+     * Сообщает плагинам, что человек открыл чат.
+     *
+     * Раньше такого события не было, и плагину, которому нужен открытый чат,
+     * приходилось спрашивать самому по четыре раза в секунду. Опрос впустую
+     * — плохая плата за то, что приложение и так знает.
+     *
+     * Зовётся из переписки, поэтому здесь тихо: питон может быть ещё не
+     * поднят, плагинов может не быть вовсе, и ронять из-за этого чат нельзя.
+     */
+    public static void chatOpened(Object fragment) {
+        if (!started) {
+            return;
+        }
+        final Handler h = handler;
+        if (h == null) {
+            return;
+        }
+        h.post(() -> {
+            try {
+                python("chatOpened", new Class<?>[]{Object.class}, fragment);
+            } catch (Throwable t) {
+                FileLog.e(t);
+            }
+        });
+    }
+
+    /** Короткое сообщение на экране. Зовётся из плагина. */
+    public static void toast(String text) {
+        AndroidUtilities.runOnUIThread(() -> {
+            try {
+                android.widget.Toast.makeText(ApplicationLoader.applicationContext,
+                        text, android.widget.Toast.LENGTH_SHORT).show();
+            } catch (Throwable ignored) {
+            }
+        });
+    }
+
+    /**
+     * Своя память плагина: переживает перезапуск приложения и не пропадает
+     * при обновлении самого плагина, потому что лежит не в его папке.
+     */
+    public static String get(String pluginId, String key, String fallback) {
+        try {
+            return ApplicationLoader.applicationContext
+                    .getSharedPreferences("margelet_plugin_" + pluginId, Context.MODE_PRIVATE)
+                    .getString(key, fallback);
+        } catch (Throwable t) {
+            return fallback;
+        }
+    }
+
+    public static void set(String pluginId, String key, String value) {
+        try {
+            ApplicationLoader.applicationContext
+                    .getSharedPreferences("margelet_plugin_" + pluginId, Context.MODE_PRIVATE)
+                    .edit().putString(key, value).apply();
+        } catch (Throwable ignored) {
+        }
+    }
+
     private static void python(String method, Class<?>[] types, Object... args) throws Throwable {
         try {
             Class.forName("org.telegram.margelet.MargeletPython")

@@ -1,6 +1,9 @@
 package org.telegram.margelet;
 
 import android.content.Context;
+import android.view.Gravity;
+import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.text.SpannableStringBuilder;
@@ -11,7 +14,9 @@ import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.R;
+import org.telegram.messenger.AndroidUtilities;
 import org.telegram.ui.ActionBar.AlertDialog;
+import org.telegram.ui.Components.LayoutHelper;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -348,8 +353,23 @@ public class MargeletPlugins {
             return false;
         }
         final Plugin plugin = staged[0];
+        // Тот же плагин уже стоит? Тогда это обновление, и говорить надо так.
+        // Раньше окно молчало, ставило рядом второй раз, и человек получал
+        // два одинаковых плагина: в списке один, а делают они всё вдвойне.
+        Plugin existing = null;
+        for (Plugin already : installed()) {
+            if (already.id.equals(plugin.id)) {
+                existing = already;
+                break;
+            }
+        }
+
         final SpannableStringBuilder text = new SpannableStringBuilder();
         text.append(LocaleController.formatString(R.string.MargeletPluginBy, plugin.author)).append("\n\n");
+        if (existing != null) {
+            text.append(LocaleController.formatString(R.string.MargeletPluginAlready, existing.version))
+                    .append("\n\n");
+        }
         text.append(LocaleController.getString(R.string.MargeletPluginDeclares));
         if (plugin.permissions.isEmpty()) {
             text.append("\n— ").append(LocaleController.getString(R.string.MargeletPluginPermNone));
@@ -359,11 +379,15 @@ public class MargeletPlugins {
             }
         }
         text.append("\n\n").append(LocaleController.getString(R.string.MargeletPluginInstallWarn));
+        if (existing != null) {
+            text.append("\n\n").append(LocaleController.getString(R.string.MargeletPluginAlreadyRestart));
+        }
 
-        new AlertDialog.Builder(context)
+        final AlertDialog.Builder builder = new AlertDialog.Builder(context)
                 .setTitle(plugin.name + " " + plugin.version)
                 .setMessage(text)
-                .setPositiveButton(LocaleController.getString(R.string.MargeletPluginInstallOk), (d, w) -> {
+                .setPositiveButton(LocaleController.getString(existing != null
+                        ? R.string.MargeletPluginUpdateOk : R.string.MargeletPluginInstallOk), (d, w) -> {
                     commit(staged[0]);
                     staged[0] = null;
                     if (whenInstalled != null) {
@@ -376,8 +400,23 @@ public class MargeletPlugins {
                 .setOnDismissListener(d -> {
                     discard(staged[0]);
                     staged[0] = null;
-                })
-                .show();
+                });
+        // Значок автора, если он его положил: по названию не всегда понятно,
+        // что именно тебе предлагают поставить.
+        final Bitmap icon = plugin.icon();
+        if (icon != null) {
+            try {
+                final ImageView view = new ImageView(context);
+                view.setImageBitmap(icon);
+                final int size = AndroidUtilities.dp(64);
+                final FrameLayout wrap = new FrameLayout(context);
+                wrap.addView(view, LayoutHelper.createFrame(64, 64, Gravity.CENTER, 0, 12, 0, 4));
+                builder.setTopView(wrap);
+            } catch (Throwable ignored) {
+                // Окно без значка — всё ещё окно.
+            }
+        }
+        builder.show();
         return true;
     }
 

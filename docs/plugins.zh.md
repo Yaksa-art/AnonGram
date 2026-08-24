@@ -77,6 +77,34 @@ def on_start():
 | `margelet.folder` | 插件在手机上的文件夹 |
 | `margelet.log(*部分)` | 往控制台写一行 |
 | `margelet.error(*部分)` | 同上，红色 |
+| `margelet.ui(调用, delay_ms=0)` | 在主线程上执行——凡是碰屏幕的都必须如此 |
+| `margelet.every(毫秒, 调用)` | 每隔这么久重复一次，返回一个句柄 |
+| `margelet.cancel(句柄)` | 停止重复 |
+| `margelet.toast(文本)` | 屏幕上的一行短提示 |
+| `margelet.get(键, 默认=None)` | 插件自己的记忆 |
+| `margelet.set(键, 值)` | 写入其中 |
+| `margelet.on_chat_opened(调用)` | 打开聊天时被调用，并把该界面交给你 |
+
+`get` 与 `set` 既能挺过重启，也能挺过插件自身的更新：它们不放在插件目录里，
+而目录在更新时会被替换。
+
+## 事件
+
+```python
+def on_start():
+    margelet.on_chat_opened(sit_on_the_box)
+
+def sit_on_the_box(chat):
+    box = chat.getChatActivityEnterView()
+    ...
+```
+
+每次聊天界面出现时都会调用 `on_chat_opened`，并把那个界面交给你。在这个事件
+出现之前，需要用到已打开聊天的插件只能每秒问上好几次——那是在轮询应用本身
+早已知道的事，白白耗电。
+
+某个插件的回调抛错不会连累其他插件：每个都单独调用，出错的那个会在控制台里
+拿到自己的堆栈。
 
 `print()` 也会进控制台——它被接管了。
 

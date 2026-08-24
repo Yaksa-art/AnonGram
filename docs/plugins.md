@@ -81,6 +81,35 @@ The `margelet` object is available without an import:
 | `margelet.folder` | the plugin's folder on the phone |
 | `margelet.log(*parts)` | a line in the console |
 | `margelet.error(*parts)` | the same, in red |
+| `margelet.ui(call, delay_ms=0)` | run this on the main thread — anything touching the screen has to |
+| `margelet.every(ms, call)` | repeat every `ms`. Returns a handle |
+| `margelet.cancel(handle)` | stop repeating |
+| `margelet.toast(text)` | a short line over the screen |
+| `margelet.get(key, fallback=None)` | the plugin's own memory |
+| `margelet.set(key, value)` | write to it |
+| `margelet.on_chat_opened(call)` | called when a chat is opened; gets the chat screen |
+
+`get` and `set` survive both a restart and an update of the plugin itself:
+they are not kept in the plugin's folder, which is replaced on update.
+
+## Events
+
+```python
+def on_start():
+    margelet.on_chat_opened(sit_on_the_box)
+
+def sit_on_the_box(chat):
+    box = chat.getChatActivityEnterView()
+    ...
+```
+
+`on_chat_opened` is called every time a chat screen comes up, and is handed
+that screen. Before it existed, a plugin that needed the open chat had to ask
+several times a second whether one had appeared — that is polling for what the
+app already knows, and it costs battery for nothing.
+
+If one plugin's callback throws, the others still get called: each is called
+separately and the broken one gets its traceback in the console.
 
 `print()` goes to the console as well — it is intercepted.
 

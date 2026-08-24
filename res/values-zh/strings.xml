@@ -164,6 +164,9 @@
     <string name="MargeletPluginBadFile">这不是插件</string>
     <string name="MargeletPluginInstalled">好了</string>
     <string name="MargeletPluginInstallOk">安装</string>
+    <string name="MargeletPluginAlready">已安装 %1$s 版本，安装将替换它。</string>
+    <string name="MargeletPluginAlreadyRestart">已在运行的那一份会继续运行，直到应用重启。</string>
+    <string name="MargeletPluginUpdateOk">替换</string>
     <string name="MargeletPluginInstallWarn">下面的权限只是作者的说法，应用不会核实。插件技术上什么都能做。请确认它没有病毒：代码是公开的，你可以读。</string>
     <string name="MargeletPluginDeclares">作者声明：</string>
     <string name="MargeletPluginBy">作者：%s</string>

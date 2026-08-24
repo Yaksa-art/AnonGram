@@ -23,6 +23,12 @@ public class MargeletPython {
         }
     }
 
+    /** Открылся чат. Плагины, которые на это подписаны, узнают об этом. */
+    public static void chatOpened(Object fragment) {
+        final PyObject host = Python.getInstance().getModule("margelet_host");
+        host.callAttr("chat_opened", fragment);
+    }
+
     public static void run(String id, String name, String folder) {
         final PyObject host = Python.getInstance().getModule("margelet_host");
         host.callAttr("run_plugin", id, name, folder);
