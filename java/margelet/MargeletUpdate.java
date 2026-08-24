@@ -69,13 +69,62 @@ public class MargeletUpdate {
         return ApplicationLoader.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
     }
 
-    /** Перечитывает файл с гитхаба. Зовётся при запуске приложения. */
+    /**
+     * Спрашивает гитхаб про последнюю версию. Зовётся кнопкой и расписанием.
+     *
+     * Ответ всегда кладётся в кэш, поэтому даже неудачная проверка не делает
+     * хуже: показывается то, что знали раньше.
+     */
     public static void check(Runnable done) {
+        lastCheck = System.currentTimeMillis();
         MargeletRemote.fetch(FILE, CACHE_KEY, text -> {
             if (done != null) {
                 done.run();
             }
         });
+    }
+
+    /** Когда в последний раз спрашивали, за этот запуск приложения. */
+    private static long lastCheck;
+    /** Расписание живёт в одном экземпляре: второй пересоздаст очередь. */
+    private static Runnable scheduled;
+
+    public static long lastCheckTime() {
+        return lastCheck;
+    }
+
+    /**
+     * Ставит проверку по расписанию: раз в столько минут, сколько выбрано в
+     * настройках. Ноль — не проверять вовсе.
+     *
+     * Зовётся при запуске и после смены значения в настройках, поэтому первым
+     * делом снимает прошлое расписание: иначе после трёх заходов в настройки
+     * проверок стало бы три.
+     */
+    public static void schedule() {
+        if (scheduled != null) {
+            AndroidUtilities.cancelRunOnUIThread(scheduled);
+            scheduled = null;
+        }
+        final int minutes = MargeletConfig.updateIntervalMinutes();
+        if (minutes <= 0) {
+            return;
+        }
+        final long delay = minutes * 60L * 1000L;
+        scheduled = new Runnable() {
+            @Override
+            public void run() {
+                // Настройку могли выключить, пока мы ждали своей очереди.
+                if (MargeletConfig.updateIntervalMinutes() <= 0) {
+                    scheduled = null;
+                    return;
+                }
+                check(() -> org.telegram.messenger.NotificationCenter.getGlobalInstance()
+                        .postNotificationName(org.telegram.messenger.NotificationCenter.appUpdateAvailable));
+                AndroidUtilities.runOnUIThread(this, delay);
+            }
+        };
+        AndroidUtilities.runOnUIThread(scheduled, delay);
     }
 
     /**

@@ -726,10 +726,10 @@ index 00000000..a775cdbc
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
 new file mode 100644
-index 00000000..ce0096d9
+index 00000000..6c888143
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
-@@ -0,0 +1,381 @@
+@@ -0,0 +1,403 @@
 +package org.telegram.margelet;
 +
 +import android.content.Context;
@@ -759,7 +759,29 @@ index 00000000..ce0096d9
 +     * Забыть про него значит выпустить сборку, которая всю жизнь будет
 +     * предлагать обновиться сама на себя.
 +     */
-+    public static final String APP_VERSION = "0.2";
++    public static final String APP_VERSION = "0.2.1";
++
++    /**
++     * Как часто спрашивать гитхаб про новую версию, в минутах. Ноль — не
++     * спрашивать вовсе; проверить руками кнопкой можно и тогда.
++     */
++    public static final int UPDATE_INTERVAL_OFF = 0;
++    public static final int UPDATE_INTERVAL_DEFAULT = 3;
++    /** Значения для выбора: от трёх минут до суток. */
++    public static final int[] UPDATE_INTERVALS = {3, 15, 60, 6 * 60, 24 * 60, UPDATE_INTERVAL_OFF};
++
++    public static int updateIntervalMinutes() {
++        return prefs().getInt("update_interval", UPDATE_INTERVAL_DEFAULT);
++    }
++
++    public static void setUpdateIntervalMinutes(int minutes) {
++        prefs().edit().putInt("update_interval", minutes).apply();
++    }
++
++    /** Спрашивать ли самому. Кнопки «проверить сейчас» это не касается. */
++    public static boolean updatesChecked() {
++        return updateIntervalMinutes() > 0;
++    }
 +
 +    public static final String CHANNEL_URL = "https://t.me/margeletter";
 +    /**
@@ -4259,10 +4281,10 @@ index 00000000..dd5e0a34
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletUpdate.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletUpdate.java
 new file mode 100644
-index 00000000..c26a4d98
+index 00000000..2cddc3c9
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletUpdate.java
-@@ -0,0 +1,260 @@
+@@ -0,0 +1,309 @@
 +package org.telegram.margelet;
 +
 +import android.app.Activity;
@@ -4334,13 +4356,62 @@ index 00000000..c26a4d98
 +        return ApplicationLoader.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
 +    }
 +
-+    /** Перечитывает файл с гитхаба. Зовётся при запуске приложения. */
++    /**
++     * Спрашивает гитхаб про последнюю версию. Зовётся кнопкой и расписанием.
++     *
++     * Ответ всегда кладётся в кэш, поэтому даже неудачная проверка не делает
++     * хуже: показывается то, что знали раньше.
++     */
 +    public static void check(Runnable done) {
++        lastCheck = System.currentTimeMillis();
 +        MargeletRemote.fetch(FILE, CACHE_KEY, text -> {
 +            if (done != null) {
 +                done.run();
 +            }
 +        });
++    }
++
++    /** Когда в последний раз спрашивали, за этот запуск приложения. */
++    private static long lastCheck;
++    /** Расписание живёт в одном экземпляре: второй пересоздаст очередь. */
++    private static Runnable scheduled;
++
++    public static long lastCheckTime() {
++        return lastCheck;
++    }
++
++    /**
++     * Ставит проверку по расписанию: раз в столько минут, сколько выбрано в
++     * настройках. Ноль — не проверять вовсе.
++     *
++     * Зовётся при запуске и после смены значения в настройках, поэтому первым
++     * делом снимает прошлое расписание: иначе после трёх заходов в настройки
++     * проверок стало бы три.
++     */
++    public static void schedule() {
++        if (scheduled != null) {
++            AndroidUtilities.cancelRunOnUIThread(scheduled);
++            scheduled = null;
++        }
++        final int minutes = MargeletConfig.updateIntervalMinutes();
++        if (minutes <= 0) {
++            return;
++        }
++        final long delay = minutes * 60L * 1000L;
++        scheduled = new Runnable() {
++            @Override
++            public void run() {
++                // Настройку могли выключить, пока мы ждали своей очереди.
++                if (MargeletConfig.updateIntervalMinutes() <= 0) {
++                    scheduled = null;
++                    return;
++                }
++                check(() -> org.telegram.messenger.NotificationCenter.getGlobalInstance()
++                        .postNotificationName(org.telegram.messenger.NotificationCenter.appUpdateAvailable));
++                AndroidUtilities.runOnUIThread(this, delay);
++            }
++        };
++        AndroidUtilities.runOnUIThread(scheduled, delay);
 +    }
 +
 +    /**
@@ -5597,7 +5668,7 @@ index 4153ceb2..d1557801 100644
          ssb.setSpan(new ImageSpan(logoDrawable), 0, ssb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
          titles[0] = ssb;
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/LaunchActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/LaunchActivity.java
-index 470be57c..bdd904b4 100644
+index 470be57c..90a53079 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/LaunchActivity.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/LaunchActivity.java
 @@ -443,6 +443,10 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
@@ -5611,7 +5682,7 @@ index 470be57c..bdd904b4 100644
          Theme.createCommonChatResources();
          Theme.createDialogsResources(this);
          if (SharedConfig.passcodeHash.length() != 0 && SharedConfig.appLocked) {
-@@ -455,6 +459,22 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
+@@ -455,6 +459,25 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
          frameLayout.setClipToPadding(false);
          frameLayout.setClipChildren(false);
          setContentView(frameLayout);
@@ -5628,9 +5699,12 @@ index 470be57c..bdd904b4 100644
 +        org.telegram.margelet.MargeletBadge.refresh();
 +        // Проверка обновления форка: узнав про новую версию, показываем
 +        // полоску внизу списка чатов. Молча ничего не качается и не ставится.
-+        org.telegram.margelet.MargeletUpdate.check(() ->
-+                org.telegram.messenger.NotificationCenter.getGlobalInstance()
-+                        .postNotificationName(org.telegram.messenger.NotificationCenter.appUpdateAvailable));
++        if (org.telegram.margelet.MargeletConfig.updatesChecked()) {
++            org.telegram.margelet.MargeletUpdate.check(() ->
++                    org.telegram.messenger.NotificationCenter.getGlobalInstance()
++                            .postNotificationName(org.telegram.messenger.NotificationCenter.appUpdateAvailable));
++        }
++        org.telegram.margelet.MargeletUpdate.schedule();
          rootAnimatedInsetsListener = new WindowAnimatedInsetsProvider(frameLayout);
          pipActivityController.addPipListener(new IPipActivityListener() {
              final ActivityVisibilityController activityVisibilityController = createActivityVisibilityController(false);
@@ -7262,10 +7336,10 @@ index 00000000..397f3a69
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletSettingsActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletSettingsActivity.java
 new file mode 100644
-index 00000000..91176305
+index 00000000..973a0b43
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletSettingsActivity.java
-@@ -0,0 +1,188 @@
+@@ -0,0 +1,195 @@
 +package org.telegram.ui;
 +
 +import android.view.Gravity;
@@ -7303,6 +7377,7 @@ index 00000000..91176305
 +    private static final int ID_CHANNEL = 3;
 +    private static final int ID_FORUM = 4;
 +    private static final int ID_CONVENIENCES = 5;
++    private static final int ID_UPDATES = 17;
 +    private static final int ID_STREAMER = 6;
 +    private static final int ID_GIFTS = 7;
 +    private static final int ID_SOURCE = 8;
@@ -7363,6 +7438,10 @@ index 00000000..91176305
 +                IconBackgroundColors.ORANGE.top, IconBackgroundColors.ORANGE.bottom,
 +                R.drawable.settings_gift, LocaleController.getString(R.string.MargeletGifts),
 +                LocaleController.getString(R.string.MargeletGiftsInfo)));
++        items.add(SettingsActivity.SettingCell.Factory.of(ID_UPDATES,
++                IconBackgroundColors.CYAN.top, IconBackgroundColors.CYAN.bottom,
++                R.drawable.settings_devices, LocaleController.getString(R.string.MargeletUpdates),
++                LocaleController.getString(R.string.MargeletUpdatesInfo)));
 +        items.add(SettingsActivity.SettingCell.Factory.of(ID_PLUGINS,
 +                IconBackgroundColors.BLUE_ALT.top, IconBackgroundColors.BLUE_ALT.bottom,
 +                R.drawable.settings_devices, LocaleController.getString(R.string.MargeletPlugins),
@@ -7439,6 +7518,8 @@ index 00000000..91176305
 +            presentFragment(new MargeletGiftsActivity());
 +        } else if (item.id == ID_STREAMER) {
 +            presentFragment(new MargeletStreamerActivity());
++        } else if (item.id == ID_UPDATES) {
++            presentFragment(new MargeletUpdatesActivity());
 +        } else if (item.id == ID_CONVENIENCES) {
 +            presentFragment(new MargeletConveniencesActivity());
 +        } else if (item.id == ID_SOURCE) {
@@ -8105,6 +8186,119 @@ index 00000000..935fb432
 +                updateLayout.setVisibility(View.INVISIBLE);
 +            }
 +        }
++    }
++}
+diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletUpdatesActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletUpdatesActivity.java
+new file mode 100644
+index 00000000..8ef15929
+--- /dev/null
++++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletUpdatesActivity.java
+@@ -0,0 +1,107 @@
++package org.telegram.ui;
++
++import android.view.View;
++
++import org.telegram.margelet.MargeletConfig;
++import org.telegram.margelet.MargeletUpdate;
++import org.telegram.messenger.LocaleController;
++import org.telegram.messenger.NotificationCenter;
++import org.telegram.messenger.R;
++import org.telegram.ui.Components.BulletinFactory;
++import org.telegram.ui.Components.UItem;
++import org.telegram.ui.Components.UniversalAdapter;
++import org.telegram.ui.Components.UniversalFragment;
++
++import java.util.ArrayList;
++
++/**
++ * Ветка «Обновления»: как часто спрашивать про новую версию и кнопка спросить
++ * прямо сейчас.
++ *
++ * Раньше проверка была ровно одна — при запуске приложения. Для того, кто
++ * держит телеграм открытым сутками, это значило «никогда».
++ */
++public class MargeletUpdatesActivity extends UniversalFragment {
++
++    /** Кнопка и заголовок не должны попасть в номера значений интервала. */
++    private static final int ID_CHECK_NOW = 1000;
++
++    @Override
++    protected CharSequence getTitle() {
++        return LocaleController.getString(R.string.MargeletUpdates);
++    }
++
++    @Override
++    public View createView(android.content.Context context) {
++        final View view = super.createView(context);
++        listView.setSections();
++        return view;
++    }
++
++    /** Название интервала: «3 минуты», «6 часов», «Никогда». */
++    private static String name(int minutes) {
++        if (minutes <= 0) {
++            return LocaleController.getString(R.string.MargeletUpdatesOff);
++        }
++        if (minutes < 60) {
++            return LocaleController.formatPluralString("Minutes", minutes);
++        }
++        return LocaleController.formatPluralString("Hours", minutes / 60);
++    }
++
++    @Override
++    protected void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
++        items.add(UItem.asHeader(LocaleController.getString(R.string.MargeletUpdatesHeader)));
++        final int chosen = MargeletConfig.updateIntervalMinutes();
++        for (int i = 0; i < MargeletConfig.UPDATE_INTERVALS.length; i++) {
++            final int minutes = MargeletConfig.UPDATE_INTERVALS[i];
++            items.add(UItem.asRadio(i, name(minutes)).setChecked(minutes == chosen));
++        }
++        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletUpdatesAbout)));
++        items.add(UItem.asButton(ID_CHECK_NOW, LocaleController.getString(R.string.MargeletUpdatesNow)));
++        items.add(UItem.asShadow(LocaleController.formatString(R.string.MargeletUpdatesCurrent,
++                MargeletConfig.APP_VERSION)));
++    }
++
++    @Override
++    protected void onClick(UItem item, View view, int position, float x, float y) {
++        if (item.id == ID_CHECK_NOW) {
++            checkNow();
++            return;
++        }
++        if (item.id >= 0 && item.id < MargeletConfig.UPDATE_INTERVALS.length) {
++            MargeletConfig.setUpdateIntervalMinutes(MargeletConfig.UPDATE_INTERVALS[item.id]);
++            // Расписание переставляется сразу: иначе новое значение начало бы
++            // действовать только после перезапуска приложения.
++            MargeletUpdate.schedule();
++            listView.adapter.update(true);
++        }
++    }
++
++    /**
++     * Проверка по кнопке работает и при выключенныхавтоматических проверках: человек
++     * попросил — значит спрашиваем.
++     */
++    private void checkNow() {
++        MargeletUpdate.check(() -> {
++            if (getContext() == null) {
++                return;
++            }
++            final MargeletUpdate.Info info = MargeletUpdate.available();
++            if (info != null) {
++                BulletinFactory.of(this).createSimpleBulletin(R.raw.chats_infotip,
++                        LocaleController.formatString(R.string.MargeletUpdatesFound, info.version)).show();
++                NotificationCenter.getGlobalInstance()
++                        .postNotificationName(NotificationCenter.appUpdateAvailable);
++            } else {
++                BulletinFactory.of(this).createSimpleBulletin(R.raw.chats_infotip,
++                        LocaleController.getString(R.string.MargeletUpdatesLatest)).show();
++            }
++        });
++    }
++
++    @Override
++    protected boolean onLongClick(UItem item, View view, int position, float x, float y) {
++        return false;
 +    }
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java
@@ -16823,7 +17017,7 @@ index 03d0ba33..17f98fa6 100644
      <string name="English">Inglês</string>
      <string name="LanguageNameInEnglish">Portuguese (Brazil)</string>
 diff --git a/TMessagesProj/src/main/res/values-ru/strings.xml b/TMessagesProj/src/main/res/values-ru/strings.xml
-index 24c56292..c5e92542 100644
+index 24c56292..d5684b1d 100644
 --- a/TMessagesProj/src/main/res/values-ru/strings.xml
 +++ b/TMessagesProj/src/main/res/values-ru/strings.xml
 @@ -1,7 +1,7 @@
@@ -16836,7 +17030,7 @@ index 24c56292..c5e92542 100644
      <string name="LanguageName">Русский</string>
      <string name="English">Английский</string>
      <string name="LanguageNameInEnglish">Russian</string>
-@@ -263,4 +263,161 @@
+@@ -263,4 +263,170 @@
      <string name="RemindTodayAt">\'Отправить сегодня в\' HH:mm</string>
      <string name="RemindDayAt">\'Отправить\' d MMM \'в\' HH:mm</string>
      <string name="RemindDayYearAt">\'Напомнить\' d MMM yyyy \'в\' HH:mm</string>
@@ -16851,6 +17045,15 @@ index 24c56292..c5e92542 100644
 +    <string name="MargeletTracksInfo">Правка названия, исполнителя и обложки</string>
 +    <string name="MargeletConveniences">Удобности</string>
 +    <string name="MargeletConveniencesInfo">Канал форка сверху, теги музыки, приступ</string>
++    <string name="MargeletUpdates">Обновления</string>
++    <string name="MargeletUpdatesInfo">Как часто искать новую версию</string>
++    <string name="MargeletUpdatesHeader">Проверять обновления</string>
++    <string name="MargeletUpdatesOff">Никогда</string>
++    <string name="MargeletUpdatesAbout">Приложение спрашивает гитхаб, не вышла ли версия новее, и предлагает её полоской внизу списка чатов. Само ничего не качает и не ставит.</string>
++    <string name="MargeletUpdatesNow">Проверить сейчас</string>
++    <string name="MargeletUpdatesLatest">У вас последняя версия</string>
++    <string name="MargeletUpdatesFound">Вышла версия %1$s</string>
++    <string name="MargeletUpdatesCurrent">Установлено: %1$s</string>
 +    <string name="MargeletLines">Сколько строк</string>
 +    <string name="MargeletLinesMax">макс.</string>
 +    <string name="MargeletLinesAbout">Сколько строк займёт поле, прежде чем начнёт прокручиваться. В оригинале шесть. «Макс.» — расти, пока есть место на экране.</string>
@@ -17015,10 +17218,10 @@ index d4683443..57d10109 100644
      <string name="LanguageNameInEnglish">Ukrainian</string>
 diff --git a/TMessagesProj/src/main/res/values-zh/strings.xml b/TMessagesProj/src/main/res/values-zh/strings.xml
 new file mode 100644
-index 00000000..f1d00703
+index 00000000..c1ce1555
 --- /dev/null
 +++ b/TMessagesProj/src/main/res/values-zh/strings.xml
-@@ -0,0 +1,160 @@
+@@ -0,0 +1,169 @@
 +<?xml version="1.0" encoding="utf-8"?>
 +<resources>
 +    <string name="MargeletSettings">分支设置</string>
@@ -17032,6 +17235,15 @@ index 00000000..f1d00703
 +    <string name="MargeletTracksInfo">修改标题、艺术家和封面</string>
 +    <string name="MargeletConveniences">便利功能</string>
 +    <string name="MargeletConveniencesInfo">分支频道置顶、音乐标签、发作模式</string>
++    <string name="MargeletUpdates">更新</string>
++    <string name="MargeletUpdatesInfo">多久查找一次新版本</string>
++    <string name="MargeletUpdatesHeader">检查更新</string>
++    <string name="MargeletUpdatesOff">从不</string>
++    <string name="MargeletUpdatesAbout">应用会向 GitHub 询问是否有更新的版本，并在聊天列表底部用横条提示。它不会自行下载或安装。</string>
++    <string name="MargeletUpdatesNow">立即检查</string>
++    <string name="MargeletUpdatesLatest">已是最新版本</string>
++    <string name="MargeletUpdatesFound">新版本 %1$s 已发布</string>
++    <string name="MargeletUpdatesCurrent">已安装：%1$s</string>
 +    <string name="MargeletLines">最多几行</string>
 +    <string name="MargeletLinesMax">不限</string>
 +    <string name="MargeletLinesAbout">输入框长到几行才开始滚动。原版是六行。“不限”表示只要屏幕还有地方就继续长。</string>
@@ -17195,7 +17407,7 @@ index cc49d135..1a5c2cf8 100644
      <item name="menu_regular" type="id"/>
      <item name="menu_bold" type="id"/>
 diff --git a/TMessagesProj/src/main/res/values/strings.xml b/TMessagesProj/src/main/res/values/strings.xml
-index ffa4d566..87ea6d89 100644
+index ffa4d566..c2562cdd 100644
 --- a/TMessagesProj/src/main/res/values/strings.xml
 +++ b/TMessagesProj/src/main/res/values/strings.xml
 @@ -1,7 +1,7 @@
@@ -17208,7 +17420,7 @@ index ffa4d566..87ea6d89 100644
      <string name="LanguageName">English</string>
      <string name="English">English</string>
      <string name="LanguageNameInEnglish">English</string>
-@@ -11221,4 +11221,161 @@
+@@ -11221,4 +11221,170 @@
      <string name="UnsupportedMessageTitle">Unsupported Message</string>
      <string name="UnsupportedMessageMessage">Update Telegram to view this message</string>
      <string name="UnsupportedUpdate">Update</string>
@@ -17223,6 +17435,15 @@ index ffa4d566..87ea6d89 100644
 +    <string name="MargeletTracksInfo">Edit title, artist and cover</string>
 +    <string name="MargeletConveniences">Conveniences</string>
 +    <string name="MargeletConveniencesInfo">Fork channel on top, music tags, seizure mode</string>
++    <string name="MargeletUpdates">Updates</string>
++    <string name="MargeletUpdatesInfo">How often to look for a new version</string>
++    <string name="MargeletUpdatesHeader">Check for updates</string>
++    <string name="MargeletUpdatesOff">Never</string>
++    <string name="MargeletUpdatesAbout">The app asks GitHub whether a newer version is out and offers it in a bar at the bottom of the chat list. Nothing is downloaded or installed on its own.</string>
++    <string name="MargeletUpdatesNow">Check now</string>
++    <string name="MargeletUpdatesLatest">You have the latest version</string>
++    <string name="MargeletUpdatesFound">Version %1$s is out</string>
++    <string name="MargeletUpdatesCurrent">Installed: %1$s</string>
 +    <string name="MargeletLines">How many lines</string>
 +    <string name="MargeletLinesMax">max</string>
 +    <string name="MargeletLinesAbout">How many lines the field grows to before it starts scrolling. Six in the original. \"max\" means grow while there is room.</string>

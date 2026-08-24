@@ -35,6 +35,7 @@ public class MargeletSettingsActivity extends UniversalFragment {
     private static final int ID_CHANNEL = 3;
     private static final int ID_FORUM = 4;
     private static final int ID_CONVENIENCES = 5;
+    private static final int ID_UPDATES = 17;
     private static final int ID_STREAMER = 6;
     private static final int ID_GIFTS = 7;
     private static final int ID_SOURCE = 8;
@@ -95,6 +96,10 @@ public class MargeletSettingsActivity extends UniversalFragment {
                 IconBackgroundColors.ORANGE.top, IconBackgroundColors.ORANGE.bottom,
                 R.drawable.settings_gift, LocaleController.getString(R.string.MargeletGifts),
                 LocaleController.getString(R.string.MargeletGiftsInfo)));
+        items.add(SettingsActivity.SettingCell.Factory.of(ID_UPDATES,
+                IconBackgroundColors.CYAN.top, IconBackgroundColors.CYAN.bottom,
+                R.drawable.settings_devices, LocaleController.getString(R.string.MargeletUpdates),
+                LocaleController.getString(R.string.MargeletUpdatesInfo)));
         items.add(SettingsActivity.SettingCell.Factory.of(ID_PLUGINS,
                 IconBackgroundColors.BLUE_ALT.top, IconBackgroundColors.BLUE_ALT.bottom,
                 R.drawable.settings_devices, LocaleController.getString(R.string.MargeletPlugins),
@@ -171,6 +176,8 @@ public class MargeletSettingsActivity extends UniversalFragment {
             presentFragment(new MargeletGiftsActivity());
         } else if (item.id == ID_STREAMER) {
             presentFragment(new MargeletStreamerActivity());
+        } else if (item.id == ID_UPDATES) {
+            presentFragment(new MargeletUpdatesActivity());
         } else if (item.id == ID_CONVENIENCES) {
             presentFragment(new MargeletConveniencesActivity());
         } else if (item.id == ID_SOURCE) {

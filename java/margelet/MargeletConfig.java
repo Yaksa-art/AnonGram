@@ -27,7 +27,29 @@ public class MargeletConfig {
      * Забыть про него значит выпустить сборку, которая всю жизнь будет
      * предлагать обновиться сама на себя.
      */
-    public static final String APP_VERSION = "0.2";
+    public static final String APP_VERSION = "0.2.1";
+
+    /**
+     * Как часто спрашивать гитхаб про новую версию, в минутах. Ноль — не
+     * спрашивать вовсе; проверить руками кнопкой можно и тогда.
+     */
+    public static final int UPDATE_INTERVAL_OFF = 0;
+    public static final int UPDATE_INTERVAL_DEFAULT = 3;
+    /** Значения для выбора: от трёх минут до суток. */
+    public static final int[] UPDATE_INTERVALS = {3, 15, 60, 6 * 60, 24 * 60, UPDATE_INTERVAL_OFF};
+
+    public static int updateIntervalMinutes() {
+        return prefs().getInt("update_interval", UPDATE_INTERVAL_DEFAULT);
+    }
+
+    public static void setUpdateIntervalMinutes(int minutes) {
+        prefs().edit().putInt("update_interval", minutes).apply();
+    }
+
+    /** Спрашивать ли самому. Кнопки «проверить сейчас» это не касается. */
+    public static boolean updatesChecked() {
+        return updateIntervalMinutes() > 0;
+    }
 
     public static final String CHANNEL_URL = "https://t.me/margeletter";
     /**

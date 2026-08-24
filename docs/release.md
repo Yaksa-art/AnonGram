@@ -44,3 +44,9 @@ to install something that is not there.
 
 Forgetting step one is the expensive mistake: a build with a stale
 `APP_VERSION` will offer to update itself to itself forever.
+
+## How often the client asks
+
+Every three minutes by default; each person changes it in the fork's settings,
+from three minutes to a day, or switches it off. The "Check now" button there
+works regardless, even with automatic checks off.
