@@ -1,7 +1,7 @@
 {
-  "version": "0.2.2",
+  "version": "0.2.3",
   "apk": "https://github.com/narezany/margelet/raw/apk/margelet.apk",
-  "about": "Text outline, your own font for the whole app.",
-  "about_ru": "Обводка текста и свой шрифт на всё приложение.",
-  "about_zh": "文字描边，以及可用于整个应用的自定义字体。"
+  "about": "Outline without the extra ring inside letters, and the font now applies across the app.",
+  "about_ru": "Обводка без лишнего кольца внутри букв, шрифт применяется по всему приложению.",
+  "about_zh": "描边不再在字母内部多出一圈，字体现在应用于整个程序。"
 }
