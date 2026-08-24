@@ -227,6 +227,77 @@ public class MargeletFonts {
     }
 
     /**
+     * Подменяет системные шрифты по умолчанию.
+     *
+     * Одной ловушки в {@code getTypeface} мало, и это выяснилось на живом
+     * телефоне: через неё телеграм берёт только свои файлы, а обычные поля,
+     * кнопки и системные окна рисуются шрифтом по умолчанию и мимо неё не
+     * проходят. Поэтому здесь подменяются и сами значения по умолчанию.
+     *
+     * Делается это отражением по внутренностям андроида, и потому — очень
+     * осторожно: каждый шаг отдельно и молча. Не вышло ни одного — приложение
+     * просто останется со стандартным шрифтом там, где не достали, и ничего
+     * не сломается.
+     */
+    public static void applyGlobally() {
+        final Typeface regular = replace("fonts/rregular.ttf");
+        if (regular == null) {
+            return;
+        }
+        final Typeface bold = replace("fonts/rmedium.ttf");
+        final Typeface italic = replace("fonts/ritalic.ttf");
+        final Typeface boldItalic = replace("fonts/rmediumitalic.ttf");
+
+        set("DEFAULT", regular);
+        set("DEFAULT_BOLD", bold != null ? bold : regular);
+        set("SANS_SERIF", regular);
+        set("SERIF", regular);
+        set("MONOSPACE", regular);
+
+        // Массив, из которого система берёт шрифт по начертанию.
+        try {
+            final java.lang.reflect.Field field = Typeface.class.getDeclaredField("sDefaults");
+            field.setAccessible(true);
+            field.set(null, new Typeface[]{
+                    regular,
+                    bold != null ? bold : regular,
+                    italic != null ? italic : regular,
+                    boldItalic != null ? boldItalic : regular
+            });
+        } catch (Throwable ignored) {
+        }
+
+        // С двадцать девятого андроида имена семейств ищутся здесь.
+        try {
+            final java.lang.reflect.Field field = Typeface.class.getDeclaredField("sSystemFontMap");
+            field.setAccessible(true);
+            final Object value = field.get(null);
+            if (value instanceof Map) {
+                @SuppressWarnings("unchecked")
+                final Map<String, Typeface> map = (Map<String, Typeface>) value;
+                for (String family : new String[]{"sans-serif", "sans-serif-medium",
+                        "sans-serif-light", "sans-serif-thin", "sans-serif-condensed",
+                        "serif", "monospace", "normal", "default"}) {
+                    try {
+                        map.put(family, regular);
+                    } catch (Throwable ignored) {
+                    }
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static void set(String name, Typeface typeface) {
+        try {
+            final java.lang.reflect.Field field = Typeface.class.getDeclaredField(name);
+            field.setAccessible(true);
+            field.set(null, typeface);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /**
      * Перезапуск приложения.
      *
      * Шрифты уже разошлись по чужим кэшам и по нарисованным экранам, и

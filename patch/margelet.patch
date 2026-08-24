@@ -726,7 +726,7 @@ index 00000000..a775cdbc
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
 new file mode 100644
-index 00000000..f96a13f4
+index 00000000..fdab0845
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
 @@ -0,0 +1,403 @@
@@ -759,7 +759,7 @@ index 00000000..f96a13f4
 +     * Забыть про него значит выпустить сборку, которая всю жизнь будет
 +     * предлагать обновиться сама на себя.
 +     */
-+    public static final String APP_VERSION = "0.2.2";
++    public static final String APP_VERSION = "0.2.3";
 +
 +    /**
 +     * Как часто спрашивать гитхаб про новую версию, в минутах. Ноль — не
@@ -1429,10 +1429,10 @@ index 00000000..49188575
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletFonts.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletFonts.java
 new file mode 100644
-index 00000000..7c453b85
+index 00000000..a5bf1607
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletFonts.java
-@@ -0,0 +1,255 @@
+@@ -0,0 +1,326 @@
 +package org.telegram.margelet;
 +
 +import android.app.Activity;
@@ -1659,6 +1659,77 @@ index 00000000..7c453b85
 +            cache.put(assetPath, result);
 +        }
 +        return result;
++    }
++
++    /**
++     * Подменяет системные шрифты по умолчанию.
++     *
++     * Одной ловушки в {@code getTypeface} мало, и это выяснилось на живом
++     * телефоне: через неё телеграм берёт только свои файлы, а обычные поля,
++     * кнопки и системные окна рисуются шрифтом по умолчанию и мимо неё не
++     * проходят. Поэтому здесь подменяются и сами значения по умолчанию.
++     *
++     * Делается это отражением по внутренностям андроида, и потому — очень
++     * осторожно: каждый шаг отдельно и молча. Не вышло ни одного — приложение
++     * просто останется со стандартным шрифтом там, где не достали, и ничего
++     * не сломается.
++     */
++    public static void applyGlobally() {
++        final Typeface regular = replace("fonts/rregular.ttf");
++        if (regular == null) {
++            return;
++        }
++        final Typeface bold = replace("fonts/rmedium.ttf");
++        final Typeface italic = replace("fonts/ritalic.ttf");
++        final Typeface boldItalic = replace("fonts/rmediumitalic.ttf");
++
++        set("DEFAULT", regular);
++        set("DEFAULT_BOLD", bold != null ? bold : regular);
++        set("SANS_SERIF", regular);
++        set("SERIF", regular);
++        set("MONOSPACE", regular);
++
++        // Массив, из которого система берёт шрифт по начертанию.
++        try {
++            final java.lang.reflect.Field field = Typeface.class.getDeclaredField("sDefaults");
++            field.setAccessible(true);
++            field.set(null, new Typeface[]{
++                    regular,
++                    bold != null ? bold : regular,
++                    italic != null ? italic : regular,
++                    boldItalic != null ? boldItalic : regular
++            });
++        } catch (Throwable ignored) {
++        }
++
++        // С двадцать девятого андроида имена семейств ищутся здесь.
++        try {
++            final java.lang.reflect.Field field = Typeface.class.getDeclaredField("sSystemFontMap");
++            field.setAccessible(true);
++            final Object value = field.get(null);
++            if (value instanceof Map) {
++                @SuppressWarnings("unchecked")
++                final Map<String, Typeface> map = (Map<String, Typeface>) value;
++                for (String family : new String[]{"sans-serif", "sans-serif-medium",
++                        "sans-serif-light", "sans-serif-thin", "sans-serif-condensed",
++                        "serif", "monospace", "normal", "default"}) {
++                    try {
++                        map.put(family, regular);
++                    } catch (Throwable ignored) {
++                    }
++                }
++            }
++        } catch (Throwable ignored) {
++        }
++    }
++
++    private static void set(String name, Typeface typeface) {
++        try {
++            final java.lang.reflect.Field field = Typeface.class.getDeclaredField(name);
++            field.setAccessible(true);
++            field.set(null, typeface);
++        } catch (Throwable ignored) {
++        }
 +    }
 +
 +    /**
@@ -3942,10 +4013,10 @@ index 00000000..8a3b8ef8
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletSpans.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletSpans.java
 new file mode 100644
-index 00000000..e9807bab
+index 00000000..67021e0d
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletSpans.java
-@@ -0,0 +1,376 @@
+@@ -0,0 +1,445 @@
 +package org.telegram.margelet;
 +
 +import android.graphics.Canvas;
@@ -4131,22 +4202,95 @@ index 00000000..e9807bab
 +    }
 +
 +    /**
-+     * Обводка: буквы рисуются одним контуром, без заливки.
++     * Обводка: буква вывернута наизнанку — заливка обратного цвета, контур
++     * прежнего.
 +     *
-+     * Внутри буквы остаётся то, что под текстом, — фон пузыря или темы.
-+     * Поэтому на тёмной теме белое слово выглядит чёрным с белым контуром, а
-+     * на светлой чёрное слово — белым с чёрным: ровно то выворачивание,
-+     * которого просил владелец, и достаётся оно одной строкой вместо
-+     * рисования текста дважды.
++     * Первая попытка была проще: рисовать буквы полыми, одним контуром, и
++     * пусть внутри просвечивает фон. Владелец сразу увидел, чем это плохо:
++     * контур обводит не только внешний край буквы, но и её дырки — «о» и «а»
++     * получают лишнее кольцо внутри. Так и должно быть, потому что обводится
++     * весь путь буквы целиком.
 +     *
-+     * Толщина контура считается от размера букв, а не берётся числом: на
-+     * мелком тексте постоянная толщина съедает букву целиком, на крупном
-+     * теряется.
++     * Поэтому теперь два прохода, как владелец и просил с самого начала:
++     * сначала контур прежним цветом, потом поверх заливка обратным. Заливка
++     * закрывает внутреннюю половину контура, и снаружи остаётся ровно один
++     * ободок.
++     *
++     * Цена — разметка занимает место собой, а значит внутри неё нет переноса
++     * строк. Обводку ставят на слово или строку, не на абзац, и за
++     * правильный вид это честный размен.
 +     */
-+    public static class Outline extends Base {
++    public static class Outline extends ReplacementSpan {
 +        private final int value;
 +
 +        public Outline(int value) {
++            this.value = value;
++        }
++
++        public int kind() {
++            return MargeletMarkup.KIND_OUTLINE;
++        }
++
++        public int value() {
++            return value;
++        }
++
++        @Override
++        public int getSize(@NonNull Paint paint, CharSequence text, int start, int end,
++                           Paint.FontMetricsInt fm) {
++            if (fm != null) {
++                final Paint.FontMetricsInt metrics = paint.getFontMetricsInt();
++                fm.ascent = metrics.ascent;
++                fm.descent = metrics.descent;
++                fm.top = metrics.top;
++                fm.bottom = metrics.bottom;
++            }
++            return Math.round(paint.measureText(text, start, end));
++        }
++
++        @Override
++        public void draw(@NonNull Canvas canvas, CharSequence text, int start, int end,
++                         float x, int top, int y, int bottom, @NonNull Paint paint) {
++            final int original = paint.getColor();
++            final Paint.Style style = paint.getStyle();
++            final float width = paint.getStrokeWidth();
++            try {
++                paint.setStyle(Paint.Style.STROKE);
++                // Толщина от размера букв: постоянная съедала бы мелкий текст
++                // и терялась бы на крупном. Половину её закроет заливка,
++                // поэтому берём с запасом.
++                paint.setStrokeWidth(Math.max(1.5f, paint.getTextSize() / 7f));
++                paint.setStrokeJoin(Paint.Join.ROUND);
++                paint.setColor(original);
++                canvas.drawText(text, start, end, x, y, paint);
++
++                paint.setStyle(Paint.Style.FILL);
++                paint.setColor(inverted(original));
++                canvas.drawText(text, start, end, x, y, paint);
++            } finally {
++                paint.setStyle(style);
++                paint.setStrokeWidth(width);
++                paint.setColor(original);
++            }
++        }
++
++        /** Обратный цвет: прозрачность как была, свет наоборот. */
++        private static int inverted(int color) {
++            return (color & 0xFF000000) | (~color & 0x00FFFFFF);
++        }
++    }
++
++    /**
++     * Пометка обводки: невидимая, нужна только чтобы отправка знала про неё.
++     *
++     * Та же причина, что и у кнопки: рисующая разметка занимает место собой и
++     * потому не может лежать в общем списке наших меток, а метки собираются
++     * при отправке именно оттуда. Поэтому их две — одна рисует, вторая едет.
++     */
++    public static class OutlineMark extends Base {
++        private final int value;
++
++        public OutlineMark(int value) {
 +            this.value = value;
 +        }
 +
@@ -4162,11 +4306,7 @@ index 00000000..e9807bab
 +
 +        @Override
 +        public void updateDrawState(TextPaint paint) {
-+            paint.setStyle(Paint.Style.STROKE);
-+            paint.setStrokeWidth(Math.max(1f, paint.getTextSize() / 14f));
-+            // Углы букв без этого выглядят обрубленными.
-+            paint.setStrokeJoin(Paint.Join.ROUND);
-+            paint.setStrokeCap(Paint.Cap.ROUND);
++            // Ничего: рисует Outline.
 +        }
 +    }
 +
@@ -4990,10 +5130,23 @@ index 00000000..c77ddf9b
 +    }
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/messenger/AndroidUtilities.java b/TMessagesProj/src/main/java/org/telegram/messenger/AndroidUtilities.java
-index b8239d97..0b1c8baf 100644
+index b8239d97..02133992 100644
 --- a/TMessagesProj/src/main/java/org/telegram/messenger/AndroidUtilities.java
 +++ b/TMessagesProj/src/main/java/org/telegram/messenger/AndroidUtilities.java
-@@ -2391,6 +2391,13 @@ public class AndroidUtilities {
+@@ -261,6 +261,12 @@ public class AndroidUtilities {
+     public static ThreadLocal<byte[]> bufferLocal = new ThreadLocal<>();
+ 
+     public static Typeface bold() {
++        // Свой шрифт: иначе жирный остался бы системным, потому что при
++        // включённом системном жирном сюда getTypeface не заходит вовсе.
++        final Typeface margelet = org.telegram.margelet.MargeletFonts.replace(TYPEFACE_ROBOTO_MEDIUM);
++        if (margelet != null) {
++            return margelet;
++        }
+         if (mediumTypeface == null) {
+             if (SharedConfig.useSystemBoldFont && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                 mediumTypeface = Typeface.create(null, 500, false);
+@@ -2391,6 +2397,13 @@ public class AndroidUtilities {
      }
  
      public static Typeface getTypeface(String assetPath) {
@@ -5007,7 +5160,7 @@ index b8239d97..0b1c8baf 100644
          synchronized (typefaceCache) {
              if (!typefaceCache.containsKey(assetPath)) {
                  try {
-@@ -3614,6 +3621,10 @@ public class AndroidUtilities {
+@@ -3614,6 +3627,10 @@ public class AndroidUtilities {
      }
  
      public static boolean addToClipboard(CharSequence str) {
@@ -5018,7 +5171,7 @@ index b8239d97..0b1c8baf 100644
          try {
              android.content.ClipboardManager clipboard = (android.content.ClipboardManager) ApplicationLoader.applicationContext.getSystemService(Context.CLIPBOARD_SERVICE);
  
-@@ -4270,6 +4281,15 @@ public class AndroidUtilities {
+@@ -4270,6 +4287,15 @@ public class AndroidUtilities {
  
      public static boolean openForView(File f, String fileName, String mimeType, final Activity activity, Theme.ResourcesProvider resourcesProvider, boolean restrict) {
          if (f != null && f.exists()) {
@@ -5034,6 +5187,24 @@ index b8239d97..0b1c8baf 100644
              String realMimeType = null;
              Intent intent = new Intent(Intent.ACTION_VIEW);
              intent.setFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+diff --git a/TMessagesProj/src/main/java/org/telegram/messenger/ApplicationLoader.java b/TMessagesProj/src/main/java/org/telegram/messenger/ApplicationLoader.java
+index fc43c648..89c03349 100644
+--- a/TMessagesProj/src/main/java/org/telegram/messenger/ApplicationLoader.java
++++ b/TMessagesProj/src/main/java/org/telegram/messenger/ApplicationLoader.java
+@@ -289,6 +289,13 @@ public class ApplicationLoader extends Application {
+ 
+         super.onCreate();
+ 
++        // Свой шрифт ставим до того, как появится первый экран: подменять
++        // его позже значит оставить уже нарисованное со старым.
++        try {
++            org.telegram.margelet.MargeletFonts.applyGlobally();
++        } catch (Throwable ignored) {
++        }
++
+         if (BuildVars.LOGS_ENABLED) {
+             FileLog.d("app start time = " + (startTime = SystemClock.elapsedRealtime()));
+             try {
 diff --git a/TMessagesProj/src/main/java/org/telegram/messenger/LocaleController.java b/TMessagesProj/src/main/java/org/telegram/messenger/LocaleController.java
 index df646cf4..b25e5001 100644
 --- a/TMessagesProj/src/main/java/org/telegram/messenger/LocaleController.java
@@ -5709,10 +5880,10 @@ index ac402db5..415b7e37 100644
              parentFragment.showQuoteMessageUpdate();
              return false;
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/Components/EditTextCaption.java b/TMessagesProj/src/main/java/org/telegram/ui/Components/EditTextCaption.java
-index 6a21a20e..d1d45427 100644
+index 6a21a20e..a8a7f46f 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/Components/EditTextCaption.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/Components/EditTextCaption.java
-@@ -157,6 +157,69 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
+@@ -157,6 +157,83 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
          applyTextStyleToSelection(new TextStyleSpan(run));
      }
  
@@ -5771,9 +5942,23 @@ index 6a21a20e..d1d45427 100644
 +                editable.removeSpan(span);
 +            }
 +        }
-+        final Object span = org.telegram.margelet.MargeletSpans.create(kind, value);
-+        if (span != null) {
-+            editable.setSpan(span, start, end, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
++        if (kind == org.telegram.margelet.MargeletMarkup.KIND_OUTLINE) {
++            // Обводка, как и кнопка, рисуется разметкой, занимающей место
++            // собой: такая не попадает в список меток, поэтому рядом кладём
++            // невидимую пометку — она и уедет с сообщением.
++            for (Object drawn : editable.getSpans(start, end,
++                    org.telegram.margelet.MargeletSpans.Outline.class)) {
++                editable.removeSpan(drawn);
++            }
++            editable.setSpan(new org.telegram.margelet.MargeletSpans.OutlineMark(value),
++                    start, end, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
++            editable.setSpan(new org.telegram.margelet.MargeletSpans.Outline(value),
++                    start, end, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
++        } else {
++            final Object span = org.telegram.margelet.MargeletSpans.create(kind, value);
++            if (span != null) {
++                editable.setSpan(span, start, end, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
++            }
 +        }
 +        org.telegram.ui.MargeletMarkupAlert.warnOnce(getContext());
 +        invalidate();
@@ -5782,7 +5967,7 @@ index 6a21a20e..d1d45427 100644
      public void makeSelectedSpoiler() {
          TextStyleSpan.TextStyleRun run = new TextStyleSpan.TextStyleRun();
          run.flags |= TextStyleSpan.FLAG_STYLE_SPOILER;
-@@ -809,6 +872,28 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
+@@ -809,6 +886,28 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
          } else if (itemId == R.id.menu_spoiler) {
              makeSelectedSpoiler();
              return true;
@@ -6237,10 +6422,10 @@ index 00000000..022075eb
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletConveniencesActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletConveniencesActivity.java
 new file mode 100644
-index 00000000..19e5e0f9
+index 00000000..93e14280
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletConveniencesActivity.java
-@@ -0,0 +1,93 @@
+@@ -0,0 +1,99 @@
 +package org.telegram.ui;
 +
 +import android.view.View;
@@ -6267,6 +6452,7 @@ index 00000000..19e5e0f9
 +    private static final int ID_CHANNEL_TOP = 1;
 +    private static final int ID_TRACKS = 2;
 +    private static final int ID_SEIZURE = 3;
++    private static final int ID_FONTS = 4;
 +
 +    @Override
 +    protected CharSequence getTitle() {
@@ -6292,6 +6478,9 @@ index 00000000..19e5e0f9
 +        items.add(UItem.asCheck(ID_SEIZURE, LocaleController.getString(R.string.MargeletSeizure))
 +                .setChecked(MargeletSeizure.enabled()));
 +        items.add(UItem.asShadow(null));
++        items.add(UItem.asButton(ID_FONTS, LocaleController.getString(R.string.MargeletFonts),
++                LocaleController.getString(R.string.MargeletFontsInfo)));
++        items.add(UItem.asShadow(null));
 +    }
 +
 +    @Override
@@ -6304,6 +6493,8 @@ index 00000000..19e5e0f9
 +            listView.adapter.update(true);
 +        } else if (item.id == ID_SEIZURE) {
 +            toggleSeizure();
++        } else if (item.id == ID_FONTS) {
++            presentFragment(new MargeletFontsActivity());
 +        }
 +    }
 +
@@ -7830,10 +8021,10 @@ index 00000000..397f3a69
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletSettingsActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletSettingsActivity.java
 new file mode 100644
-index 00000000..c3479bf6
+index 00000000..973a0b43
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletSettingsActivity.java
-@@ -0,0 +1,202 @@
+@@ -0,0 +1,195 @@
 +package org.telegram.ui;
 +
 +import android.view.Gravity;
@@ -7872,7 +8063,6 @@ index 00000000..c3479bf6
 +    private static final int ID_FORUM = 4;
 +    private static final int ID_CONVENIENCES = 5;
 +    private static final int ID_UPDATES = 17;
-+    private static final int ID_FONTS = 18;
 +    private static final int ID_STREAMER = 6;
 +    private static final int ID_GIFTS = 7;
 +    private static final int ID_SOURCE = 8;
@@ -7917,10 +8107,6 @@ index 00000000..c3479bf6
 +                IconBackgroundColors.RED.top, IconBackgroundColors.RED.bottom,
 +                R.drawable.settings_privacy, LocaleController.getString(R.string.MargeletStreamer),
 +                LocaleController.getString(R.string.MargeletStreamerInfo)));
-+        items.add(SettingsActivity.SettingCell.Factory.of(ID_FONTS,
-+                IconBackgroundColors.ORANGE_DEEP.top, IconBackgroundColors.ORANGE_DEEP.bottom,
-+                R.drawable.settings_language, LocaleController.getString(R.string.MargeletFonts),
-+                LocaleController.getString(R.string.MargeletFontsInfo)));
 +        items.add(SettingsActivity.SettingCell.Factory.of(ID_CONVENIENCES,
 +                IconBackgroundColors.PURPLE.top, IconBackgroundColors.PURPLE.bottom,
 +                R.drawable.settings_folders, LocaleController.getString(R.string.MargeletConveniences),
@@ -8017,8 +8203,6 @@ index 00000000..c3479bf6
 +            presentFragment(new MargeletGiftsActivity());
 +        } else if (item.id == ID_STREAMER) {
 +            presentFragment(new MargeletStreamerActivity());
-+        } else if (item.id == ID_FONTS) {
-+            presentFragment(new MargeletFontsActivity());
 +        } else if (item.id == ID_UPDATES) {
 +            presentFragment(new MargeletUpdatesActivity());
 +        } else if (item.id == ID_CONVENIENCES) {

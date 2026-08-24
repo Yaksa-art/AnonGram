@@ -36,7 +36,6 @@ public class MargeletSettingsActivity extends UniversalFragment {
     private static final int ID_FORUM = 4;
     private static final int ID_CONVENIENCES = 5;
     private static final int ID_UPDATES = 17;
-    private static final int ID_FONTS = 18;
     private static final int ID_STREAMER = 6;
     private static final int ID_GIFTS = 7;
     private static final int ID_SOURCE = 8;
@@ -81,10 +80,6 @@ public class MargeletSettingsActivity extends UniversalFragment {
                 IconBackgroundColors.RED.top, IconBackgroundColors.RED.bottom,
                 R.drawable.settings_privacy, LocaleController.getString(R.string.MargeletStreamer),
                 LocaleController.getString(R.string.MargeletStreamerInfo)));
-        items.add(SettingsActivity.SettingCell.Factory.of(ID_FONTS,
-                IconBackgroundColors.ORANGE_DEEP.top, IconBackgroundColors.ORANGE_DEEP.bottom,
-                R.drawable.settings_language, LocaleController.getString(R.string.MargeletFonts),
-                LocaleController.getString(R.string.MargeletFontsInfo)));
         items.add(SettingsActivity.SettingCell.Factory.of(ID_CONVENIENCES,
                 IconBackgroundColors.PURPLE.top, IconBackgroundColors.PURPLE.bottom,
                 R.drawable.settings_folders, LocaleController.getString(R.string.MargeletConveniences),
@@ -181,8 +176,6 @@ public class MargeletSettingsActivity extends UniversalFragment {
             presentFragment(new MargeletGiftsActivity());
         } else if (item.id == ID_STREAMER) {
             presentFragment(new MargeletStreamerActivity());
-        } else if (item.id == ID_FONTS) {
-            presentFragment(new MargeletFontsActivity());
         } else if (item.id == ID_UPDATES) {
             presentFragment(new MargeletUpdatesActivity());
         } else if (item.id == ID_CONVENIENCES) {

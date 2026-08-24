@@ -24,6 +24,7 @@ public class MargeletConveniencesActivity extends UniversalFragment {
     private static final int ID_CHANNEL_TOP = 1;
     private static final int ID_TRACKS = 2;
     private static final int ID_SEIZURE = 3;
+    private static final int ID_FONTS = 4;
 
     @Override
     protected CharSequence getTitle() {
@@ -49,6 +50,9 @@ public class MargeletConveniencesActivity extends UniversalFragment {
         items.add(UItem.asCheck(ID_SEIZURE, LocaleController.getString(R.string.MargeletSeizure))
                 .setChecked(MargeletSeizure.enabled()));
         items.add(UItem.asShadow(null));
+        items.add(UItem.asButton(ID_FONTS, LocaleController.getString(R.string.MargeletFonts),
+                LocaleController.getString(R.string.MargeletFontsInfo)));
+        items.add(UItem.asShadow(null));
     }
 
     @Override
@@ -61,6 +65,8 @@ public class MargeletConveniencesActivity extends UniversalFragment {
             listView.adapter.update(true);
         } else if (item.id == ID_SEIZURE) {
             toggleSeizure();
+        } else if (item.id == ID_FONTS) {
+            presentFragment(new MargeletFontsActivity());
         }
     }
 

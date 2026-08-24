@@ -183,22 +183,95 @@ public class MargeletSpans {
     }
 
     /**
-     * Обводка: буквы рисуются одним контуром, без заливки.
+     * Обводка: буква вывернута наизнанку — заливка обратного цвета, контур
+     * прежнего.
      *
-     * Внутри буквы остаётся то, что под текстом, — фон пузыря или темы.
-     * Поэтому на тёмной теме белое слово выглядит чёрным с белым контуром, а
-     * на светлой чёрное слово — белым с чёрным: ровно то выворачивание,
-     * которого просил владелец, и достаётся оно одной строкой вместо
-     * рисования текста дважды.
+     * Первая попытка была проще: рисовать буквы полыми, одним контуром, и
+     * пусть внутри просвечивает фон. Владелец сразу увидел, чем это плохо:
+     * контур обводит не только внешний край буквы, но и её дырки — «о» и «а»
+     * получают лишнее кольцо внутри. Так и должно быть, потому что обводится
+     * весь путь буквы целиком.
      *
-     * Толщина контура считается от размера букв, а не берётся числом: на
-     * мелком тексте постоянная толщина съедает букву целиком, на крупном
-     * теряется.
+     * Поэтому теперь два прохода, как владелец и просил с самого начала:
+     * сначала контур прежним цветом, потом поверх заливка обратным. Заливка
+     * закрывает внутреннюю половину контура, и снаружи остаётся ровно один
+     * ободок.
+     *
+     * Цена — разметка занимает место собой, а значит внутри неё нет переноса
+     * строк. Обводку ставят на слово или строку, не на абзац, и за
+     * правильный вид это честный размен.
      */
-    public static class Outline extends Base {
+    public static class Outline extends ReplacementSpan {
         private final int value;
 
         public Outline(int value) {
+            this.value = value;
+        }
+
+        public int kind() {
+            return MargeletMarkup.KIND_OUTLINE;
+        }
+
+        public int value() {
+            return value;
+        }
+
+        @Override
+        public int getSize(@NonNull Paint paint, CharSequence text, int start, int end,
+                           Paint.FontMetricsInt fm) {
+            if (fm != null) {
+                final Paint.FontMetricsInt metrics = paint.getFontMetricsInt();
+                fm.ascent = metrics.ascent;
+                fm.descent = metrics.descent;
+                fm.top = metrics.top;
+                fm.bottom = metrics.bottom;
+            }
+            return Math.round(paint.measureText(text, start, end));
+        }
+
+        @Override
+        public void draw(@NonNull Canvas canvas, CharSequence text, int start, int end,
+                         float x, int top, int y, int bottom, @NonNull Paint paint) {
+            final int original = paint.getColor();
+            final Paint.Style style = paint.getStyle();
+            final float width = paint.getStrokeWidth();
+            try {
+                paint.setStyle(Paint.Style.STROKE);
+                // Толщина от размера букв: постоянная съедала бы мелкий текст
+                // и терялась бы на крупном. Половину её закроет заливка,
+                // поэтому берём с запасом.
+                paint.setStrokeWidth(Math.max(1.5f, paint.getTextSize() / 7f));
+                paint.setStrokeJoin(Paint.Join.ROUND);
+                paint.setColor(original);
+                canvas.drawText(text, start, end, x, y, paint);
+
+                paint.setStyle(Paint.Style.FILL);
+                paint.setColor(inverted(original));
+                canvas.drawText(text, start, end, x, y, paint);
+            } finally {
+                paint.setStyle(style);
+                paint.setStrokeWidth(width);
+                paint.setColor(original);
+            }
+        }
+
+        /** Обратный цвет: прозрачность как была, свет наоборот. */
+        private static int inverted(int color) {
+            return (color & 0xFF000000) | (~color & 0x00FFFFFF);
+        }
+    }
+
+    /**
+     * Пометка обводки: невидимая, нужна только чтобы отправка знала про неё.
+     *
+     * Та же причина, что и у кнопки: рисующая разметка занимает место собой и
+     * потому не может лежать в общем списке наших меток, а метки собираются
+     * при отправке именно оттуда. Поэтому их две — одна рисует, вторая едет.
+     */
+    public static class OutlineMark extends Base {
+        private final int value;
+
+        public OutlineMark(int value) {
             this.value = value;
         }
 
@@ -214,11 +287,7 @@ public class MargeletSpans {
 
         @Override
         public void updateDrawState(TextPaint paint) {
-            paint.setStyle(Paint.Style.STROKE);
-            paint.setStrokeWidth(Math.max(1f, paint.getTextSize() / 14f));
-            // Углы букв без этого выглядят обрубленными.
-            paint.setStrokeJoin(Paint.Join.ROUND);
-            paint.setStrokeCap(Paint.Cap.ROUND);
+            // Ничего: рисует Outline.
         }
     }
 
