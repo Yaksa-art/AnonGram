@@ -62,5 +62,16 @@
     "about_ru": "Его кот живёт внутри приложения.",
     "about_zh": "他的猫住在这个应用里。",
     "color": "EBC85C"
+  },
+  {
+    "peer": 8753240731,
+    "title": "Plugin maker",
+    "title_ru": "Плагин-мейкер",
+    "title_zh": "插件作者",
+    "about": "Writes plugins for Margelet.",
+    "about_ru": "Пишет плагины для Margelet.",
+    "about_zh": "为 Margelet 编写插件。",
+    "color": "E08A8A",
+    "url": "https://t.me/margeletter"
   }
 ]
