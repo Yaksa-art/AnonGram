@@ -9,6 +9,8 @@
     <string name="MargeletForum">论坛</string>
     <string name="MargeletTracks">音乐标签</string>
     <string name="MargeletTracksInfo">修改标题、艺术家和封面</string>
+    <string name="MargeletConveniences">便利功能</string>
+    <string name="MargeletConveniencesInfo">分支频道置顶、音乐标签、发作模式</string>
     <string name="MargeletLines">最多几行</string>
     <string name="MargeletLinesMax">不限</string>
     <string name="MargeletLinesAbout">输入框长到几行才开始滚动。原版是六行。“不限”表示只要屏幕还有地方就继续长。</string>

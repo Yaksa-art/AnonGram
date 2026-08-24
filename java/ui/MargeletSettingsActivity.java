@@ -6,7 +6,6 @@ import android.widget.FrameLayout;
 
 import org.telegram.margelet.MargeletConfig;
 import org.telegram.margelet.MargeletPlane3D;
-import org.telegram.margelet.MargeletSeizure;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.R;
 import org.telegram.messenger.browser.Browser;
@@ -35,18 +34,16 @@ public class MargeletSettingsActivity extends UniversalFragment {
     private static final int ID_SOUND = 2;
     private static final int ID_CHANNEL = 3;
     private static final int ID_FORUM = 4;
-    private static final int ID_TRACKS = 5;
+    private static final int ID_CONVENIENCES = 5;
     private static final int ID_STREAMER = 6;
     private static final int ID_GIFTS = 7;
     private static final int ID_SOURCE = 8;
     private static final int ID_PROFILES = 9;
-    private static final int ID_SEIZURE = 10;
     private static final int ID_DONATE = 11;
     private static final int ID_MARKUP = 12;
     private static final int ID_HELP = 13;
     private static final int ID_STICKERS = 14;
     private static final int ID_PLUGINS = 15;
-    private static final int ID_CHANNEL_TOP = 16;
 
     /** Объёмный значок в шапке. Пользы ноль, и в этом вся мысль. */
     private FrameLayout header;
@@ -82,10 +79,10 @@ public class MargeletSettingsActivity extends UniversalFragment {
                 IconBackgroundColors.RED.top, IconBackgroundColors.RED.bottom,
                 R.drawable.settings_privacy, LocaleController.getString(R.string.MargeletStreamer),
                 LocaleController.getString(R.string.MargeletStreamerInfo)));
-        items.add(SettingsActivity.SettingCell.Factory.of(ID_TRACKS,
+        items.add(SettingsActivity.SettingCell.Factory.of(ID_CONVENIENCES,
                 IconBackgroundColors.PURPLE.top, IconBackgroundColors.PURPLE.bottom,
-                R.drawable.settings_folders, LocaleController.getString(R.string.MargeletTracks),
-                LocaleController.getString(R.string.MargeletTracksInfo)));
+                R.drawable.settings_folders, LocaleController.getString(R.string.MargeletConveniences),
+                LocaleController.getString(R.string.MargeletConveniencesInfo)));
         items.add(SettingsActivity.SettingCell.Factory.of(ID_MARKUP,
                 IconBackgroundColors.CYAN.top, IconBackgroundColors.CYAN.bottom,
                 R.drawable.settings_language, LocaleController.getString(R.string.MargeletMarkup),
@@ -106,12 +103,6 @@ public class MargeletSettingsActivity extends UniversalFragment {
         items.add(UItem.asButton(ID_STICKERS, LocaleController.getString(R.string.MargeletStickers),
                 LocaleController.getString(R.string.MargeletStickersAdd)));
         items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletStickersAbout)));
-        items.add(UItem.asCheck(ID_CHANNEL_TOP, LocaleController.getString(R.string.MargeletChannelOnTop))
-                .setChecked(MargeletConfig.channelOnTop()));
-        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletChannelOnTopAbout)));
-        items.add(UItem.asCheck(ID_SEIZURE, LocaleController.getString(R.string.MargeletSeizure))
-                .setChecked(MargeletSeizure.enabled()));
-        items.add(UItem.asShadow(null));
         items.add(SettingsActivity.SettingCell.Factory.of(ID_DONATE,
                 IconBackgroundColors.GREEN.top, IconBackgroundColors.GREEN.bottom,
                 R.drawable.settings_wallet, LocaleController.getString(R.string.MargeletDonate),
@@ -168,11 +159,6 @@ public class MargeletSettingsActivity extends UniversalFragment {
             presentFragment(new MargeletMarkupActivity());
         } else if (item.id == ID_DONATE) {
             presentFragment(new MargeletDonateActivity());
-        } else if (item.id == ID_CHANNEL_TOP) {
-            MargeletConfig.setChannelOnTop(!MargeletConfig.channelOnTop());
-            listView.adapter.update(true);
-        } else if (item.id == ID_SEIZURE) {
-            toggleSeizure();
         } else if (item.id == ID_INPUT) {
             presentFragment(new MargeletInputActivity());
         } else if (item.id == ID_SOUND) {
@@ -185,35 +171,13 @@ public class MargeletSettingsActivity extends UniversalFragment {
             presentFragment(new MargeletGiftsActivity());
         } else if (item.id == ID_STREAMER) {
             presentFragment(new MargeletStreamerActivity());
-        } else if (item.id == ID_TRACKS) {
-            presentFragment(new MargeletTracksActivity());
+        } else if (item.id == ID_CONVENIENCES) {
+            presentFragment(new MargeletConveniencesActivity());
         } else if (item.id == ID_SOURCE) {
             Browser.openUrl(getContext(), MargeletConfig.SOURCE_URL);
         } else if (item.id == ID_FORUM) {
             Browser.openUrl(getContext(), MargeletConfig.FORUM_URL);
         }
-    }
-
-    /**
-     * Выключается молча, включается только через предупреждение: подвижная
-     * картинка бывает опасна не в переносном смысле, и решать это за человека
-     * нельзя.
-     */
-    private void toggleSeizure() {
-        if (MargeletSeizure.enabled()) {
-            MargeletSeizure.set(false);
-            listView.adapter.update(true);
-            return;
-        }
-        new AlertDialog.Builder(getContext())
-                .setTitle(LocaleController.getString(R.string.MargeletSeizureWarning))
-                .setMessage(LocaleController.getString(R.string.MargeletSeizureWarningText))
-                .setPositiveButton(LocaleController.getString(R.string.MargeletSeizureEnable), (d, w) -> {
-                    MargeletSeizure.set(true);
-                    listView.adapter.update(true);
-                })
-                .setNegativeButton(LocaleController.getString(R.string.Cancel), null)
-                .show();
     }
 
     @Override

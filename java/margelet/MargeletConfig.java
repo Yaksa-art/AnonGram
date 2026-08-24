@@ -176,7 +176,7 @@ public class MargeletConfig {
      * По умолчанию да: форк живёт тем, что о нём узнают.
      */
     public static boolean watermarkOnSend() {
-        return prefs().getBoolean("watermark_send", true);
+        return prefs().getBoolean("watermark_send", false);
     }
 
     public static void setWatermarkOnSend(boolean on) {

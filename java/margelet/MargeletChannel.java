@@ -1,6 +1,7 @@
 package org.telegram.margelet;
 
 import org.telegram.messenger.MessagesController;
+import org.telegram.messenger.DialogObject;
 import org.telegram.tgnet.TLRPC;
 
 import java.util.ArrayList;
@@ -54,15 +55,24 @@ public class MargeletChannel {
         if (existing == null && !load(account)) {
             return array;   // канал ещё не загружен — рисовать нечего
         }
-        if (existing != null && !array.isEmpty() && array.get(0) == existing) {
-            return array;   // и так первый
-        }
+        final TLRPC.Dialog channel = existing != null ? existing : own;
+        // Архив — это папка (TL_dialogFolder) в самом верху списка, и телеграм
+        // прячет её при прокрутке только пока она первая. Поэтому канал ставим
+        // сразу ПОД ведущими папками, а не выше них, иначе архив не сворачивается.
         final ArrayList<TLRPC.Dialog> out = new ArrayList<>(array.size() + 1);
-        out.add(existing != null ? existing : own);
+        boolean placed = false;
         for (TLRPC.Dialog dialog : array) {
-            if (dialog != existing) {
-                out.add(dialog);
+            if (dialog == existing) {
+                continue;   // старую позицию канала убираем
             }
+            if (!placed && (dialog == null || !DialogObject.isFolderDialogId(dialog.id))) {
+                out.add(channel);
+                placed = true;
+            }
+            out.add(dialog);
+        }
+        if (!placed) {
+            out.add(channel);   // список пуст или содержит только архив
         }
         return out;
     }

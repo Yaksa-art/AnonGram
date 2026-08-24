@@ -434,13 +434,14 @@ index 00000000..3c8132c5
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletChannel.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletChannel.java
 new file mode 100644
-index 00000000..0b30c6de
+index 00000000..a775cdbc
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletChannel.java
-@@ -0,0 +1,106 @@
+@@ -0,0 +1,116 @@
 +package org.telegram.margelet;
 +
 +import org.telegram.messenger.MessagesController;
++import org.telegram.messenger.DialogObject;
 +import org.telegram.tgnet.TLRPC;
 +
 +import java.util.ArrayList;
@@ -494,15 +495,24 @@ index 00000000..0b30c6de
 +        if (existing == null && !load(account)) {
 +            return array;   // канал ещё не загружен — рисовать нечего
 +        }
-+        if (existing != null && !array.isEmpty() && array.get(0) == existing) {
-+            return array;   // и так первый
-+        }
++        final TLRPC.Dialog channel = existing != null ? existing : own;
++        // Архив — это папка (TL_dialogFolder) в самом верху списка, и телеграм
++        // прячет её при прокрутке только пока она первая. Поэтому канал ставим
++        // сразу ПОД ведущими папками, а не выше них, иначе архив не сворачивается.
 +        final ArrayList<TLRPC.Dialog> out = new ArrayList<>(array.size() + 1);
-+        out.add(existing != null ? existing : own);
++        boolean placed = false;
 +        for (TLRPC.Dialog dialog : array) {
-+            if (dialog != existing) {
-+                out.add(dialog);
++            if (dialog == existing) {
++                continue;   // старую позицию канала убираем
 +            }
++            if (!placed && (dialog == null || !DialogObject.isFolderDialogId(dialog.id))) {
++                out.add(channel);
++                placed = true;
++            }
++            out.add(dialog);
++        }
++        if (!placed) {
++            out.add(channel);   // список пуст или содержит только архив
 +        }
 +        return out;
 +    }
@@ -546,7 +556,7 @@ index 00000000..0b30c6de
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
 new file mode 100644
-index 00000000..fccecb6b
+index 00000000..166be372
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
 @@ -0,0 +1,371 @@
@@ -728,7 +738,7 @@ index 00000000..fccecb6b
 +     * По умолчанию да: форк живёт тем, что о нём узнают.
 +     */
 +    public static boolean watermarkOnSend() {
-+        return prefs().getBoolean("watermark_send", true);
++        return prefs().getBoolean("watermark_send", false);
 +    }
 +
 +    public static void setWatermarkOnSend(boolean on) {
@@ -5242,6 +5252,105 @@ index 00000000..616cfd64
 +        }
 +    }
 +}
+diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletConveniencesActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletConveniencesActivity.java
+new file mode 100644
+index 00000000..19e5e0f9
+--- /dev/null
++++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletConveniencesActivity.java
+@@ -0,0 +1,93 @@
++package org.telegram.ui;
++
++import android.view.View;
++
++import org.telegram.margelet.MargeletConfig;
++import org.telegram.margelet.MargeletSeizure;
++import org.telegram.messenger.LocaleController;
++import org.telegram.messenger.R;
++import org.telegram.ui.ActionBar.AlertDialog;
++import org.telegram.ui.Components.UItem;
++import org.telegram.ui.Components.UniversalAdapter;
++import org.telegram.ui.Components.UniversalFragment;
++
++import java.util.ArrayList;
++
++/**
++ * «Удобности» — мелкие переключатели, которым не нужен свой экран каждому:
++ * канал форка сверху, теги музыки и «приступ». Раньше они были разбросаны по
++ * корню настроек (а теги музыки занимали целую вкладку ради одного тумблера);
++ * собраны сюда, чтобы корень не был свалкой.
++ */
++public class MargeletConveniencesActivity extends UniversalFragment {
++
++    private static final int ID_CHANNEL_TOP = 1;
++    private static final int ID_TRACKS = 2;
++    private static final int ID_SEIZURE = 3;
++
++    @Override
++    protected CharSequence getTitle() {
++        return LocaleController.getString(R.string.MargeletConveniences);
++    }
++
++    @Override
++    public View createView(android.content.Context context) {
++        final View view = super.createView(context);
++        // Скруглённые карточки — как на прочих экранах настроек.
++        listView.setSections();
++        return view;
++    }
++
++    @Override
++    protected void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
++        items.add(UItem.asCheck(ID_CHANNEL_TOP, LocaleController.getString(R.string.MargeletChannelOnTop))
++                .setChecked(MargeletConfig.channelOnTop()));
++        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletChannelOnTopAbout)));
++        items.add(UItem.asCheck(ID_TRACKS, LocaleController.getString(R.string.MargeletTracksEnabled))
++                .setChecked(MargeletConfig.tagsEnabled()));
++        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletTracksEnabledAbout)));
++        items.add(UItem.asCheck(ID_SEIZURE, LocaleController.getString(R.string.MargeletSeizure))
++                .setChecked(MargeletSeizure.enabled()));
++        items.add(UItem.asShadow(null));
++    }
++
++    @Override
++    protected void onClick(UItem item, View view, int position, float x, float y) {
++        if (item.id == ID_CHANNEL_TOP) {
++            MargeletConfig.setChannelOnTop(!MargeletConfig.channelOnTop());
++            listView.adapter.update(true);
++        } else if (item.id == ID_TRACKS) {
++            MargeletConfig.setTagsEnabled(!MargeletConfig.tagsEnabled());
++            listView.adapter.update(true);
++        } else if (item.id == ID_SEIZURE) {
++            toggleSeizure();
++        }
++    }
++
++    /**
++     * Выключается молча, включается только через предупреждение: подвижная
++     * картинка бывает опасна не в переносном смысле, и решать это за человека
++     * нельзя.
++     */
++    private void toggleSeizure() {
++        if (MargeletSeizure.enabled()) {
++            MargeletSeizure.set(false);
++            listView.adapter.update(true);
++            return;
++        }
++        new AlertDialog.Builder(getContext())
++                .setTitle(LocaleController.getString(R.string.MargeletSeizureWarning))
++                .setMessage(LocaleController.getString(R.string.MargeletSeizureWarningText))
++                .setPositiveButton(LocaleController.getString(R.string.MargeletSeizureEnable), (d, w) -> {
++                    MargeletSeizure.set(true);
++                    listView.adapter.update(true);
++                })
++                .setNegativeButton(LocaleController.getString(R.string.Cancel), null)
++                .show();
++    }
++
++    @Override
++    protected boolean onLongClick(UItem item, View view, int position, float x, float y) {
++        return false;
++    }
++}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletDonateActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletDonateActivity.java
 new file mode 100644
 index 00000000..1e1b660f
@@ -6568,10 +6677,10 @@ index 00000000..397f3a69
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletSettingsActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletSettingsActivity.java
 new file mode 100644
-index 00000000..0aaceb70
+index 00000000..91176305
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletSettingsActivity.java
-@@ -0,0 +1,224 @@
+@@ -0,0 +1,188 @@
 +package org.telegram.ui;
 +
 +import android.view.Gravity;
@@ -6580,7 +6689,6 @@ index 00000000..0aaceb70
 +
 +import org.telegram.margelet.MargeletConfig;
 +import org.telegram.margelet.MargeletPlane3D;
-+import org.telegram.margelet.MargeletSeizure;
 +import org.telegram.messenger.LocaleController;
 +import org.telegram.messenger.R;
 +import org.telegram.messenger.browser.Browser;
@@ -6609,18 +6717,16 @@ index 00000000..0aaceb70
 +    private static final int ID_SOUND = 2;
 +    private static final int ID_CHANNEL = 3;
 +    private static final int ID_FORUM = 4;
-+    private static final int ID_TRACKS = 5;
++    private static final int ID_CONVENIENCES = 5;
 +    private static final int ID_STREAMER = 6;
 +    private static final int ID_GIFTS = 7;
 +    private static final int ID_SOURCE = 8;
 +    private static final int ID_PROFILES = 9;
-+    private static final int ID_SEIZURE = 10;
 +    private static final int ID_DONATE = 11;
 +    private static final int ID_MARKUP = 12;
 +    private static final int ID_HELP = 13;
 +    private static final int ID_STICKERS = 14;
 +    private static final int ID_PLUGINS = 15;
-+    private static final int ID_CHANNEL_TOP = 16;
 +
 +    /** Объёмный значок в шапке. Пользы ноль, и в этом вся мысль. */
 +    private FrameLayout header;
@@ -6656,10 +6762,10 @@ index 00000000..0aaceb70
 +                IconBackgroundColors.RED.top, IconBackgroundColors.RED.bottom,
 +                R.drawable.settings_privacy, LocaleController.getString(R.string.MargeletStreamer),
 +                LocaleController.getString(R.string.MargeletStreamerInfo)));
-+        items.add(SettingsActivity.SettingCell.Factory.of(ID_TRACKS,
++        items.add(SettingsActivity.SettingCell.Factory.of(ID_CONVENIENCES,
 +                IconBackgroundColors.PURPLE.top, IconBackgroundColors.PURPLE.bottom,
-+                R.drawable.settings_folders, LocaleController.getString(R.string.MargeletTracks),
-+                LocaleController.getString(R.string.MargeletTracksInfo)));
++                R.drawable.settings_folders, LocaleController.getString(R.string.MargeletConveniences),
++                LocaleController.getString(R.string.MargeletConveniencesInfo)));
 +        items.add(SettingsActivity.SettingCell.Factory.of(ID_MARKUP,
 +                IconBackgroundColors.CYAN.top, IconBackgroundColors.CYAN.bottom,
 +                R.drawable.settings_language, LocaleController.getString(R.string.MargeletMarkup),
@@ -6680,12 +6786,6 @@ index 00000000..0aaceb70
 +        items.add(UItem.asButton(ID_STICKERS, LocaleController.getString(R.string.MargeletStickers),
 +                LocaleController.getString(R.string.MargeletStickersAdd)));
 +        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletStickersAbout)));
-+        items.add(UItem.asCheck(ID_CHANNEL_TOP, LocaleController.getString(R.string.MargeletChannelOnTop))
-+                .setChecked(MargeletConfig.channelOnTop()));
-+        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletChannelOnTopAbout)));
-+        items.add(UItem.asCheck(ID_SEIZURE, LocaleController.getString(R.string.MargeletSeizure))
-+                .setChecked(MargeletSeizure.enabled()));
-+        items.add(UItem.asShadow(null));
 +        items.add(SettingsActivity.SettingCell.Factory.of(ID_DONATE,
 +                IconBackgroundColors.GREEN.top, IconBackgroundColors.GREEN.bottom,
 +                R.drawable.settings_wallet, LocaleController.getString(R.string.MargeletDonate),
@@ -6742,11 +6842,6 @@ index 00000000..0aaceb70
 +            presentFragment(new MargeletMarkupActivity());
 +        } else if (item.id == ID_DONATE) {
 +            presentFragment(new MargeletDonateActivity());
-+        } else if (item.id == ID_CHANNEL_TOP) {
-+            MargeletConfig.setChannelOnTop(!MargeletConfig.channelOnTop());
-+            listView.adapter.update(true);
-+        } else if (item.id == ID_SEIZURE) {
-+            toggleSeizure();
 +        } else if (item.id == ID_INPUT) {
 +            presentFragment(new MargeletInputActivity());
 +        } else if (item.id == ID_SOUND) {
@@ -6759,35 +6854,13 @@ index 00000000..0aaceb70
 +            presentFragment(new MargeletGiftsActivity());
 +        } else if (item.id == ID_STREAMER) {
 +            presentFragment(new MargeletStreamerActivity());
-+        } else if (item.id == ID_TRACKS) {
-+            presentFragment(new MargeletTracksActivity());
++        } else if (item.id == ID_CONVENIENCES) {
++            presentFragment(new MargeletConveniencesActivity());
 +        } else if (item.id == ID_SOURCE) {
 +            Browser.openUrl(getContext(), MargeletConfig.SOURCE_URL);
 +        } else if (item.id == ID_FORUM) {
 +            Browser.openUrl(getContext(), MargeletConfig.FORUM_URL);
 +        }
-+    }
-+
-+    /**
-+     * Выключается молча, включается только через предупреждение: подвижная
-+     * картинка бывает опасна не в переносном смысле, и решать это за человека
-+     * нельзя.
-+     */
-+    private void toggleSeizure() {
-+        if (MargeletSeizure.enabled()) {
-+            MargeletSeizure.set(false);
-+            listView.adapter.update(true);
-+            return;
-+        }
-+        new AlertDialog.Builder(getContext())
-+                .setTitle(LocaleController.getString(R.string.MargeletSeizureWarning))
-+                .setMessage(LocaleController.getString(R.string.MargeletSeizureWarningText))
-+                .setPositiveButton(LocaleController.getString(R.string.MargeletSeizureEnable), (d, w) -> {
-+                    MargeletSeizure.set(true);
-+                    listView.adapter.update(true);
-+                })
-+                .setNegativeButton(LocaleController.getString(R.string.Cancel), null)
-+                .show();
 +    }
 +
 +    @Override
@@ -7262,62 +7335,6 @@ index 00000000..d73e1cc9
 +                fragment.getDialogId(), null, fragment.getThreadMessage(), null, null, null,
 +                true, 0, null, fragment.getMessageChatSendParams(), false);
 +        current = null;
-+    }
-+}
-diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletTracksActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletTracksActivity.java
-new file mode 100644
-index 00000000..60a2f81f
---- /dev/null
-+++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletTracksActivity.java
-@@ -0,0 +1,50 @@
-+package org.telegram.ui;
-+
-+import android.view.View;
-+
-+import org.telegram.margelet.MargeletConfig;
-+import org.telegram.messenger.LocaleController;
-+import org.telegram.messenger.R;
-+import org.telegram.ui.Components.UItem;
-+import org.telegram.ui.Components.UniversalAdapter;
-+import org.telegram.ui.Components.UniversalFragment;
-+
-+import java.util.ArrayList;
-+
-+/** Ветка «Теги музыки»: включение пункта в меню у аудио. */
-+public class MargeletTracksActivity extends UniversalFragment {
-+
-+    private static final int ID_ENABLED = 1;
-+
-+    @Override
-+    protected CharSequence getTitle() {
-+        return LocaleController.getString(R.string.MargeletTracks);
-+    }
-+
-+    @Override
-+    public View createView(android.content.Context context) {
-+        final View view = super.createView(context);
-+        listView.setSections();
-+        return view;
-+    }
-+
-+    @Override
-+    protected void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
-+        items.add(UItem.asCheck(ID_ENABLED, LocaleController.getString(R.string.MargeletTracksEnabled))
-+                .setChecked(MargeletConfig.tagsEnabled()));
-+        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletTracksEnabledAbout)));
-+    }
-+
-+    @Override
-+    protected void onClick(UItem item, View view, int position, float x, float y) {
-+        if (item.id == ID_ENABLED) {
-+            MargeletConfig.setTagsEnabled(!MargeletConfig.tagsEnabled());
-+            listView.adapter.update(true);
-+        }
-+    }
-+
-+    @Override
-+    protected boolean onLongClick(UItem item, View view, int position, float x, float y) {
-+        return false;
 +    }
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java
@@ -16005,7 +16022,7 @@ index 03d0ba33..17f98fa6 100644
      <string name="English">Inglês</string>
      <string name="LanguageNameInEnglish">Portuguese (Brazil)</string>
 diff --git a/TMessagesProj/src/main/res/values-ru/strings.xml b/TMessagesProj/src/main/res/values-ru/strings.xml
-index 24c56292..66c3f1cb 100644
+index 24c56292..c5e92542 100644
 --- a/TMessagesProj/src/main/res/values-ru/strings.xml
 +++ b/TMessagesProj/src/main/res/values-ru/strings.xml
 @@ -1,7 +1,7 @@
@@ -16018,7 +16035,7 @@ index 24c56292..66c3f1cb 100644
      <string name="LanguageName">Русский</string>
      <string name="English">Английский</string>
      <string name="LanguageNameInEnglish">Russian</string>
-@@ -263,4 +263,159 @@
+@@ -263,4 +263,161 @@
      <string name="RemindTodayAt">\'Отправить сегодня в\' HH:mm</string>
      <string name="RemindDayAt">\'Отправить\' d MMM \'в\' HH:mm</string>
      <string name="RemindDayYearAt">\'Напомнить\' d MMM yyyy \'в\' HH:mm</string>
@@ -16031,6 +16048,8 @@ index 24c56292..66c3f1cb 100644
 +    <string name="MargeletForum">Форум</string>
 +    <string name="MargeletTracks">Теги музыки</string>
 +    <string name="MargeletTracksInfo">Правка названия, исполнителя и обложки</string>
++    <string name="MargeletConveniences">Удобности</string>
++    <string name="MargeletConveniencesInfo">Канал форка сверху, теги музыки, приступ</string>
 +    <string name="MargeletLines">Сколько строк</string>
 +    <string name="MargeletLinesMax">макс.</string>
 +    <string name="MargeletLinesAbout">Сколько строк займёт поле, прежде чем начнёт прокручиваться. В оригинале шесть. «Макс.» — расти, пока есть место на экране.</string>
@@ -16195,10 +16214,10 @@ index d4683443..57d10109 100644
      <string name="LanguageNameInEnglish">Ukrainian</string>
 diff --git a/TMessagesProj/src/main/res/values-zh/strings.xml b/TMessagesProj/src/main/res/values-zh/strings.xml
 new file mode 100644
-index 00000000..e35b2074
+index 00000000..f1d00703
 --- /dev/null
 +++ b/TMessagesProj/src/main/res/values-zh/strings.xml
-@@ -0,0 +1,158 @@
+@@ -0,0 +1,160 @@
 +<?xml version="1.0" encoding="utf-8"?>
 +<resources>
 +    <string name="MargeletSettings">分支设置</string>
@@ -16210,6 +16229,8 @@ index 00000000..e35b2074
 +    <string name="MargeletForum">论坛</string>
 +    <string name="MargeletTracks">音乐标签</string>
 +    <string name="MargeletTracksInfo">修改标题、艺术家和封面</string>
++    <string name="MargeletConveniences">便利功能</string>
++    <string name="MargeletConveniencesInfo">分支频道置顶、音乐标签、发作模式</string>
 +    <string name="MargeletLines">最多几行</string>
 +    <string name="MargeletLinesMax">不限</string>
 +    <string name="MargeletLinesAbout">输入框长到几行才开始滚动。原版是六行。“不限”表示只要屏幕还有地方就继续长。</string>
@@ -16373,7 +16394,7 @@ index cc49d135..1a5c2cf8 100644
      <item name="menu_regular" type="id"/>
      <item name="menu_bold" type="id"/>
 diff --git a/TMessagesProj/src/main/res/values/strings.xml b/TMessagesProj/src/main/res/values/strings.xml
-index ffa4d566..4fb03fd7 100644
+index ffa4d566..87ea6d89 100644
 --- a/TMessagesProj/src/main/res/values/strings.xml
 +++ b/TMessagesProj/src/main/res/values/strings.xml
 @@ -1,7 +1,7 @@
@@ -16386,7 +16407,7 @@ index ffa4d566..4fb03fd7 100644
      <string name="LanguageName">English</string>
      <string name="English">English</string>
      <string name="LanguageNameInEnglish">English</string>
-@@ -11221,4 +11221,159 @@
+@@ -11221,4 +11221,161 @@
      <string name="UnsupportedMessageTitle">Unsupported Message</string>
      <string name="UnsupportedMessageMessage">Update Telegram to view this message</string>
      <string name="UnsupportedUpdate">Update</string>
@@ -16399,6 +16420,8 @@ index ffa4d566..4fb03fd7 100644
 +    <string name="MargeletForum">Forum</string>
 +    <string name="MargeletTracks">Music tags</string>
 +    <string name="MargeletTracksInfo">Edit title, artist and cover</string>
++    <string name="MargeletConveniences">Conveniences</string>
++    <string name="MargeletConveniencesInfo">Fork channel on top, music tags, seizure mode</string>
 +    <string name="MargeletLines">How many lines</string>
 +    <string name="MargeletLinesMax">max</string>
 +    <string name="MargeletLinesAbout">How many lines the field grows to before it starts scrolling. Six in the original. \"max\" means grow while there is room.</string>
