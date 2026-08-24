@@ -88,11 +88,11 @@ public class MargeletBadge {
          * запоминается заранее: человек может переключить язык, не выходя.
          */
         public String title() {
-            return remote != null ? localized(remote, "title", "") : LocaleController.getString(titleRes);
+            return remote != null ? MargeletRemote.localized(remote, "title", "") : LocaleController.getString(titleRes);
         }
 
         public String about() {
-            return remote != null ? localized(remote, "about", "") : LocaleController.getString(aboutRes);
+            return remote != null ? MargeletRemote.localized(remote, "about", "") : LocaleController.getString(aboutRes);
         }
     }
 
@@ -228,17 +228,6 @@ public class MargeletBadge {
         } catch (Exception ignored) {
             return 0xFF8DD1B0;
         }
-    }
-
-    private static String localized(JSONObject json, String key, String fallback) {
-        final String language = language();
-        if (language != null) {
-            final String value = json.optString(key + "_" + language, null);
-            if (value != null && value.length() > 0) {
-                return value;
-            }
-        }
-        return json.optString(key, fallback);
     }
 
     /** Номер канала или группы в том виде, в каком он лежит в таблице. */

@@ -173,6 +173,8 @@
 
 Про значки — [docs/badges.ru.md](docs/badges.ru.md): список лежит в
 `badges.json`, приложение перечитывает его при каждом запуске.
+
+Как выпускать версию — [docs/release.ru.md](docs/release.ru.md).
 </details>
 
 ## Собрать самому

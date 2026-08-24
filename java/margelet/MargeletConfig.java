@@ -19,6 +19,16 @@ public class MargeletConfig {
 
     public static final String APP_NAME = "Margelet";
 
+    /**
+     * Номер этой сборки. По нему клиент понимает, что на гитхабе лежит версия
+     * новее, и предлагает обновиться.
+     *
+     * Поднимать его надо руками при выпуске — вместе с номером в version.json.
+     * Забыть про него значит выпустить сборку, которая всю жизнь будет
+     * предлагать обновиться сама на себя.
+     */
+    public static final String APP_VERSION = "0.2";
+
     public static final String CHANNEL_URL = "https://t.me/margeletter";
     /**
      * Реквизиты для доната. Лежат здесь, а не в строках: это не перевод, а

@@ -3,9 +3,11 @@ package org.telegram.margelet;
 import android.content.Context;
 import android.content.SharedPreferences;
 
+import org.json.JSONObject;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.FileLog;
+import org.telegram.messenger.LocaleController;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
@@ -33,6 +35,26 @@ public class MargeletRemote {
     /** Файлы здесь маленькие; всё, что больше, — уже не наш файл. */
     private static final int MAX_BYTES = 256 * 1024;
     private static final int TIMEOUT_MS = 15000;
+
+    /**
+     * Значение на языке приложения: сперва ключ с суффиксом языка, потом
+     * основной. Так устроены и манифесты плагинов — формат один, чтобы
+     * человеку не приходилось помнить два.
+     */
+    public static String localized(JSONObject json, String key, String fallback) {
+        String language = null;
+        try {
+            language = LocaleController.getInstance().getCurrentLocale().getLanguage();
+        } catch (Exception ignored) {
+        }
+        if (language != null) {
+            final String value = json.optString(key + "_" + language, null);
+            if (value != null && value.length() > 0) {
+                return value;
+            }
+        }
+        return json.optString(key, fallback);
+    }
 
     public interface Callback {
         /** Вызывается в главном потоке. text — null, если скачать не вышло. */

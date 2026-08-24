@@ -175,6 +175,8 @@ Documentation for authors: [docs/plugins.md](docs/plugins.md).
 
 Badges are described in [docs/badges.md](docs/badges.md): the list lives in
 `badges.json` and the app re-reads it on every start.
+
+Releasing a new version: [docs/release.md](docs/release.md).
 </details>
 
 ## Building it yourself
@@ -219,6 +221,7 @@ the patch is now generated after `git add -N`.)
 | `java/`, `res/` | files the fork adds whole |
 | `python/` | the layer between the app and its plugins |
 | `badges.json` | **who has which badge** — edited here, no rebuild needed |
+| `version.json` | the latest version and where its apk lives — this is what triggers the update bar |
 | `docs/` | plugin and badge documentation, and an example plugin |
 | `tools/` | scripts: draw the icon, install it, synthesise a sound |
 | `assets/` | the logo, in svg and png |

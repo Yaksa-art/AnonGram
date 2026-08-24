@@ -1,0 +1,7 @@
+{
+  "version": "0.1.6",
+  "apk": "https://github.com/narezany/margelet/raw/apk/margelet.apk",
+  "about": "Badges are read from badges.json now.",
+  "about_ru": "Значки читаются из badges.json.",
+  "about_zh": "徽章现在从 badges.json 读取。"
+}
