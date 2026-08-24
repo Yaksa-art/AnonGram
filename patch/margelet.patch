@@ -6228,7 +6228,65 @@ diff --git a/TMessagesProj/src/main/java/org/telegram/ui/ActionBar/Theme.java b/
 index 52790dfd..c8e63ade 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/ActionBar/Theme.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/ActionBar/Theme.java
-@@ -8967,6 +8967,13 @@ public class Theme {
+@@ -7584,13 +7584,33 @@ public class Theme {
+                             if ((idx = line.indexOf('=')) != -1) {
+-                                String key = line.substring(0, idx);
+-                                String param = line.substring(idx + 1);
+-                                int value;
+-                                if (param.length() > 0 && param.charAt(0) == '#') {
+-                                    try {
+-                                        value = Color.parseColor(param);
+-                                    } catch (Exception ignore) {
+-                                        value = Utilities.parseInt(param);
+-                                    }
+-                                } else {
+-                                    value = Utilities.parseInt(param);
+-                                }
++                                String key = line.substring(0, idx).trim();
++                                String param = line.substring(idx + 1).trim();
++                                int value = 0;
++                                boolean parsed = false;
++                                if (param.startsWith("0x") || param.startsWith("0X")) {
++                                    try {
++                                        value = (int) Long.parseLong(param.substring(2), 16);
++                                        parsed = true;
++                                    } catch (Exception ignore) {}
++                                }
++                                if (!parsed && param.startsWith("#")) {
++                                    try {
++                                        String hex = param.substring(1).trim();
++                                        if (hex.length() == 6) {
++                                            value = (int) (Long.parseLong(hex, 16) | 0xFF000000L);
++                                            parsed = true;
++                                        } else if (hex.length() == 8) {
++                                            value = (int) Long.parseLong(hex, 16);
++                                            parsed = true;
++                                        } else {
++                                            value = Color.parseColor(param);
++                                            parsed = true;
++                                        }
++                                    } catch (Exception ignore) {}
++                                }
++                                if (!parsed && (param.length() == 6 || param.length() == 8)) {
++                                    try {
++                                        long v = Long.parseLong(param, 16);
++                                        if (param.length() == 6) {
++                                            v |= 0xFF000000L;
++                                        }
++                                        value = (int) v;
++                                        parsed = true;
++                                    } catch (Exception ignore) {}
++                                }
++                                if (!parsed) {
++                                    try {
++                                        value = (int) Long.parseLong(param);
++                                        parsed = true;
++                                    } catch (Exception ignore) {
++                                        value = Utilities.parseInt(param);
++                                    }
++                                }
+                                 int keyFromString = ThemeColors.stringKeyToInt(key);
+@@ -8967,6 +8987,13 @@ public class Theme {
  
      public static int getColor(int key, ResourcesProvider provider) {
          if (provider != null) {
