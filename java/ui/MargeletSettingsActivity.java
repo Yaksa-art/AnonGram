@@ -45,6 +45,7 @@ public class MargeletSettingsActivity extends UniversalFragment {
     private static final int ID_HELP = 13;
     private static final int ID_STICKERS = 14;
     private static final int ID_PLUGINS = 15;
+    private static final int ID_FEEDBACK = 18;
 
     /** Объёмный значок в шапке. Пользы ноль, и в этом вся мысль. */
     private FrameLayout header;
@@ -118,6 +119,10 @@ public class MargeletSettingsActivity extends UniversalFragment {
         items.add(SettingsActivity.SettingCell.Factory.of(ID_FORUM,
                 IconBackgroundColors.ORANGE.top, IconBackgroundColors.ORANGE.bottom,
                 R.drawable.settings_group, LocaleController.getString(R.string.MargeletForum), "t.me/margeletforum"));
+        items.add(SettingsActivity.SettingCell.Factory.of(ID_FEEDBACK,
+                IconBackgroundColors.PURPLE.top, IconBackgroundColors.PURPLE.bottom,
+                R.drawable.msg_message, LocaleController.getString(R.string.MargeletFeedback),
+                LocaleController.getString(R.string.MargeletFeedbackInfo)));
         items.add(SettingsActivity.SettingCell.Factory.of(ID_SOURCE,
                 IconBackgroundColors.GRAY.top, IconBackgroundColors.GRAY.bottom,
                 R.drawable.settings_features, LocaleController.getString(R.string.MargeletSource),
@@ -182,6 +187,8 @@ public class MargeletSettingsActivity extends UniversalFragment {
             presentFragment(new MargeletConveniencesActivity());
         } else if (item.id == ID_SOURCE) {
             Browser.openUrl(getContext(), MargeletConfig.SOURCE_URL);
+        } else if (item.id == ID_FEEDBACK) {
+            Browser.openUrl(getContext(), MargeletConfig.FEEDBACK_URL);
         } else if (item.id == ID_FORUM) {
             Browser.openUrl(getContext(), MargeletConfig.FORUM_URL);
         }

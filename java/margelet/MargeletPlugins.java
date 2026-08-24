@@ -16,6 +16,8 @@ import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.R;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.ui.ActionBar.AlertDialog;
+import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.Cells.CheckBoxCell;
 import org.telegram.ui.Components.LayoutHelper;
 
 import java.io.ByteArrayOutputStream;
@@ -112,6 +114,9 @@ public class MargeletPlugins {
     }
 
     /** Все установленные плагины, по имени. */
+    /** Начало имени папки, в которую распаковывают перед установкой. */
+    private static final String STAGING = "tmp_";
+
     public static List<Plugin> installed() {
         final List<Plugin> found = new ArrayList<>();
         final File[] folders = root().listFiles();
@@ -119,6 +124,14 @@ public class MargeletPlugins {
             return found;
         }
         for (File folder : folders) {
+            // Папка распаковки — не установленный плагин. Лежит она здесь же,
+            // и без этой проверки только что распакованный плагин находил сам
+            // себя: окно установки говорило «у тебя уже такой стоит, установка
+            // его заменит» вообще всем и всегда, даже на первом в жизни
+            // плагине. Заодно недораспакованное больше не мелькнёт в списке.
+            if (folder.getName().startsWith(STAGING)) {
+                continue;
+            }
             final Plugin plugin = read(folder);
             if (plugin != null) {
                 found.add(plugin);
@@ -180,7 +193,7 @@ public class MargeletPlugins {
     public static Plugin stage(Context context, InputStream source) {
         File folder = null;
         try {
-            folder = new File(root(), "tmp_" + System.currentTimeMillis());
+            folder = new File(root(), STAGING + System.currentTimeMillis());
             folder.mkdirs();
             final ZipInputStream zip = new ZipInputStream(source);
             ZipEntry entry;
@@ -430,26 +443,21 @@ public class MargeletPlugins {
                 .setMessage(text)
                 .setPositiveButton(LocaleController.getString(existing != null
                         ? R.string.MargeletPluginUpdateOk : R.string.MargeletPluginInstallOk), (d, w) -> {
-                    commit(staged[0]);
-                    staged[0] = null;
-                    if (whenInstalled != null) {
-                        whenInstalled.run();
-                    }
-                })
-                .setNeutralButton(LocaleController.getString(R.string.MargeletPluginInstallAndRun), (d, w) -> {
-                    // Поставить, включить и перезапуститься: без перезапуска
-                    // плагин всё равно не поднимется, и человеку пришлось бы
-                    // закрывать телеграм руками.
-                    startNow[0] = true;
                     final Plugin ready = commit(staged[0]);
                     staged[0] = null;
-                    if (ready != null) {
+                    // Включение перезапуска не требует: поднять плагин можно
+                    // прямо сейчас. Перезапуск нужен обратному — выключить уже
+                    // работающий питон нечем, — и просят о нём там, где
+                    // выключают, а не здесь.
+                    if (startNow[0] && ready != null) {
                         MargeletConfig.setPluginEnabled(ready.id, true);
+                        if (MargeletConfig.pluginsEnabled()) {
+                            MargeletPluginHost.launch(ready);
+                        }
                     }
                     if (whenInstalled != null) {
                         whenInstalled.run();
                     }
-                    restart(context);
                 })
                 .setNegativeButton(LocaleController.getString(R.string.Cancel), null)
                 // Отказ бывает и кнопкой «назад» — распакованное не должно
@@ -458,6 +466,26 @@ public class MargeletPlugins {
                     discard(staged[0]);
                     staged[0] = null;
                 });
+        // Галочка «включить сразу». Раньше это была третья кнопка, и окно из-за
+        // неё читалось как выбор между двумя установками, хотя установка одна,
+        // а решается тут только одно: запускать ли сейчас.
+        //
+        // Снята по умолчанию нарочно. Прямо над ней написано, что плагин может
+        // всё, что может приложение; поставить галочку — одно движение, а
+        // «поставилось и сразу побежало» на плагине, который человек видит
+        // впервые, отменить уже нечем.
+        final CheckBoxCell enableCell = new CheckBoxCell(context, 1, null);
+        enableCell.allowMultiline();
+        enableCell.setBackgroundDrawable(Theme.getSelectorDrawable(false));
+        enableCell.setText(LocaleController.getString(R.string.MargeletPluginEnableAfter), "", false, false);
+        enableCell.setPadding(LocaleController.isRTL ? AndroidUtilities.dp(16) : AndroidUtilities.dp(8), 0,
+                LocaleController.isRTL ? AndroidUtilities.dp(8) : AndroidUtilities.dp(16), 0);
+        enableCell.setOnClickListener(v -> {
+            startNow[0] = !startNow[0];
+            ((CheckBoxCell) v).setChecked(startNow[0], true);
+        });
+        builder.setView(enableCell);
+
         // Значок автора, если он его положил: по названию не всегда понятно,
         // что именно тебе предлагают поставить.
         final Bitmap icon = plugin.icon();

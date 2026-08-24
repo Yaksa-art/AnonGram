@@ -1,7 +1,7 @@
 {
-  "version": "0.3",
+  "version": "0.3.1",
   "apk": "https://github.com/narezany/margelet/raw/apk/margelet.apk",
-  "about": "Plugins get named events, a settings screen of their own and a line in the chat menu; a plugin can now require a minimum Margelet version.",
-  "about_ru": "У плагинов появились названные события, свой экран настроек и строчка в меню чата; плагин теперь может требовать минимальную версию Margelet.",
-  "about_zh": "插件获得了具名事件、属于自己的设置界面和聊天菜单里的一行；插件现在可以要求最低的 Margelet 版本。"
+  "about": "Fixes: the install dialog no longer claims every plugin is already installed; enabling a plugin needs no restart, disabling asks for one; a button in a photo caption now responds along its whole width.",
+  "about_ru": "Починено: окно установки больше не говорит «уже стоит» про каждый плагин; включение плагина обходится без перезапуска, а выключение о нём просит; кнопка в подписи к картинке нажимается по всей ширине.",
+  "about_zh": "修复：安装窗口不再对每个插件都说「已经装过」；启用插件无需重启，关闭插件才会询问；图片说明里的按钮现在整条都可以点。"
 }

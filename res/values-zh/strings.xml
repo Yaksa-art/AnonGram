@@ -172,6 +172,11 @@
     <string name="MargeletPluginsRestart">重启 Margelet</string>
     <string name="MargeletPluginsRestartAbout">插件只在应用启动时加载，而被关闭的插件会一直运行到下次启动：没有办法停止已在运行的代码。因此开关插件都需要重启。</string>
     <string name="MargeletPluginNoSettings">这个插件没有可设置的项目。</string>
+    <string name="MargeletPluginEnableAfter">安装后立即启用</string>
+    <string name="MargeletPluginLibrary">插件库</string>
+    <string name="MargeletFeedback">反馈</string>
+    <string name="MargeletFeedbackInfo">给我们写信</string>
+    <string name="MargeletLater">稍后</string>
     <string name="MargeletPluginSettings">插件设置</string>
     <string name="MargeletPluginInstallWarn">下面的权限只是作者的说法，应用不会核实。插件技术上什么都能做。请确认它没有病毒：代码是公开的，你可以读。</string>
     <string name="MargeletPluginDeclares">作者声明：</string>

@@ -88,7 +88,7 @@ public class MargeletPluginsActivity extends UniversalFragment {
         items.add(UItem.asButton(ID_CONSOLE, LocaleController.getString(R.string.MargeletPluginConsole)));
         items.add(UItem.asShadow(null));
         items.add(UItem.asButton(ID_DOCS, LocaleController.getString(R.string.MargeletPluginDocs)));
-        items.add(UItem.asButton(ID_FORUM, LocaleController.getString(R.string.MargeletForum)));
+        items.add(UItem.asButton(ID_FORUM, LocaleController.getString(R.string.MargeletPluginLibrary)));
         items.add(UItem.asShadow(null));
     }
 
@@ -179,12 +179,20 @@ public class MargeletPluginsActivity extends UniversalFragment {
         MargeletConfig.setPluginEnabled(plugin.id, on);
         listView.adapter.update(true);
         if (on && MargeletConfig.pluginsEnabled()) {
+            // Включение перезапуска не требует: плагин поднимается сразу.
             MargeletPluginHost.launch(plugin);
         } else if (!on) {
-            // Остановить уже работающий питоновский код нечем, и делать вид,
-            // что галочка его убила, нельзя.
-            BulletinFactory.of(this).createSimpleBulletin(R.raw.info,
-                    LocaleController.getString(R.string.MargeletPluginStopHint)).show();
+            // А вот выключение — требует. Остановить уже работающий питон
+            // нечем, и делать вид, что галочка его убила, нельзя. Раньше здесь
+            // была подсказка внизу экрана: она честно об этом говорила, но
+            // человеку оставалось закрывать телеграм самому. Спрашиваем прямо.
+            new AlertDialog.Builder(getContext())
+                    .setTitle(plugin.name)
+                    .setMessage(LocaleController.getString(R.string.MargeletPluginStopHint))
+                    .setPositiveButton(LocaleController.getString(R.string.MargeletPluginsRestart),
+                            (d, w) -> MargeletPlugins.restart(getParentActivity()))
+                    .setNegativeButton(LocaleController.getString(R.string.MargeletLater), null)
+                    .show();
         }
     }
 

@@ -27,7 +27,7 @@ public class MargeletConfig {
      * Забыть про него значит выпустить сборку, которая всю жизнь будет
      * предлагать обновиться сама на себя.
      */
-    public static final String APP_VERSION = "0.3";
+    public static final String APP_VERSION = "0.3.1";
 
     /**
      * Как часто спрашивать гитхаб про новую версию, в минутах. Ноль — не
@@ -73,6 +73,12 @@ public class MargeletConfig {
 
     public static final String SOURCE_URL = "https://github.com/narezany/Margelet";
     public static final String FORUM_URL = "https://t.me/margeletforum";
+    /**
+     * Написать нам. Это тот же канал, но с ?direct: телеграм открывает не
+     * ленту, а поле для сообщения — человек с жалобой не должен искать, куда
+     * её деть.
+     */
+    public static final String FEEDBACK_URL = "https://t.me/margeletter?direct";
     /**
      * Документация по плагинам. Ведёт на файл в репозитории, а не на страницу
      * сайта: страницы гитхаба у репозитория не включены, а ссылка на

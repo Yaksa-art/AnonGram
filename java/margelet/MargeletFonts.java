@@ -267,22 +267,61 @@ public class MargeletFonts {
         } catch (Throwable ignored) {
         }
 
-        // С двадцать девятого андроида имена семейств ищутся здесь.
+        // Имена семейств — «sans-serif», «monospace» и прочие. Через них шрифт
+        // приходит из вёрстки: android:fontFamily в разметке экрана и любой
+        // Typeface.create по имени. Пока эта карта не подменена, такие места
+        // остаются с системным шрифтом, и выглядит это как «шрифт применился
+        // не везде».
+        //
+        // Поле у этой карты называется по-разному в разных версиях андроида, и
+        // на старых её нет вовсе. Поэтому не угадываем одно имя, а пробуем все
+        // known и берём то, что и правда оказалось картой имён на шрифты.
+        // Промах здесь ничего не стоит: не нашли — остались как были.
+        for (String name : new String[]{"sSystemFontMap", "sSystemFallbackMap", "sTypefaceCache"}) {
+            poison(name, regular, bold != null ? bold : regular);
+        }
+    }
+
+    /** Подменяет карту «имя семейства → шрифт», если такая под этим именем есть. */
+    private static void poison(String fieldName, Typeface regular, Typeface bold) {
         try {
-            final java.lang.reflect.Field field = Typeface.class.getDeclaredField("sSystemFontMap");
+            final java.lang.reflect.Field field = Typeface.class.getDeclaredField(fieldName);
             field.setAccessible(true);
             final Object value = field.get(null);
-            if (value instanceof Map) {
-                @SuppressWarnings("unchecked")
-                final Map<String, Typeface> map = (Map<String, Typeface>) value;
-                for (String family : new String[]{"sans-serif", "sans-serif-medium",
-                        "sans-serif-light", "sans-serif-thin", "sans-serif-condensed",
-                        "serif", "monospace", "normal", "default"}) {
-                    try {
-                        map.put(family, regular);
-                    } catch (Throwable ignored) {
-                    }
-                }
+            if (!(value instanceof Map)) {
+                return;
+            }
+            @SuppressWarnings("unchecked")
+            final Map<String, Object> map = (Map<String, Object>) value;
+            // Полужирные имена ведут на полужирный: подменить их обычным
+            // начертанием значит развалить заголовки, которые в вёрстке
+            // просят именно medium.
+            final String[] plain = {"sans-serif", "sans-serif-light", "sans-serif-thin",
+                    "sans-serif-condensed", "serif", "monospace", "normal", "default", "roboto"};
+            final String[] heavy = {"sans-serif-medium", "sans-serif-black", "roboto-medium"};
+            for (String family : plain) {
+                replaceEntry(map, family, regular);
+            }
+            for (String family : heavy) {
+                replaceEntry(map, family, bold);
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /**
+     * Кладёт шрифт в карту только туда, где уже лежал шрифт.
+     *
+     * Проверка не лишняя: под теми же именами в разных версиях андроида лежат
+     * не Typeface, а внутренние объекты семейств. Положить туда Typeface —
+     * значит уронить приложение при первой же отрисовке, причём не у себя, а
+     * на чужой версии андроида, которой у меня нет.
+     */
+    private static void replaceEntry(Map<String, Object> map, String key, Typeface value) {
+        try {
+            final Object was = map.get(key);
+            if (was instanceof Typeface) {
+                map.put(key, value);
             }
         } catch (Throwable ignored) {
         }
