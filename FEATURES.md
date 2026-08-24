@@ -118,7 +118,14 @@ messageEditText.setTextSize(TypedValue.COMPLEX_UNIT_DIP, MargeletConfig.inputTex
 `ImageSpan` во всю длину, то есть слово было, но его не было видно. Спан убран.
 
 Ещё один логотип живёт в `IntroActivity` (`R.drawable.telegram_logo`) — это
-самолётик на экране до входа, пока не тронут.
+слово «Telegram» на экране до входа. Заменён на `MargeletWordmark(26)`.
+
+**5.4. Сплэш-экран (Android 12+).** `res/values-v31/styles.xml`,
+`android:windowSplashScreenAnimatedIcon`. На Android 12 и новее система
+показывает анимированную иконку при запуске приложения. Телеграм указывает
+`@drawable/tg_splash_320` — анимированный самолётик на синем круге. Заменено
+на `@mipmap/margelet_foreground` — самолётик Margelet. Без этой замены при
+каждом запуске клиента мелькает телеграмовский логотип.
 
 ## 6. Мяуканье
 
