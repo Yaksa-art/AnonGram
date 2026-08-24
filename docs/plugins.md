@@ -92,6 +92,10 @@ The `margelet` object is available without an import:
 | `margelet.flag(key, fallback=False)` | read a switch from the settings screen as yes/no |
 | `margelet.background(call)` | do something slow away from the screen |
 | `margelet.send(chat, text)` | send a message to a chat |
+| `margelet.fetch(url, call)` | go to the network and call `call(text)`; `None` if it failed |
+| `margelet.activity()` | the app's current screen |
+| `margelet.window(title, view)` | show your own window in the app's own dressing |
+| `margelet.color(0xFFRRGGBB)` | a colour in the form Android understands |
 
 `get` and `set` survive both a restart and an update of the plugin itself:
 they are not kept in the plugin's folder, which is replaced on update.
@@ -271,6 +275,48 @@ on and off.
 The declaration is kept together with the plugin's memory rather than in RAM,
 so the settings screen opens for a disabled plugin too: you may want to fix a
 setting before turning it on.
+
+## Three traps at the Android boundary
+
+None of this is theory: all three came up while writing the games plugin, and
+each cost a separate round.
+
+**A colour is a signed number.** In Java a colour is a signed 32-bit integer,
+and everything opaque is negative in it. Python treats `0xFFFFFFFF` as just a
+large number, and the bridge into Java refuses to convert it:
+
+```
+OverflowError: value too large to convert to int32_t
+```
+
+So a colour has to be folded:
+
+```python
+def argb(value):
+    return value - 0x100000000 if value > 0x7FFFFFFF else value
+
+view.setTextColor(argb(0xFFFFFFFF))
+```
+
+This throws on the very first colour, so nothing appears at all — and it looks
+exactly like "the plugin did not start".
+
+**A Python list is not a Java array.** If a method wants an array, a list will
+not do:
+
+```python
+from java import jarray
+from java.lang import CharSequence
+
+titles = jarray(CharSequence)(["First", "Second"])
+```
+
+**Touch the screen only from the main thread.** The `on_send` event is already
+on it; a button on the settings screen is not. From there any window has to be
+opened through `margelet.ui`, or nothing opens.
+
+Errors like these are visible only in the console: Settings → Margelet →
+Plugins → Console. It has both the line and the reason.
 
 ## What else is available
 

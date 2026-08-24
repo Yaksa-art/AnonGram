@@ -13,10 +13,13 @@
     <string name="MargeletConveniencesInfo">分支频道置顶、音乐标签、发作模式</string>
     <string name="MargeletUpdates">更新</string>
     <string name="MargeletUpdatesInfo">多久查找一次新版本</string>
-    <string name="MargeletUpdatesHeader">检查更新</string>
+    <string name="MargeletUpdatesHeader">检查更新与徽章</string>
     <string name="MargeletUpdatesOff">从不</string>
-    <string name="MargeletUpdatesAbout">应用会向 GitHub 询问是否有更新的版本，并在聊天列表底部用横条提示。它不会自行下载或安装。</string>
+    <string name="MargeletUpdatesAbout">应用会去 GitHub 问有没有更新的版本、徽章列表有没有变化。新版本会在聊天列表底部用一条横幅提示；应用不会自行下载或安装。</string>
     <string name="MargeletUpdatesNow">立即检查</string>
+    <string name="MargeletUpdatesDownload">下载并安装</string>
+    <string name="MargeletUpdatesInstall">安装</string>
+    <string name="MargeletUpdatesFailed">无法下载更新</string>
     <string name="MargeletUpdatesLatest">已是最新版本</string>
     <string name="MargeletUpdatesFound">新版本 %1$s 已发布</string>
     <string name="MargeletUpdatesCurrent">已安装：%1$s</string>

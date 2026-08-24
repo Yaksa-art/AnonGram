@@ -477,6 +477,33 @@ public class MargeletMarkup {
                         run.start, run.end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
                 continue;
             }
+            if (run.kind == KIND_OUTLINE) {
+                // Обводку вешаем по одному слову, а не на весь кусок целиком.
+                //
+                // Рисуется она отдельным куском разметки, а такой кусок для
+                // переноса неделим: андроид переносит строку между кусками, но
+                // не внутри. Поэтому обводка на длинной фразе оставалась одной
+                // неразрывной строкой и вылезала за пузырь — в отличие от
+                // размера и остальных, которые переносятся сами.
+                //
+                // Разбив по словам, мы возвращаем переносу его обычные места:
+                // пробелы. Выглядит так же, ведёт себя как обычный текст.
+                int i = run.start;
+                while (i < run.end) {
+                    while (i < run.end && Character.isWhitespace(text.charAt(i))) {
+                        i++;
+                    }
+                    final int word = i;
+                    while (i < run.end && !Character.isWhitespace(text.charAt(i))) {
+                        i++;
+                    }
+                    if (i > word) {
+                        text.setSpan(new MargeletSpans.Outline(run.value), word, i,
+                                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                    }
+                }
+                continue;
+            }
             if (run.kind == KIND_EMOJI) {
                 try {
                     final long id = Long.parseLong(run.text());

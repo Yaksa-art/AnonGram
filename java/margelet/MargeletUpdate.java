@@ -75,6 +75,15 @@ public class MargeletUpdate {
      * Ответ всегда кладётся в кэш, поэтому даже неудачная проверка не делает
      * хуже: показывается то, что знали раньше.
      */
+    /**
+     * Проверка и версии, и значков разом. Для человека это одно действие:
+     * «посмотри, не появилось ли нового».
+     */
+    public static void checkAll(Runnable done) {
+        MargeletBadge.refresh();
+        check(done);
+    }
+
     public static void check(Runnable done) {
         lastCheck = System.currentTimeMillis();
         MargeletRemote.fetch(FILE, CACHE_KEY, text -> {
@@ -121,6 +130,11 @@ public class MargeletUpdate {
                 }
                 check(() -> org.telegram.messenger.NotificationCenter.getGlobalInstance()
                         .postNotificationName(org.telegram.messenger.NotificationCenter.appUpdateAvailable));
+                // Заодно перечитываем значки. Раньше они читались только при
+                // запуске приложения, и у того, кто держит телеграм открытым
+                // сутками, новый значок не появлялся вовсе — ровно та же
+                // беда, из-за которой здесь и завелось расписание.
+                MargeletBadge.refresh();
                 AndroidUtilities.runOnUIThread(this, delay);
             }
         };

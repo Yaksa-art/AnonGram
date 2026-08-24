@@ -88,6 +88,10 @@ def on_start():
 | `margelet.flag(键, 默认=False)` | 把设置界面上的开关读成是/否 |
 | `margelet.background(调用)` | 把耗时的活儿放到屏幕之外去做 |
 | `margelet.send(聊天, 文本)` | 往聊天里发一条消息 |
+| `margelet.fetch(地址, 调用)` | 访问网络并调用 `调用(文本)`；失败时给 `None` |
+| `margelet.activity()` | 应用当前的界面 |
+| `margelet.window(标题, 视图)` | 用应用自己的外观显示你的窗口 |
+| `margelet.color(0xFFRRGGBB)` | 安卓所理解的那种颜色 |
 
 `get` 与 `set` 既能挺过重启，也能挺过插件自身的更新：它们不放在插件目录里，
 而目录在更新时会被替换。
@@ -254,6 +258,44 @@ def forget():
 
 这份声明和插件的记忆存在一起，而不是留在内存里，所以关着的插件也能打开设置
 界面：有时正是要先把设置改好，再打开插件。
+
+## 与安卓交界处的三个坑
+
+这些都不是理论：三个坑都是写游戏插件时踩出来的，每个都花了一轮。
+
+**颜色是有符号的数。** 在 java 里颜色是有符号的 32 位整数，凡是不透明的在
+其中都是负数。Python 把 `0xFFFFFFFF` 当成一个很大的数，通往 java 的桥拒绝
+转换它：
+
+```
+OverflowError: value too large to convert to int32_t
+```
+
+所以颜色要折算：
+
+```python
+def argb(value):
+    return value - 0x100000000 if value > 0x7FFFFFFF else value
+
+view.setTextColor(argb(0xFFFFFFFF))
+```
+
+它在第一个颜色上就抛错，于是界面根本不出现——看上去和「插件没启动」一模一样。
+
+**Python 的列表不是 java 的数组。** 方法要数组的时候，列表不行：
+
+```python
+from java import jarray
+from java.lang import CharSequence
+
+titles = jarray(CharSequence)(["第一", "第二"])
+```
+
+**碰屏幕只能在主线程上。** `on_send` 事件本来就在主线程；设置界面上的按钮
+不是。从那里打开任何窗口都要经过 `margelet.ui`，否则什么也打不开。
+
+这类错误只在控制台里看得见：设置 → Margelet → 插件 → 控制台。那里有出错的
+行，也有原因。
 
 ## 除此之外还能用什么
 

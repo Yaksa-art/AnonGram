@@ -216,17 +216,31 @@ public class MargeletSpans {
             return value;
         }
 
+        /**
+         * Толщина обводки. Считается в одном месте, потому что от неё зависит
+         * и то, сколько кусок занимает, и то, где он рисуется. Разойдись эти
+         * два числа — обводка полезет за края.
+         */
+        static float stroke(Paint paint) {
+            return Math.max(1.5f, paint.getTextSize() / 7f);
+        }
+
         @Override
         public int getSize(@NonNull Paint paint, CharSequence text, int start, int end,
                            Paint.FontMetricsInt fm) {
+            final float extra = stroke(paint);
             if (fm != null) {
                 final Paint.FontMetricsInt metrics = paint.getFontMetricsInt();
-                fm.ascent = metrics.ascent;
-                fm.descent = metrics.descent;
-                fm.top = metrics.top;
-                fm.bottom = metrics.bottom;
+                // Обводка выходит за буквы во все стороны на половину своей
+                // толщины. Не сказать об этом — значит нарисовать поверх
+                // соседней строки и за границей пузыря.
+                final int pad = Math.round(extra / 2f);
+                fm.ascent = metrics.ascent - pad;
+                fm.descent = metrics.descent + pad;
+                fm.top = metrics.top - pad;
+                fm.bottom = metrics.bottom + pad;
             }
-            return Math.round(paint.measureText(text, start, end));
+            return Math.round(paint.measureText(text, start, end) + extra);
         }
 
         @Override
@@ -236,18 +250,22 @@ public class MargeletSpans {
             final Paint.Style style = paint.getStyle();
             final float width = paint.getStrokeWidth();
             try {
+                final float extra = stroke(paint);
+                // Сдвиг на половину толщины: место мы попросили с запасом с
+                // обеих сторон, значит и буквы ставим в середину этого места.
+                final float left = x + extra / 2f;
                 paint.setStyle(Paint.Style.STROKE);
                 // Толщина от размера букв: постоянная съедала бы мелкий текст
                 // и терялась бы на крупном. Половину её закроет заливка,
                 // поэтому берём с запасом.
-                paint.setStrokeWidth(Math.max(1.5f, paint.getTextSize() / 7f));
+                paint.setStrokeWidth(extra);
                 paint.setStrokeJoin(Paint.Join.ROUND);
                 paint.setColor(original);
-                canvas.drawText(text, start, end, x, y, paint);
+                canvas.drawText(text, start, end, left, y, paint);
 
                 paint.setStyle(Paint.Style.FILL);
                 paint.setColor(inverted(original));
-                canvas.drawText(text, start, end, x, y, paint);
+                canvas.drawText(text, start, end, left, y, paint);
             } finally {
                 paint.setStyle(style);
                 paint.setStrokeWidth(width);

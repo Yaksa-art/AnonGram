@@ -20,6 +20,7 @@ from java.lang import Runnable
 
 _Host = jclass("org.telegram.margelet.MargeletPluginHost")
 _Hooks = jclass("org.telegram.margelet.MargeletHooks")
+_Fetch = jclass("org.telegram.margelet.MargeletHooks$FetchCallback")
 _Android = jclass("org.telegram.messenger.AndroidUtilities")
 
 # Ответ, по которому приложение понимает «не отправляй это сообщение».
@@ -173,6 +174,48 @@ class Margelet:
         """
         self._cancel_send = True
         return False
+
+    def fetch(self, url, then):
+        """Сходить в сеть и позвать then(текст). Экран при этом не замирает.
+
+        Не получилось — придёт None. Это не ошибка плагина: сети может не
+        быть, и обрабатывать это должен сам плагин.
+
+        Писать то же самое через background и urllib длиннее, и потому здесь
+        есть этот способ: правильный путь должен быть короче неправильного.
+        """
+        name = self.name
+
+        class Answer(dynamic_proxy(_Fetch)):
+            def onResult(self, text):
+                try:
+                    then(text)
+                except Exception:
+                    _Host.log(name, traceback.format_exc(), True)
+
+        _Hooks.fetch(str(url), Answer())
+
+    def activity(self):
+        """Текущий экран приложения. Нужен, чтобы строить свои виды."""
+        return _Hooks.activity()
+
+    def window(self, title, view):
+        """Показать окно с тем, что плагин собрал сам.
+
+        Заголовок, кнопку «Закрыть» и тему берёт на себя приложение, поэтому
+        окно плагина выглядит как окно приложения.
+        """
+        _Hooks.window(str(title), view)
+
+    def color(self, argb):
+        """Цвет для андроида.
+
+        В java цвет — знаковое 32-битное число, и всё непрозрачное в нём
+        отрицательное. Питон считает 0xFFFFFFFF просто большим числом, и мост
+        отказывается его превращать — «value too large to convert to int32_t».
+        Падает это на первом же цвете, то есть не появляется вообще ничего.
+        """
+        return _Hooks.color(int(argb))
 
     def flag(self, key, fallback=False):
         """Прочитать переключатель с экрана настроек как да/нет."""

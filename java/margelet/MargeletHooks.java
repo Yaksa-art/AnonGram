@@ -271,6 +271,114 @@ public class MargeletHooks {
         });
     }
 
+    // --- сеть и экран ---
+
+    /**
+     * Запрос в сеть, который не может подвесить приложение.
+     *
+     * Оба первых плагина не от нас писали запрос руками и оба вешали экран:
+     * питон ходит в сеть мимо джавы, поэтому обычная андроидовская защита
+     * молчит, и подвисание выглядит как «просто тормозит». Дать замену мало —
+     * надо, чтобы правильный путь был короче неправильного. Отсюда этот метод:
+     * писать его через background и urllib длиннее, чем позвать отсюда.
+     *
+     * Ответ отдаётся в главный поток. Не получилось — отдаётся null, и это
+     * не ошибка плагина: сети может не быть.
+     */
+    public static void fetch(String url, FetchCallback callback) {
+        final Thread worker = new Thread(() -> {
+            String result = null;
+            java.net.HttpURLConnection connection = null;
+            try {
+                connection = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+                connection.setConnectTimeout(15000);
+                connection.setReadTimeout(15000);
+                connection.setRequestProperty("User-Agent", MargeletConfig.APP_NAME);
+                if (connection.getResponseCode() == 200) {
+                    try (java.io.InputStream in = connection.getInputStream()) {
+                        final java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+                        final byte[] buffer = new byte[8192];
+                        int read;
+                        // Полтора мегабайта — потолок. Плагину, которому нужно
+                        // больше, нужен не этот метод, а своя работа в фоне.
+                        while ((read = in.read(buffer)) > 0 && out.size() <= 1536 * 1024) {
+                            out.write(buffer, 0, read);
+                        }
+                        result = out.toString("UTF-8");
+                    }
+                }
+            } catch (Throwable t) {
+                FileLog.e(t);
+            } finally {
+                if (connection != null) {
+                    connection.disconnect();
+                }
+            }
+            final String delivered = result;
+            AndroidUtilities.runOnUIThread(() -> {
+                try {
+                    callback.onResult(delivered);
+                } catch (Throwable t) {
+                    FileLog.e(t);
+                }
+            });
+        }, "margelet-plugin-fetch");
+        worker.setDaemon(true);
+        worker.start();
+    }
+
+    /** Ответ на запрос. Зовётся в главном потоке; text — null, если не вышло. */
+    public interface FetchCallback {
+        void onResult(String text);
+    }
+
+    /**
+     * Текущий экран приложения.
+     *
+     * Без него плагин, которому нужно что-нибудь показать, лезет во внутренние
+     * поля приложения по имени — как пришлось делать мне же в плагине с
+     * играми. Пусть лучше будет названный способ.
+     */
+    public static android.app.Activity activity() {
+        try {
+            return org.telegram.ui.LaunchActivity.instance;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /**
+     * Показать окно с тем, что плагин собрал сам.
+     *
+     * Рамку — заголовок, кнопку «Закрыть», тему — берёт на себя приложение,
+     * поэтому окно плагина выглядит как окно приложения, а не как чужая
+     * вставка.
+     */
+    public static void window(String title, android.view.View view) {
+        AndroidUtilities.runOnUIThread(() -> {
+            final android.app.Activity activity = activity();
+            if (activity == null || view == null) {
+                return;
+            }
+            try {
+                new org.telegram.ui.ActionBar.AlertDialog.Builder(activity)
+                        .setTitle(title)
+                        .setView(view)
+                        .setNegativeButton(org.telegram.messenger.LocaleController
+                                .getString(org.telegram.messenger.R.string.Close), null)
+                        .show();
+            } catch (Throwable t) {
+                FileLog.e(t);
+                MargeletPluginHost.log("margelet", "окно не открылось: " + t, true);
+            }
+        });
+    }
+
+    /** Цвет для андроида: там он знаковый, а из питона приходит без знака. */
+    public static int color(long argb) {
+        return (int) argb;
+    }
+
     // --- настройки плагина ---
 
     /**

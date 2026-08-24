@@ -3,6 +3,7 @@ package org.telegram.ui;
 import android.view.View;
 
 import org.telegram.margelet.MargeletConfig;
+import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.margelet.MargeletUpdate;
 import org.telegram.messenger.BuildVars;
 import org.telegram.messenger.LocaleController;
@@ -89,19 +90,75 @@ public class MargeletUpdatesActivity extends UniversalFragment {
      * попросил — значит спрашиваем.
      */
     private void checkNow() {
-        MargeletUpdate.check(() -> {
+        // Проверяем разом и версию, и значки: для человека это одно действие.
+        MargeletUpdate.checkAll(() -> {
             if (getContext() == null) {
                 return;
             }
             final MargeletUpdate.Info info = MargeletUpdate.available();
             if (info != null) {
-                BulletinFactory.of(this).createSimpleBulletin(R.raw.chats_infotip,
-                        LocaleController.formatString(R.string.MargeletUpdatesFound, info.version)).show();
                 NotificationCenter.getGlobalInstance()
                         .postNotificationName(NotificationCenter.appUpdateAvailable);
+                offer(info);
             } else {
                 BulletinFactory.of(this).createSimpleBulletin(R.raw.chats_infotip,
                         LocaleController.getString(R.string.MargeletUpdatesLatest)).show();
+            }
+        });
+    }
+
+    /**
+     * Окно с найденной версией и кнопкой, которая её ставит.
+     *
+     * Раньше здесь была подсказка внизу экрана: «вышла версия новее» — и всё.
+     * Человек нажал «проверить», узнал, что обновление есть, и остался с этим
+     * знанием наедине: ни скачать, ни поставить отсюда было нельзя. Сообщать
+     * о работе, которую сам же и не даёшь сделать, — худший вид вежливости.
+     */
+    private void offer(MargeletUpdate.Info info) {
+        final StringBuilder text = new StringBuilder();
+        final String about = info.about();
+        if (about != null && about.length() > 0) {
+            text.append(about);
+        }
+        final AlertDialog.Builder builder = new AlertDialog.Builder(getContext())
+                .setTitle(LocaleController.formatString(R.string.MargeletUpdatesFound, info.version))
+                .setMessage(text.length() > 0 ? text.toString()
+                        : LocaleController.getString(R.string.MargeletUpdatesAbout))
+                .setNegativeButton(LocaleController.getString(R.string.MargeletLater), null);
+        if (MargeletUpdate.downloaded() != null) {
+            // Уже скачано — второй раз качать незачем.
+            builder.setPositiveButton(LocaleController.getString(R.string.MargeletUpdatesInstall),
+                    (d, w) -> MargeletUpdate.install(getParentActivity()));
+        } else {
+            builder.setPositiveButton(LocaleController.getString(R.string.MargeletUpdatesDownload),
+                    (d, w) -> startDownload());
+        }
+        builder.show();
+    }
+
+    /**
+     * Качает и показывает, сколько уже. Без этого длинная закачка выглядит
+     * так же, как ничего не происходящее нажатие.
+     */
+    private void startDownload() {
+        final AlertDialog progress = new AlertDialog(getContext(), AlertDialog.ALERT_TYPE_LOADING);
+        progress.setCanCancel(true);
+        progress.setOnCancelListener(d -> MargeletUpdate.cancel());
+        progress.show();
+        MargeletUpdate.download(() -> {
+            if (MargeletUpdate.downloading()) {
+                return;
+            }
+            progress.dismiss();
+            if (getContext() == null) {
+                return;
+            }
+            if (MargeletUpdate.downloaded() != null) {
+                MargeletUpdate.install(getParentActivity());
+            } else {
+                BulletinFactory.of(this).createSimpleBulletin(R.raw.error,
+                        LocaleController.getString(R.string.MargeletUpdatesFailed)).show();
             }
         });
     }
