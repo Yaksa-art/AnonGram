@@ -22,8 +22,10 @@ import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 
+import org.telegram.margelet.MargeletHooks;
 import org.telegram.margelet.MargeletPlugins;
 import org.telegram.messenger.LocaleController;
+import org.telegram.messenger.R;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.RecyclerListView;
@@ -51,6 +53,7 @@ public class MargeletPluginCell extends FrameLayout implements Theme.Colorable {
     private final ImageView iconView;
     private final TextView titleView;
     private final TextView subtitleView;
+    private final ImageView gearView;
     private final Switch switchView;
 
     public MargeletPluginCell(Context context, Theme.ResourcesProvider resourcesProvider) {
@@ -80,6 +83,16 @@ public class MargeletPluginCell extends FrameLayout implements Theme.Colorable {
                 (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP,
                 LocaleController.isRTL ? 74 : 70, 33, LocaleController.isRTL ? 70 : 74, 0));
 
+        // Шестерёнка стоит там, куда и надо нажать, чтобы открыть настройки:
+        // левее переключателя. Без неё человеку неоткуда узнать, что у
+        // плагина вообще есть что настраивать.
+        gearView = new ImageView(context);
+        gearView.setScaleType(ImageView.ScaleType.CENTER);
+        gearView.setImageResource(R.drawable.msg_settings_old);
+        addView(gearView, LayoutHelper.createFrame(24, 24,
+                (LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT) | Gravity.CENTER_VERTICAL,
+                LocaleController.isRTL ? 68 : 20, 0, LocaleController.isRTL ? 20 : 68, 0));
+
         switchView = new Switch(context, resourcesProvider);
         switchView.setColors(Theme.key_switchTrack, Theme.key_switchTrackChecked,
                 Theme.key_windowBackgroundWhite, Theme.key_windowBackgroundWhite);
@@ -94,6 +107,9 @@ public class MargeletPluginCell extends FrameLayout implements Theme.Colorable {
     public void updateColors() {
         titleView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
         subtitleView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText2));
+        gearView.setColorFilter(new android.graphics.PorterDuffColorFilter(
+                Theme.getColor(Theme.key_windowBackgroundWhiteGrayIcon),
+                android.graphics.PorterDuff.Mode.SRC_IN));
     }
 
     public void set(MargeletPlugins.Plugin plugin, boolean checked, boolean animated) {
@@ -103,6 +119,7 @@ public class MargeletPluginCell extends FrameLayout implements Theme.Colorable {
         iconView.setImageDrawable(icon != null
                 ? new Rounded(icon)
                 : new Letter(plugin.name, COLORS[Math.abs(plugin.id.hashCode()) % COLORS.length]));
+        gearView.setVisibility(MargeletHooks.hasSettings(plugin.id) ? VISIBLE : GONE);
         switchView.setChecked(checked, animated);
     }
 

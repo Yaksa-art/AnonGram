@@ -30,10 +30,10 @@ index 7cc3a8e3..533927ca 100644
              buildConfigField "String", "APP_CENTER_HASH", "\"\""
              buildConfigField "String", "BETA_URL", "\"" + getProps("BETA_PRIVATE_URL") + "\""
 diff --git a/TMessagesProj/proguard-rules.pro b/TMessagesProj/proguard-rules.pro
-index aeab02b2..f3fb03ca 100644
+index aeab02b2..14398614 100644
 --- a/TMessagesProj/proguard-rules.pro
 +++ b/TMessagesProj/proguard-rules.pro
-@@ -111,6 +111,14 @@
+@@ -111,6 +111,18 @@
  -keep class ru.noties.jlatexmath.** { *; }
  -dontwarn org.scilab.forge.jlatexmath.**
  
@@ -42,6 +42,10 @@ index aeab02b2..f3fb03ca 100644
 +# сжимателя оба выглядят никому не нужными, и без этого он их выкинет.
 +-keep class org.telegram.margelet.MargeletPython { *; }
 +-keep class org.telegram.margelet.MargeletPluginHost { *; }
++# Питон зовёт эти методы по имени: сокращатель о таких вызовах не знает и
++# переименовал бы их, а узнали бы мы об этом только в собранной сборке.
++-keep class org.telegram.margelet.MargeletHooks { *; }
++-keep class org.telegram.margelet.MargeletHooks$Button { *; }
 +-keep class com.chaquo.python.** { *; }
 +-dontwarn com.chaquo.python.**
 +
@@ -726,7 +730,7 @@ index 00000000..a775cdbc
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
 new file mode 100644
-index 00000000..04918931
+index 00000000..02f3c12c
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
 @@ -0,0 +1,403 @@
@@ -759,7 +763,7 @@ index 00000000..04918931
 +     * Забыть про него значит выпустить сборку, которая всю жизнь будет
 +     * предлагать обновиться сама на себя.
 +     */
-+    public static final String APP_VERSION = "0.2.4";
++    public static final String APP_VERSION = "0.3";
 +
 +    /**
 +     * Как часто спрашивать гитхаб про новую версию, в минутах. Ноль — не
@@ -1954,6 +1958,89 @@ index 00000000..33ff716b
 +        }
 +    }
 +}
+diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletHooks.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletHooks.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..37b3533cf896e2d7248e0578741f8af9a8796f1e
+GIT binary patch
+literal 10655
+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
+
+literal 0
+HcmV?d00001
+
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletMarkup.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletMarkup.java
 new file mode 100644
 index 00000000..011c384c
@@ -2996,10 +3083,10 @@ index 00000000..545fca3f
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletPluginHost.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletPluginHost.java
 new file mode 100644
-index 00000000..dc5fee5a
+index 00000000..cfc704d6
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletPluginHost.java
-@@ -0,0 +1,226 @@
+@@ -0,0 +1,242 @@
 +package org.telegram.margelet;
 +
 +import android.content.Context;
@@ -3180,6 +3267,17 @@ index 00000000..dc5fee5a
 +        });
 +    }
 +
++    /**
++     * Отдать работу потоку плагинов. Если питон ещё не поднят, работы просто
++     * не будет: событие без слушателя — не повод будить одиннадцать мегабайт.
++     */
++    static void post(Runnable work) {
++        final Handler h = handler;
++        if (h != null) {
++            h.post(work);
++        }
++    }
++
 +    /** Короткое сообщение на экране. Зовётся из плагина. */
 +    public static void toast(String text) {
 +        AndroidUtilities.runOnUIThread(() -> {
@@ -3214,9 +3312,14 @@ index 00000000..dc5fee5a
 +        }
 +    }
 +
-+    private static void python(String method, Class<?>[] types, Object... args) throws Throwable {
++    static void python(String method, Class<?>[] types, Object... args) throws Throwable {
++        pythonValue(method, types, args);
++    }
++
++    /** То же самое, но с ответом: нужен там, где питона спрашивают, а не зовут. */
++    static Object pythonValue(String method, Class<?>[] types, Object... args) throws Throwable {
 +        try {
-+            Class.forName("org.telegram.margelet.MargeletPython")
++            return Class.forName("org.telegram.margelet.MargeletPython")
 +                    .getMethod(method, types)
 +                    .invoke(null, args);
 +        } catch (java.lang.reflect.InvocationTargetException e) {
@@ -3228,10 +3331,10 @@ index 00000000..dc5fee5a
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletPlugins.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletPlugins.java
 new file mode 100644
-index 00000000..77edfb7b
+index 00000000..dd1e8377
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletPlugins.java
-@@ -0,0 +1,435 @@
+@@ -0,0 +1,492 @@
 +package org.telegram.margelet;
 +
 +import android.content.Context;
@@ -3293,16 +3396,19 @@ index 00000000..77edfb7b
 +        public final String author;
 +        public final String description;
 +        public final List<String> permissions;
++        /** Какая версия форка нужна плагину. Пусто — любая. */
++        public final String minVersion;
 +        public final File folder;
 +
 +        Plugin(String id, String name, String version, String author, String description,
-+               List<String> permissions, File folder) {
++               List<String> permissions, String minVersion, File folder) {
 +            this.id = id;
 +            this.name = name;
 +            this.version = version;
 +            this.author = author;
 +            this.description = description;
 +            this.permissions = permissions;
++            this.minVersion = minVersion;
 +            this.folder = folder;
 +        }
 +
@@ -3380,6 +3486,7 @@ index 00000000..77edfb7b
 +                    json.optString("author", "?"),
 +                    localized(json, "description", ""),
 +                    permissions,
++                    json.optString("min_version", ""),
 +                    folder);
 +        } catch (Exception e) {
 +            FileLog.e(e);
@@ -3581,6 +3688,30 @@ index 00000000..77edfb7b
 +     * @param whenInstalled что сделать после установки; может быть null.
 +     * @return false, если это не плагин — тогда звать было не за чем.
 +     */
++    /**
++     * Хватает ли этой сборки форка для такого плагина.
++     *
++     * Автор пишет в манифесте `min_version`. Ставить плагин, которому нужны
++     * двери, которых в этой сборке ещё нет, — значит отдать человеку молча
++     * ничего не делающий плагин; он будет думать, что сломано у него.
++     */
++    public static boolean supported(Plugin plugin) {
++        if (plugin == null || plugin.minVersion == null || plugin.minVersion.isEmpty()) {
++            return true;
++        }
++        return !MargeletUpdate.newer(plugin.minVersion, MargeletConfig.APP_VERSION);
++    }
++
++    /**
++     * Перезапуск приложения: включённый плагин поднимается только на старте,
++     * а выключенный до перезапуска доживает — остановить работающий питон
++     * нечем. Раньше человеку приходилось убивать телеграм самому.
++     */
++    public static void restart(Context context) {
++        MargeletFonts.restart(context instanceof android.app.Activity
++                ? (android.app.Activity) context : null);
++    }
++
 +    public static boolean askInstall(Context context, InputStream source, Runnable whenInstalled) {
 +        final Plugin[] staged = { stage(context, source) };
 +        if (staged[0] == null) {
@@ -3598,6 +3729,20 @@ index 00000000..77edfb7b
 +            }
 +        }
 +
++        if (!supported(plugin)) {
++            // Не ставим вовсе: плагин рассчитан на сборку новее этой.
++            discard(staged[0]);
++            staged[0] = null;
++            new AlertDialog.Builder(context)
++                    .setTitle(plugin.name)
++                    .setMessage(LocaleController.formatString(R.string.MargeletPluginTooOld,
++                            plugin.minVersion, MargeletConfig.APP_VERSION))
++                    .setPositiveButton(LocaleController.getString(R.string.OK), null)
++                    .show();
++            return true;
++        }
++
++        final boolean[] startNow = { false };
 +        final SpannableStringBuilder text = new SpannableStringBuilder();
 +        text.append(LocaleController.formatString(R.string.MargeletPluginBy, plugin.author)).append("\n\n");
 +        if (existing != null) {
@@ -3627,6 +3772,21 @@ index 00000000..77edfb7b
 +                    if (whenInstalled != null) {
 +                        whenInstalled.run();
 +                    }
++                })
++                .setNeutralButton(LocaleController.getString(R.string.MargeletPluginInstallAndRun), (d, w) -> {
++                    // Поставить, включить и перезапуститься: без перезапуска
++                    // плагин всё равно не поднимется, и человеку пришлось бы
++                    // закрывать телеграм руками.
++                    startNow[0] = true;
++                    final Plugin ready = commit(staged[0]);
++                    staged[0] = null;
++                    if (ready != null) {
++                        MargeletConfig.setPluginEnabled(ready.id, true);
++                    }
++                    if (whenInstalled != null) {
++                        whenInstalled.run();
++                    }
++                    restart(context);
 +                })
 +                .setNegativeButton(LocaleController.getString(R.string.Cancel), null)
 +                // Отказ бывает и кнопкой «назад» — распакованное не должно
@@ -5447,6 +5607,29 @@ index 77870805..d3b0aa11 100644
          URLSpan[] spans = spannable.getSpans(0, text.length(), URLSpan.class);
          boolean hasUrls = spans != null && spans.length > 0;
          if (entities == null || entities.isEmpty()) {
+diff --git a/TMessagesProj/src/main/java/org/telegram/messenger/SendMessagesHelper.java b/TMessagesProj/src/main/java/org/telegram/messenger/SendMessagesHelper.java
+index 4a6661d1..a9410d64 100644
+--- a/TMessagesProj/src/main/java/org/telegram/messenger/SendMessagesHelper.java
++++ b/TMessagesProj/src/main/java/org/telegram/messenger/SendMessagesHelper.java
+@@ -4257,6 +4257,18 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
+     }
+ 
+     public void sendMessage(SendMessageParams sendMessageParams) {
++        // Дверь для плагинов: они видят набранный текст до того, как он ушёл,
++        // и могут его поменять или отменить отправку. Здесь единственное
++        // место, через которое проходит вся отправка, поэтому и стоит оно
++        // здесь, а не в каждом экране, откуда шлют.
++        if (sendMessageParams.message != null && org.telegram.margelet.MargeletHooks.hasSend()) {
++            final String hooked = org.telegram.margelet.MargeletHooks.sending(
++                    sendMessageParams.message, sendMessageParams.peer);
++            if (hooked == null) {
++                return;
++            }
++            sendMessageParams.message = hooked;
++        }
+         final SendMessageChatArguments sendMessageChatArguments = sendMessageParams.sendMessageChatArguments != null ?
+                 sendMessageParams.sendMessageChatArguments : SendMessageChatArguments.EMPTY;
+         String message = sendMessageParams.message;
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/ActionBar/FloatingToolbar.java b/TMessagesProj/src/main/java/org/telegram/ui/ActionBar/FloatingToolbar.java
 index 835dd7c1..60cd80d2 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/ActionBar/FloatingToolbar.java
@@ -5746,7 +5929,7 @@ index 7804a161..fddfd674 100644
                      }
                  });
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
-index 6b8cddfe..714d266c 100644
+index 6b8cddfe..961a95e4 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
 @@ -1199,6 +1199,9 @@ public class ChatActivity extends BaseFragment implements
@@ -5759,7 +5942,49 @@ index 6b8cddfe..714d266c 100644
      public final static int OPTION_SAVE_TO_GALLERY = 4;
      public final static int OPTION_APPLY_LOCALIZATION_OR_THEME = 5;
      public final static int OPTION_SHARE = 6;
-@@ -10880,18 +10883,33 @@ public class ChatActivity extends BaseFragment implements
+@@ -1690,6 +1693,12 @@ public class ChatActivity extends BaseFragment implements
+ 
+     private final static int id_chat_compose_panel = 1000;
+ 
++    /**
++     * Кнопки плагинов в меню чата. Номер один на всех, порядковый номер
++     * кнопки прибавляется сверху: сколько их будет, заранее не знает никто.
++     */
++    private final static int margelet_plugin_button = 3000;
++
+     RecyclerListView.OnItemLongClickListenerExtended onItemLongClickListener = new RecyclerListView.OnItemLongClickListenerExtended() {
+         @Override
+         public boolean onItemClick(View view, int position, float x, float y) {
+@@ -3695,6 +3704,11 @@ public class ChatActivity extends BaseFragment implements
+         actionBar.setActionBarMenuOnItemClick(new ActionBar.ActionBarMenuOnItemClick() {
+             @Override
+             public void onItemClick(final int id) {
++                if (id >= margelet_plugin_button) {
++                    org.telegram.margelet.MargeletHooks.buttonClicked(
++                            id - margelet_plugin_button, ChatActivity.this);
++                    return;
++                }
+                 if (id == -1) {
+                     if (isInPollAddOptionMode()) {
+                         pollAddOptionModeClose();
+@@ -4514,6 +4528,16 @@ public class ChatActivity extends BaseFragment implements
+             closeTopicItem = headerItem.lazilyAddSubItem(topic_close, R.drawable.msg_topic_close, LocaleController.getString(R.string.CloseTopic));
+             closeTopicItem.setVisibility(currentChat != null && ChatObject.canManageTopic(currentAccount, currentChat, forumTopic) && forumTopic != null && !forumTopic.closed ? View.VISIBLE : View.GONE);
+         }
++        // Строчки плагинов идут последними, после всего своего: чужой код не
++        // должен раздвигать привычные пункты меню.
++        if (headerItem != null && chatMode == MODE_DEFAULT) {
++            final java.util.List<org.telegram.margelet.MargeletHooks.Button> pluginButtons =
++                    org.telegram.margelet.MargeletHooks.buttons();
++            for (int i = 0; i < pluginButtons.size(); i++) {
++                headerItem.lazilyAddSubItem(margelet_plugin_button + i,
++                        R.drawable.msg_settings_old, pluginButtons.get(i).title);
++            }
++        }
+         menu.setVisibility(inMenuMode ? View.GONE : View.VISIBLE);
+ 
+         updateTitle(false);
+@@ -10880,18 +10904,33 @@ public class ChatActivity extends BaseFragment implements
      }
  
      private void updatePagedownButtonsPosition() {
@@ -5797,7 +6022,7 @@ index 6b8cddfe..714d266c 100644
          }
      }
  
-@@ -12018,13 +12036,23 @@ public class ChatActivity extends BaseFragment implements
+@@ -12018,13 +12057,23 @@ public class ChatActivity extends BaseFragment implements
          if (isInsideContainer && parentChatActivity == null) {
              paddingBottom = AndroidUtilities.navigationBarHeight;
          } else {
@@ -5823,7 +6048,7 @@ index 6b8cddfe..714d266c 100644
          if (topicsTabs != null) {
              topicsTabs.setSideMenuBackgroundMarginTop(0);//Math.max(0, paddingTop - blurredViewTopOffset - dp(5)));
          }
-@@ -19520,7 +19548,7 @@ public class ChatActivity extends BaseFragment implements
+@@ -19520,7 +19569,7 @@ public class ChatActivity extends BaseFragment implements
                  avatarContainer.setTitle(LocaleController.getString(R.string.SavedMessages));
              } else if (!MessagesController.isSupportUser(currentUser) && getContactsController().contactsDict.get(currentUser.id) == null && (getContactsController().contactsDict.size() != 0 || !getContactsController().isLoadingContacts())) {
                  if (!TextUtils.isEmpty(currentUser.phone)) {
@@ -5832,7 +6057,7 @@ index 6b8cddfe..714d266c 100644
                  } else {
                      avatarContainer.setTitle(AndroidUtilities.removeRTL(AndroidUtilities.removeDiacritics(UserObject.getUserName(currentUser))), currentUser.scam, currentUser.fake, currentUser.verified, getMessagesController().isPremiumUser(currentUser), currentUser.emoji_status, animated);
                  }
-@@ -27588,6 +27616,18 @@ public class ChatActivity extends BaseFragment implements
+@@ -27588,6 +27637,18 @@ public class ChatActivity extends BaseFragment implements
          if (includeSpoilers) {
              menu.add(R.id.menu_groupbolditalic, R.id.menu_spoiler, order++, LocaleController.getString(R.string.Spoiler));
          }
@@ -5851,7 +6076,7 @@ index 6b8cddfe..714d266c 100644
  
          SpannableStringBuilder stringBuilder = new SpannableStringBuilder(LocaleController.getString(R.string.Bold));
          stringBuilder.setSpan(new TypefaceSpan(AndroidUtilities.bold()), 0, stringBuilder.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-@@ -29727,6 +29767,10 @@ public class ChatActivity extends BaseFragment implements
+@@ -29727,6 +29788,10 @@ public class ChatActivity extends BaseFragment implements
      @Override
      public void onResume() {
          super.onResume();
@@ -5862,7 +6087,7 @@ index 6b8cddfe..714d266c 100644
          checkShowBlur(false);
          activityResumeTime = System.currentTimeMillis();
          if (openImport && getSendMessagesHelper().getImportingHistory(dialog_id) != null) {
-@@ -33379,6 +33423,19 @@ public class ChatActivity extends BaseFragment implements
+@@ -33379,6 +33444,19 @@ public class ChatActivity extends BaseFragment implements
                  undoView.showWithAction(0, UndoView.ACTION_MESSAGE_COPIED, null);
                  break;
              }
@@ -5882,7 +6107,7 @@ index 6b8cddfe..714d266c 100644
              case OPTION_SAVE_TO_GALLERY: {
                  if (Build.VERSION.SDK_INT >= 23 && (Build.VERSION.SDK_INT <= 28 || BuildVars.NO_SCOPED_STORAGE) && getParentActivity().checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
                      getParentActivity().requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 4);
-@@ -41614,7 +41671,7 @@ public class ChatActivity extends BaseFragment implements
+@@ -41614,7 +41692,7 @@ public class ChatActivity extends BaseFragment implements
              } else if (BuildVars.isHuaweiStoreApp()) {
                  Browser.openUrl(getContext(), BuildVars.HUAWEI_STORE_URL);
              } else {
@@ -5891,7 +6116,7 @@ index 6b8cddfe..714d266c 100644
              }
          }
  
-@@ -46097,6 +46154,33 @@ public class ChatActivity extends BaseFragment implements
+@@ -46097,6 +46175,33 @@ public class ChatActivity extends BaseFragment implements
                      }
                  }
  
@@ -7494,10 +7719,10 @@ index 00000000..ebbdb770
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletPluginCell.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletPluginCell.java
 new file mode 100644
-index 00000000..1f2775e5
+index 00000000..dd69070a
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletPluginCell.java
-@@ -0,0 +1,221 @@
+@@ -0,0 +1,238 @@
 +package org.telegram.ui;
 +
 +import static org.telegram.messenger.AndroidUtilities.dp;
@@ -7522,8 +7747,10 @@ index 00000000..1f2775e5
 +
 +import androidx.annotation.NonNull;
 +
++import org.telegram.margelet.MargeletHooks;
 +import org.telegram.margelet.MargeletPlugins;
 +import org.telegram.messenger.LocaleController;
++import org.telegram.messenger.R;
 +import org.telegram.ui.ActionBar.Theme;
 +import org.telegram.ui.Components.LayoutHelper;
 +import org.telegram.ui.Components.RecyclerListView;
@@ -7551,6 +7778,7 @@ index 00000000..1f2775e5
 +    private final ImageView iconView;
 +    private final TextView titleView;
 +    private final TextView subtitleView;
++    private final ImageView gearView;
 +    private final Switch switchView;
 +
 +    public MargeletPluginCell(Context context, Theme.ResourcesProvider resourcesProvider) {
@@ -7580,6 +7808,16 @@ index 00000000..1f2775e5
 +                (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP,
 +                LocaleController.isRTL ? 74 : 70, 33, LocaleController.isRTL ? 70 : 74, 0));
 +
++        // Шестерёнка стоит там, куда и надо нажать, чтобы открыть настройки:
++        // левее переключателя. Без неё человеку неоткуда узнать, что у
++        // плагина вообще есть что настраивать.
++        gearView = new ImageView(context);
++        gearView.setScaleType(ImageView.ScaleType.CENTER);
++        gearView.setImageResource(R.drawable.msg_settings_old);
++        addView(gearView, LayoutHelper.createFrame(24, 24,
++                (LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT) | Gravity.CENTER_VERTICAL,
++                LocaleController.isRTL ? 68 : 20, 0, LocaleController.isRTL ? 20 : 68, 0));
++
 +        switchView = new Switch(context, resourcesProvider);
 +        switchView.setColors(Theme.key_switchTrack, Theme.key_switchTrackChecked,
 +                Theme.key_windowBackgroundWhite, Theme.key_windowBackgroundWhite);
@@ -7594,6 +7832,9 @@ index 00000000..1f2775e5
 +    public void updateColors() {
 +        titleView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
 +        subtitleView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText2));
++        gearView.setColorFilter(new android.graphics.PorterDuffColorFilter(
++                Theme.getColor(Theme.key_windowBackgroundWhiteGrayIcon),
++                android.graphics.PorterDuff.Mode.SRC_IN));
 +    }
 +
 +    public void set(MargeletPlugins.Plugin plugin, boolean checked, boolean animated) {
@@ -7603,6 +7844,7 @@ index 00000000..1f2775e5
 +        iconView.setImageDrawable(icon != null
 +                ? new Rounded(icon)
 +                : new Letter(plugin.name, COLORS[Math.abs(plugin.id.hashCode()) % COLORS.length]));
++        gearView.setVisibility(MargeletHooks.hasSettings(plugin.id) ? VISIBLE : GONE);
 +        switchView.setChecked(checked, animated);
 +    }
 +
@@ -7837,12 +8079,246 @@ index 00000000..5e6f6d5d
 +        scroll.post(() -> scroll.fullScroll(View.FOCUS_DOWN));
 +    }
 +}
+diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletPluginSettingsActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletPluginSettingsActivity.java
+new file mode 100644
+index 00000000..fadc6c32
+--- /dev/null
++++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletPluginSettingsActivity.java
+@@ -0,0 +1,228 @@
++package org.telegram.ui;
++
++import static org.telegram.messenger.AndroidUtilities.dp;
++
++import android.content.Context;
++import android.text.InputType;
++import android.view.Gravity;
++import android.view.View;
++import android.widget.EditText;
++import android.widget.FrameLayout;
++
++import org.telegram.margelet.MargeletHooks;
++import org.telegram.margelet.MargeletPluginHost;
++import org.telegram.margelet.MargeletPlugins;
++import org.telegram.messenger.LocaleController;
++import org.telegram.messenger.R;
++import org.telegram.ui.ActionBar.AlertDialog;
++import org.telegram.ui.ActionBar.Theme;
++import org.telegram.ui.Components.LayoutHelper;
++import org.telegram.ui.Components.UItem;
++import org.telegram.ui.Components.UniversalAdapter;
++import org.telegram.ui.Components.UniversalFragment;
++
++import org.json.JSONArray;
++import org.json.JSONObject;
++
++import java.util.ArrayList;
++import java.util.List;
++
++/**
++ * Экран настроек одного плагина.
++ *
++ * Экран этот рисуем мы, а из чего он состоит — говорит плагин. Обратное
++ * решение, дать плагину рисовать свои экраны самому, выглядит свободнее, но
++ * кончается тем, что каждый плагин выглядит по-своему и ни один не похож на
++ * приложение, в котором стоит. Здесь же переключатель у плагина такой же, как
++ * везде, и работает так же: тем же пальцем, в той же теме, тем же цветом.
++ *
++ * Заявку плагин оставляет в своей же памяти, поэтому экран открывается и у
++ * выключенного плагина: человеку может понадобиться поправить настройку до
++ * того, как включать.
++ */
++public class MargeletPluginSettingsActivity extends UniversalFragment {
++
++    private final MargeletPlugins.Plugin plugin;
++    private final List<JSONObject> rows = new ArrayList<>();
++
++    /** Номера строк идут отсюда: по одному на заявленную плагином строку. */
++    private static final int ID_ROW = 100;
++
++    public MargeletPluginSettingsActivity(MargeletPlugins.Plugin plugin) {
++        this.plugin = plugin;
++    }
++
++    @Override
++    protected CharSequence getTitle() {
++        return plugin.name;
++    }
++
++    @Override
++    public View createView(Context context) {
++        final View view = super.createView(context);
++        listView.setSections();
++        return view;
++    }
++
++    /** Разбирает заявку плагина. Кривой JSON — пустой экран, а не падение. */
++    private void read() {
++        rows.clear();
++        final String json = MargeletHooks.declared(plugin.id);
++        if (json == null) {
++            return;
++        }
++        try {
++            final JSONArray array = new JSONArray(json);
++            for (int i = 0; i < array.length(); i++) {
++                final JSONObject row = array.optJSONObject(i);
++                if (row != null) {
++                    rows.add(row);
++                }
++            }
++        } catch (Exception ignored) {
++        }
++    }
++
++    @Override
++    protected void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
++        read();
++        if (rows.isEmpty()) {
++            items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletPluginNoSettings)));
++            return;
++        }
++        boolean opened = false;
++        for (int i = 0; i < rows.size(); i++) {
++            final JSONObject row = rows.get(i);
++            final String kind = row.optString("kind");
++            final String title = row.optString("title");
++            final String key = row.optString("key");
++            switch (kind) {
++                case "header":
++                    items.add(UItem.asHeader(title));
++                    opened = true;
++                    break;
++                case "note":
++                    items.add(UItem.asShadow(title));
++                    opened = false;
++                    break;
++                case "switch":
++                    items.add(UItem.asCheck(ID_ROW + i, title)
++                            .setChecked("1".equals(value(row))));
++                    opened = true;
++                    break;
++                case "text":
++                case "choice":
++                    items.add(UItem.asButton(ID_ROW + i, title, value(row)));
++                    opened = true;
++                    break;
++                case "action": {
++                    final UItem item = UItem.asButton(ID_ROW + i, title);
++                    if (row.optBoolean("danger")) {
++                        item.red();
++                    }
++                    items.add(item);
++                    opened = true;
++                    break;
++                }
++                default:
++                    break;
++            }
++            final String about = row.optString("about", "");
++            if (about.length() > 0) {
++                items.add(UItem.asShadow(about));
++                opened = false;
++            }
++        }
++        if (opened) {
++            items.add(UItem.asShadow(null));
++        }
++    }
++
++    private String value(JSONObject row) {
++        final String key = row.optString("key");
++        if (key.length() == 0) {
++            return "";
++        }
++        final String stored = MargeletPluginHost.get(plugin.id, key, null);
++        return stored != null ? stored : row.optString("default", "");
++    }
++
++    private void store(JSONObject row, String value) {
++        final String key = row.optString("key");
++        MargeletPluginHost.set(plugin.id, key, value);
++        MargeletHooks.settingsChanged(plugin.id, key, value);
++        listView.adapter.update(true);
++    }
++
++    @Override
++    protected void onClick(UItem item, View view, int position, float x, float y) {
++        final int index = item.id - ID_ROW;
++        if (index < 0 || index >= rows.size()) {
++            return;
++        }
++        final JSONObject row = rows.get(index);
++        switch (row.optString("kind")) {
++            case "switch":
++                store(row, "1".equals(value(row)) ? "0" : "1");
++                break;
++            case "text":
++                askText(row);
++                break;
++            case "choice":
++                askChoice(row);
++                break;
++            case "action":
++                // Действие ничего не хранит: плагину важно само нажатие.
++                MargeletHooks.settingsChanged(plugin.id, row.optString("key"), null);
++                break;
++            default:
++                break;
++        }
++    }
++
++    @Override
++    protected boolean onLongClick(UItem item, View view, int position, float x, float y) {
++        return false;
++    }
++
++    private void askText(JSONObject row) {
++        final Context context = getContext();
++        final EditText input = new EditText(context);
++        input.setTextColor(Theme.getColor(Theme.key_dialogTextBlack));
++        input.setHintTextColor(Theme.getColor(Theme.key_dialogTextHint));
++        input.setBackground(Theme.createEditTextDrawable(context, true));
++        input.setSingleLine(true);
++        input.setInputType(InputType.TYPE_CLASS_TEXT);
++        input.setText(value(row));
++        input.setSelection(input.getText().length());
++
++        final FrameLayout container = new FrameLayout(context);
++        container.addView(input, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT,
++                LayoutHelper.WRAP_CONTENT, Gravity.CENTER_VERTICAL, 24, 0, 24, 0));
++        container.setPadding(0, dp(8), 0, dp(8));
++
++        new AlertDialog.Builder(context)
++                .setTitle(row.optString("title"))
++                .setView(container)
++                .setPositiveButton(LocaleController.getString(R.string.Save),
++                        (d, w) -> store(row, input.getText().toString()))
++                .setNegativeButton(LocaleController.getString(R.string.Cancel), null)
++                .show();
++    }
++
++    private void askChoice(JSONObject row) {
++        final JSONArray options = row.optJSONArray("options");
++        if (options == null || options.length() == 0) {
++            return;
++        }
++        final CharSequence[] titles = new CharSequence[options.length()];
++        for (int i = 0; i < options.length(); i++) {
++            titles[i] = options.optString(i);
++        }
++        new AlertDialog.Builder(getContext())
++                .setTitle(row.optString("title"))
++                .setItems(titles, (d, which) -> store(row, String.valueOf(titles[which])))
++                .setNegativeButton(LocaleController.getString(R.string.Cancel), null)
++                .show();
++    }
++}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletPluginsActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletPluginsActivity.java
 new file mode 100644
-index 00000000..a4ed38fc
+index 00000000..63a615b3
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletPluginsActivity.java
-@@ -0,0 +1,220 @@
+@@ -0,0 +1,253 @@
 +package org.telegram.ui;
 +
 +import android.content.Context;
@@ -7852,6 +8328,7 @@ index 00000000..a4ed38fc
 +import android.view.View;
 +
 +import org.telegram.margelet.MargeletConfig;
++import org.telegram.margelet.MargeletHooks;
 +import org.telegram.margelet.MargeletPluginHost;
 +import org.telegram.margelet.MargeletPlugins;
 +import org.telegram.messenger.ApplicationLoader;
@@ -7883,6 +8360,7 @@ index 00000000..a4ed38fc
 +    private static final int ID_CONSOLE = 3;
 +    private static final int ID_DOCS = 4;
 +    private static final int ID_FORUM = 5;
++    private static final int ID_RESTART = 6;
 +    /** Строки самих плагинов идут отсюда и дальше, по одному номеру на плагин. */
 +    private static final int ID_PLUGIN = 100;
 +
@@ -7922,6 +8400,11 @@ index 00000000..a4ed38fc
 +                            : R.string.MargeletPluginsOffHint)));
 +        }
 +
++        // Перезапуск прямо здесь: включённый плагин поднимается только на
++        // старте, а выключенный доживает до него. Раньше человеку приходилось
++        // закрывать телеграм самому и догадываться, что это вообще нужно.
++        items.add(UItem.asButton(ID_RESTART, LocaleController.getString(R.string.MargeletPluginsRestart)));
++        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletPluginsRestartAbout)));
 +        items.add(UItem.asButton(ID_INSTALL, LocaleController.getString(R.string.MargeletPluginInstall)));
 +        items.add(UItem.asButton(ID_CONSOLE, LocaleController.getString(R.string.MargeletPluginConsole)));
 +        items.add(UItem.asShadow(null));
@@ -7934,6 +8417,8 @@ index 00000000..a4ed38fc
 +    protected void onClick(UItem item, View view, int position, float x, float y) {
 +        if (item.id == ID_MASTER) {
 +            toggleMaster();
++        } else if (item.id == ID_RESTART) {
++            MargeletPlugins.restart(getParentActivity());
 +        } else if (item.id == ID_INSTALL) {
 +            pickFile();
 +        } else if (item.id == ID_CONSOLE) {
@@ -7943,7 +8428,7 @@ index 00000000..a4ed38fc
 +        } else if (item.id == ID_FORUM) {
 +            Browser.openUrl(getContext(), MargeletConfig.FORUM_URL);
 +        } else if (item.id >= ID_PLUGIN) {
-+            toggle(plugin(item.id));
++            open(plugin(item.id), view, x);
 +        }
 +    }
 +
@@ -7981,6 +8466,30 @@ index 00000000..a4ed38fc
 +                })
 +                .setNegativeButton(LocaleController.getString(R.string.Cancel), null)
 +                .show();
++    }
++
++    /**
++     * Нажатие по строке плагина. У строки два смысла, и разводим их по месту
++     * нажатия: справа переключатель — значит включить или выключить, слева
++     * всё остальное — значит открыть настройки, если плагин их заявил.
++     *
++     * Нажатие приходит вместе с координатой, так что гадать не приходится.
++     * У плагина без настроек строка целиком остаётся выключателем: пустой
++     * экран вместо настроек был бы хуже, чем его отсутствие.
++     */
++    private void open(MargeletPlugins.Plugin plugin, View view, float x) {
++        if (plugin == null) {
++            return;
++        }
++        final int edge = org.telegram.messenger.AndroidUtilities.dp(60);
++        final boolean onSwitch = LocaleController.isRTL
++                ? x < edge
++                : x > view.getWidth() - edge;
++        if (!onSwitch && MargeletHooks.hasSettings(plugin.id)) {
++            presentFragment(new MargeletPluginSettingsActivity(plugin));
++            return;
++        }
++        toggle(plugin);
 +    }
 +
 +    private void toggle(MargeletPlugins.Plugin plugin) {
@@ -17821,7 +18330,7 @@ index 03d0ba33..17f98fa6 100644
      <string name="English">Inglês</string>
      <string name="LanguageNameInEnglish">Portuguese (Brazil)</string>
 diff --git a/TMessagesProj/src/main/res/values-ru/strings.xml b/TMessagesProj/src/main/res/values-ru/strings.xml
-index 24c56292..fac37d74 100644
+index 24c56292..040d2711 100644
 --- a/TMessagesProj/src/main/res/values-ru/strings.xml
 +++ b/TMessagesProj/src/main/res/values-ru/strings.xml
 @@ -1,7 +1,7 @@
@@ -17834,7 +18343,7 @@ index 24c56292..fac37d74 100644
      <string name="LanguageName">Русский</string>
      <string name="English">Английский</string>
      <string name="LanguageNameInEnglish">Russian</string>
-@@ -263,4 +263,186 @@
+@@ -263,4 +263,192 @@
      <string name="RemindTodayAt">\'Отправить сегодня в\' HH:mm</string>
      <string name="RemindDayAt">\'Отправить\' d MMM \'в\' HH:mm</string>
      <string name="RemindDayYearAt">\'Напомнить\' d MMM yyyy \'в\' HH:mm</string>
@@ -18005,6 +18514,12 @@ index 24c56292..fac37d74 100644
 +    <string name="MargeletPluginAlready">Он уже стоит, версия %1$s. Установка заменит его.</string>
 +    <string name="MargeletPluginAlreadyRestart">Та версия, что уже работает, доработает до перезапуска приложения.</string>
 +    <string name="MargeletPluginUpdateOk">Заменить</string>
++    <string name="MargeletPluginInstallAndRun">Поставить и включить</string>
++    <string name="MargeletPluginTooOld">Плагину нужен Margelet %1$s или новее. У вас %2$s.</string>
++    <string name="MargeletPluginsRestart">Перезапустить Margelet</string>
++    <string name="MargeletPluginsRestartAbout">Плагин поднимается только при запуске приложения, а выключенный доживает до него же: остановить работающий код нечем. Поэтому включение и выключение требуют перезапуска.</string>
++    <string name="MargeletPluginNoSettings">Настраивать в этом плагине нечего.</string>
++    <string name="MargeletPluginSettings">Настройки плагина</string>
 +    <string name="MargeletPluginInstallWarn">Разрешения ниже — слова автора, приложение их не проверяет. Плагин технически может всё. Убедитесь, что в нём нет вирусов: код открыт, его можно прочитать.</string>
 +    <string name="MargeletPluginDeclares">Автор заявляет:</string>
 +    <string name="MargeletPluginBy">Автор: %s</string>
@@ -18038,10 +18553,10 @@ index d4683443..57d10109 100644
      <string name="LanguageNameInEnglish">Ukrainian</string>
 diff --git a/TMessagesProj/src/main/res/values-zh/strings.xml b/TMessagesProj/src/main/res/values-zh/strings.xml
 new file mode 100644
-index 00000000..b6c9cfc8
+index 00000000..eb4a73ea
 --- /dev/null
 +++ b/TMessagesProj/src/main/res/values-zh/strings.xml
-@@ -0,0 +1,185 @@
+@@ -0,0 +1,191 @@
 +<?xml version="1.0" encoding="utf-8"?>
 +<resources>
 +    <string name="MargeletSettings">分支设置</string>
@@ -18211,6 +18726,12 @@ index 00000000..b6c9cfc8
 +    <string name="MargeletPluginAlready">已安装 %1$s 版本，安装将替换它。</string>
 +    <string name="MargeletPluginAlreadyRestart">已在运行的那一份会继续运行，直到应用重启。</string>
 +    <string name="MargeletPluginUpdateOk">替换</string>
++    <string name="MargeletPluginInstallAndRun">安装并启用</string>
++    <string name="MargeletPluginTooOld">该插件需要 Margelet %1$s 或更新版本，你的是 %2$s。</string>
++    <string name="MargeletPluginsRestart">重启 Margelet</string>
++    <string name="MargeletPluginsRestartAbout">插件只在应用启动时加载，而被关闭的插件会一直运行到下次启动：没有办法停止已在运行的代码。因此开关插件都需要重启。</string>
++    <string name="MargeletPluginNoSettings">这个插件没有可设置的项目。</string>
++    <string name="MargeletPluginSettings">插件设置</string>
 +    <string name="MargeletPluginInstallWarn">下面的权限只是作者的说法，应用不会核实。插件技术上什么都能做。请确认它没有病毒：代码是公开的，你可以读。</string>
 +    <string name="MargeletPluginDeclares">作者声明：</string>
 +    <string name="MargeletPluginBy">作者：%s</string>
@@ -18244,7 +18765,7 @@ index cc49d135..a8a51c3a 100644
      <item name="menu_regular" type="id"/>
      <item name="menu_bold" type="id"/>
 diff --git a/TMessagesProj/src/main/res/values/strings.xml b/TMessagesProj/src/main/res/values/strings.xml
-index ffa4d566..09e6f312 100644
+index ffa4d566..798f7e9a 100644
 --- a/TMessagesProj/src/main/res/values/strings.xml
 +++ b/TMessagesProj/src/main/res/values/strings.xml
 @@ -1,7 +1,7 @@
@@ -18257,7 +18778,7 @@ index ffa4d566..09e6f312 100644
      <string name="LanguageName">English</string>
      <string name="English">English</string>
      <string name="LanguageNameInEnglish">English</string>
-@@ -11221,4 +11221,186 @@
+@@ -11221,4 +11221,192 @@
      <string name="UnsupportedMessageTitle">Unsupported Message</string>
      <string name="UnsupportedMessageMessage">Update Telegram to view this message</string>
      <string name="UnsupportedUpdate">Update</string>
@@ -18428,6 +18949,12 @@ index ffa4d566..09e6f312 100644
 +    <string name="MargeletPluginAlready">Version %1$s of it is already installed. Installing will replace it.</string>
 +    <string name="MargeletPluginAlreadyRestart">The version already running keeps running until the app is restarted.</string>
 +    <string name="MargeletPluginUpdateOk">Replace</string>
++    <string name="MargeletPluginInstallAndRun">Install and run</string>
++    <string name="MargeletPluginTooOld">This plugin needs Margelet %1$s or newer. You have %2$s.</string>
++    <string name="MargeletPluginsRestart">Restart Margelet</string>
++    <string name="MargeletPluginsRestartAbout">A plugin starts only when the app starts, and a plugin switched off keeps working until then: there is no way to stop running code. So switching one on or off takes a restart.</string>
++    <string name="MargeletPluginNoSettings">This plugin has nothing to set up.</string>
++    <string name="MargeletPluginSettings">Plugin settings</string>
 +    <string name="MargeletPluginInstallWarn">The permissions below are the author\'s word, the app does not check them. A plugin can technically do everything. Make sure it has no viruses: the code is open, you can read it.</string>
 +    <string name="MargeletPluginDeclares">The author declares:</string>
 +    <string name="MargeletPluginBy">Author: %s</string>
@@ -18557,50 +19084,72 @@ index 96f4d779..dd54b90d 100644
 +// apply plugin: 'com.google.gms.google-services'
 diff --git a/TMessagesProj_AppStandalone/src/main/assets/margelet_example.marp b/TMessagesProj_AppStandalone/src/main/assets/margelet_example.marp
 new file mode 100644
-index 0000000000000000000000000000000000000000..46814ea8d5cfdf0c63cb0450999acacb6a230675
+index 0000000000000000000000000000000000000000..345c6dc6e00e1b8ce17695b539345df8121e4d44
 GIT binary patch
-literal 1666
-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
+literal 2760
+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
+ALI3~&
 
 literal 0
 HcmV?d00001
 
 diff --git a/TMessagesProj_AppStandalone/src/main/java/org/telegram/margelet/MargeletPython.java b/TMessagesProj_AppStandalone/src/main/java/org/telegram/margelet/MargeletPython.java
 new file mode 100644
-index 00000000..f762e7ed
+index 00000000..307d5c40
 --- /dev/null
 +++ b/TMessagesProj_AppStandalone/src/main/java/org/telegram/margelet/MargeletPython.java
-@@ -0,0 +1,36 @@
+@@ -0,0 +1,64 @@
 +package org.telegram.margelet;
 +
 +import android.content.Context;
@@ -18632,6 +19181,34 @@ index 00000000..f762e7ed
 +        host.callAttr("chat_opened", fragment);
 +    }
 +
++    /**
++     * Человек отправляет текст. Ответ нужен сразу же, поэтому это
++     * единственный вызов питона, который не откладывается, а ждёт.
++     */
++    public static String sending(String text, long dialogId) {
++        final PyObject host = Python.getInstance().getModule("margelet_host");
++        final PyObject answer = host.callAttr("sending", text, dialogId);
++        return answer == null ? text : answer.toString();
++    }
++
++    /** Пришло сообщение. */
++    public static void received(String text, long dialogId, int messageId, boolean out) {
++        final PyObject host = Python.getInstance().getModule("margelet_host");
++        host.callAttr("received", text, dialogId, messageId, out);
++    }
++
++    /** Нажали кнопку плагина в меню чата. */
++    public static void buttonClicked(String pluginId, String key, Object fragment) {
++        final PyObject host = Python.getInstance().getModule("margelet_host");
++        host.callAttr("button_clicked", pluginId, key, fragment);
++    }
++
++    /** Человек поменял настройку плагина на его экране настроек. */
++    public static void settingsChanged(String pluginId, String key, String value) {
++        final PyObject host = Python.getInstance().getModule("margelet_host");
++        host.callAttr("settings_changed", pluginId, key, value);
++    }
++
 +    public static void run(String id, String name, String folder) {
 +        final PyObject host = Python.getInstance().getModule("margelet_host");
 +        host.callAttr("run_plugin", id, name, folder);
@@ -18658,28 +19235,89 @@ index ce63acf6..d703d373 100644
      @Override
 diff --git a/TMessagesProj_AppStandalone/src/main/python/margelet_example.py b/TMessagesProj_AppStandalone/src/main/python/margelet_example.py
 new file mode 100644
-index 00000000..810298c3
+index 00000000..986d1fb1
 --- /dev/null
 +++ b/TMessagesProj_AppStandalone/src/main/python/margelet_example.py
-@@ -0,0 +1,12 @@
+@@ -0,0 +1,73 @@
 +# -*- coding: utf-8 -*-
 +"""Пример плагина Margelet.
 +
-+Кладётся вместе с приложением и по умолчанию выключен. Делает единственное:
-+здоровается в консоли плагинов. Нужен, чтобы было с чего начать и на чём
-+проверить, что система вообще работает.
++Показывает всё, что плагину дают: свой экран настроек, четыре события и
++кнопку в меню чата. Каждая часть выключена по умолчанию — плагин, который
++сразу лезет в переписку, плохой пример.
++
++Код лежит исходником и читается кем угодно — это условие форума.
 +"""
 +
 +
 +def on_start():
++    margelet.settings(
++        margelet.header("Что делать"),
++        margelet.switch("greet", "Здороваться при открытии чата",
++                        about="Короткая надпись поверх экрана, когда открываешь переписку."),
++        margelet.switch("sign", "Подписывать отправляемое",
++                        about="Дописывает подпись в конец каждого сообщения, которое ты шлёшь."),
++        margelet.text("signature", "Подпись", default="🌿"),
++        margelet.switch("count", "Считать входящие"),
++        margelet.note("Всё это остаётся на телефоне и никуда не уходит."),
++        margelet.action("Сбросить счёт", forget, danger=True),
++    )
++
++    margelet.on_chat_opened(opened)
++    margelet.on_send(sign)
++    margelet.on_message(count)
++    margelet.on_settings(changed)
++    margelet.button("Сколько насчитал", report)
++
 +    margelet.log("привет из плагина", margelet.name)
-+    margelet.log("папка плагина:", margelet.folder)
++
++
++def opened(chat):
++    """Открыли переписку. Сам экран чата приходит сюда как есть."""
++    if margelet.flag("greet"):
++        margelet.toast("привет!")
++
++
++def sign(text, dialog_id):
++    """Перед отправкой. Вернуть строку — уйдёт она, вернуть False — не уйдёт.
++
++    Приложение ждёт этого ответа, поэтому здесь нельзя долго думать: пока
++    думаем, человек смотрит на неотправленное сообщение.
++    """
++    if not margelet.flag("sign"):
++        return None
++    signature = margelet.get("signature", "")
++    if not signature or text.endswith(signature):
++        return None
++    return text + " " + signature
++
++
++def count(text, dialog_id, message_id, mine):
++    """Пришло сообщение. Своё отправленное приходит сюда же — на то и mine."""
++    if mine or not margelet.flag("count"):
++        return
++    margelet.set("counted", int(margelet.get("counted", "0")) + 1)
++
++
++def report(chat):
++    """Нажали строчку плагина в меню чата."""
++    margelet.toast("насчитал " + margelet.get("counted", "0"))
++
++
++def forget():
++    """Кнопка на экране настроек."""
++    margelet.set("counted", "0")
++    margelet.toast("счёт сброшен")
++
++
++def changed(key, value):
++    margelet.log("настройка", key, "теперь", value)
 diff --git a/TMessagesProj_AppStandalone/src/main/python/margelet_host.py b/TMessagesProj_AppStandalone/src/main/python/margelet_host.py
 new file mode 100644
-index 00000000..3cead0eb
+index 00000000..0de5e332
 --- /dev/null
 +++ b/TMessagesProj_AppStandalone/src/main/python/margelet_host.py
-@@ -0,0 +1,185 @@
+@@ -0,0 +1,360 @@
 +# -*- coding: utf-8 -*-
 +"""Прослойка между приложением и плагинами Margelet.
 +
@@ -18693,6 +19331,7 @@ index 00000000..3cead0eb
 +
 +import importlib.util
 +import io
++import json
 +import sys
 +import traceback
 +
@@ -18700,7 +19339,13 @@ index 00000000..3cead0eb
 +from java.lang import Runnable
 +
 +_Host = jclass("org.telegram.margelet.MargeletPluginHost")
++_Hooks = jclass("org.telegram.margelet.MargeletHooks")
 +_Android = jclass("org.telegram.messenger.AndroidUtilities")
++
++# Ответ, по которому приложение понимает «не отправляй это сообщение».
++# Такой же строки нет в MargeletHooks.CANCEL по случайности: она там же и
++# записана, и обычным текстом её не набрать.
++_CANCEL = " margelet-cancel"
 +
 +
 +class _Task(dynamic_proxy(Runnable)):
@@ -18762,6 +19407,11 @@ index 00000000..3cead0eb
 +        self.name = name
 +        self.folder = folder
 +        self._on_chat_opened = []
++        self._on_send = []
++        self._on_message = []
++        self._on_settings = []
++        self._buttons = {}
++        self._actions = {}
 +
 +    def log(self, *parts):
 +        _Host.log(self.name, " ".join(str(p) for p in parts), False)
@@ -18800,9 +19450,107 @@ index 00000000..3cead0eb
 +    def set(self, key, value):
 +        _Host.set(self.id, str(key), None if value is None else str(value))
 +
++    def flag(self, key, fallback=False):
++        """Прочитать переключатель с экрана настроек как да/нет."""
++        value = _Host.get(self.id, str(key), None)
++        return fallback if value is None else value == "1"
++
++    # --- события ---
++
 +    def on_chat_opened(self, call):
 +        """Позвать, когда человек открыл переписку. Передаётся сам экран чата."""
 +        self._on_chat_opened.append(call)
++
++    def on_send(self, call):
++        """Позвать перед отправкой текста: call(text, dialog_id).
++
++        Что вернуть:
++          строку — она и уйдёт вместо набранного;
++          False  — не отправлять вовсе;
++          ничего — оставить как есть.
++
++        Это единственное событие, которого приложение ждёт: пока обработчик
++        думает, человек смотрит на неотправленное сообщение. Долгую работу
++        отсюда надо уносить в margelet.ui или margelet.every.
++        """
++        self._on_send.append(call)
++        _Hooks.wantSend()
++
++    def on_message(self, call):
++        """Позвать, когда пришло сообщение: call(text, dialog_id, message_id, outgoing).
++
++        Приходят и свои отправленные — на то и outgoing, чтобы их отличить.
++        Ответ ни на что не влияет: сообщение уже пришло.
++        """
++        self._on_message.append(call)
++        _Hooks.wantMessage()
++
++    def button(self, title, call, key=None):
++        """Своя строчка в меню чата (три точки). Нажали — зовём call(fragment)."""
++        key = str(key or title)
++        self._buttons[key] = call
++        _Hooks.addButton(self.id, key, str(title))
++
++    def on_settings(self, call):
++        """Позвать, когда человек поменял настройку: call(key, value)."""
++        self._on_settings.append(call)
++
++    # --- из чего собрать свой экран настроек ---
++
++    def header(self, title):
++        """Заголовок раздела."""
++        return {"kind": "header", "title": str(title)}
++
++    def note(self, text):
++        """Пояснение серым под предыдущими строками."""
++        return {"kind": "note", "title": str(text)}
++
++    def switch(self, key, title, default=False, about=None):
++        """Переключатель. Читается через margelet.flag(key)."""
++        row = {"kind": "switch", "key": str(key), "title": str(title),
++               "default": "1" if default else "0"}
++        if about:
++            row["about"] = str(about)
++        return row
++
++    def text(self, key, title, default="", about=None):
++        """Строка, которую человек вписывает сам. Читается через margelet.get(key)."""
++        row = {"kind": "text", "key": str(key), "title": str(title),
++               "default": str(default)}
++        if about:
++            row["about"] = str(about)
++        return row
++
++    def choice(self, key, title, options, default=None):
++        """Выбор одного из нескольких. Читается через margelet.get(key)."""
++        options = [str(o) for o in options]
++        return {"kind": "choice", "key": str(key), "title": str(title),
++                "options": options,
++                "default": str(default if default is not None
++                               else (options[0] if options else ""))}
++
++    def action(self, title, call, key=None, danger=False):
++        """Кнопка, которая просто что-то делает: сброс, очистка, проверка."""
++        key = str(key or title)
++        self._actions[key] = call
++        return {"kind": "action", "key": key, "title": str(title),
++                "danger": bool(danger)}
++
++    def settings(self, *rows):
++        """Заявить свой экран настроек. Зовётся один раз, при запуске.
++
++        Заявка уходит в память плагина, а не остаётся в оперативной: экран
++        настроек нужно уметь открыть и у выключенного плагина, который сейчас
++        не выполняется. Значения по умолчанию проставляем сразу — иначе
++        первое чтение вернёт пустоту, хотя человек ничего не менял.
++        """
++        rows = [r for r in rows if r]
++        for row in rows:
++            key = row.get("key")
++            if key and "default" in row and _Host.get(self.id, key, None) is None:
++                _Host.set(self.id, key, row["default"])
++        _Hooks.declare(self.id, json.dumps(rows, ensure_ascii=False))
++        return rows
 +
 +
 +# Кому раздавать события: номер плагина -> его объект margelet.
@@ -18821,6 +19569,71 @@ index 00000000..3cead0eb
 +                call(fragment)
 +            except Exception:
 +                _Host.log(margelet.name, traceback.format_exc(), True)
++
++
++def sending(text, dialog_id):
++    """Перед отправкой. Обработчики зовутся по очереди, каждый видит текст
++    после предыдущего: так два плагина не отменяют работу друг друга.
++
++    Упавший обработчик пропускаем — сломанный плагин не должен запирать
++    человеку отправку сообщений.
++    """
++    result = text
++    for margelet in list(_margelets.values()):
++        for call in list(margelet._on_send):
++            try:
++                answer = call(result, dialog_id)
++            except Exception:
++                _Host.log(margelet.name, traceback.format_exc(), True)
++                continue
++            if answer is False:
++                return _CANCEL
++            if isinstance(answer, str):
++                result = answer
++    return result
++
++
++def received(text, dialog_id, message_id, out):
++    """Пришло сообщение."""
++    for margelet in list(_margelets.values()):
++        for call in list(margelet._on_message):
++            try:
++                call(text, dialog_id, message_id, out)
++            except Exception:
++                _Host.log(margelet.name, traceback.format_exc(), True)
++
++
++def button_clicked(plugin_id, key, fragment):
++    """Нажали строчку плагина в меню чата."""
++    margelet = _margelets.get(plugin_id)
++    if margelet is None:
++        return
++    call = margelet._buttons.get(key)
++    if call is None:
++        return
++    try:
++        call(fragment)
++    except Exception:
++        _Host.log(margelet.name, traceback.format_exc(), True)
++
++
++def settings_changed(plugin_id, key, value):
++    """Человек тронул настройку. Сначала кнопки-действия, потом подписчики."""
++    margelet = _margelets.get(plugin_id)
++    if margelet is None:
++        return
++    action = margelet._actions.get(key)
++    if action is not None:
++        try:
++            action()
++        except Exception:
++            _Host.log(margelet.name, traceback.format_exc(), True)
++        return
++    for call in list(margelet._on_settings):
++        try:
++            call(key, value)
++        except Exception:
++            _Host.log(margelet.name, traceback.format_exc(), True)
 +
 +
 +def run_plugin(plugin_id, name, folder):

@@ -42,6 +42,7 @@ margelet_example.marp
   "version": "1.0",
   "author": "narezany",
   "description": "在控制台里打个招呼。",
+  "min_version": "0.3",
   "permissions": ["ui"]
 }
 ```
@@ -53,6 +54,7 @@ margelet_example.marp
 | `version` | 版本，字符串。 |
 | `author` | 作者。 |
 | `description` | 一两句话：它做什么。 |
+| `min_version` | 插件能运行的最低 Margelet 版本。版本更旧就根本装不上——并且会说明原因，而不是默默失败。可不填。 |
 | `permissions` | 插件对自己的声明。见下表。 |
 | `name_en`、`name_zh`、`description_en`… | 同一字段的其它语言版本。应用按自己的语言取，没有对应翻译就用原字段。 |
 
@@ -83,12 +85,32 @@ def on_start():
 | `margelet.toast(文本)` | 屏幕上的一行短提示 |
 | `margelet.get(键, 默认=None)` | 插件自己的记忆 |
 | `margelet.set(键, 值)` | 写入其中 |
-| `margelet.on_chat_opened(调用)` | 打开聊天时被调用，并把该界面交给你 |
+| `margelet.flag(键, 默认=False)` | 把设置界面上的开关读成是/否 |
 
 `get` 与 `set` 既能挺过重启，也能挺过插件自身的更新：它们不放在插件目录里，
 而目录在更新时会被替换。
 
 ## 事件
+
+不是插件去问应用，而是应用来叫插件。
+
+| | |
+|---|---|
+| `margelet.on_chat_opened(调用)` | 打开了聊天，并把该界面交给你 |
+| `margelet.on_send(调用)` | 有人要发文本，在发出去之前 |
+| `margelet.on_message(调用)` | 来了一条消息 |
+| `margelet.button(标题, 调用)` | 在聊天菜单（三个点）里加自己的一行 |
+| `margelet.on_settings(调用)` | 有人改了本插件的某项设置 |
+
+门是有意留得少的，而且每一扇都有名字。这跟“让插件替换应用的任意方法”不是
+一回事：替换任意方法等于在运行时改写别人的代码，得靠一个专门改机器码的库，
+而 Telegram 每更新一次，写在上面的东西就全废。有名字的门能挺过更新，因为
+守着它的是我们，不是名字的偶然相同。
+
+需要的门这里没有，就[去论坛说](https://t.me/margeletforum)。我们会加一扇有
+名字的，而不是把所有门一次性打开。
+
+### 打开了聊天
 
 ```python
 def on_start():
@@ -99,14 +121,100 @@ def sit_on_the_box(chat):
     ...
 ```
 
-每次聊天界面出现时都会调用 `on_chat_opened`，并把那个界面交给你。在这个事件
-出现之前，需要用到已打开聊天的插件只能每秒问上好几次——那是在轮询应用本身
-早已知道的事，白白耗电。
+每次聊天界面出现时都会调用，并把那个界面交给你。
+
+### 发送
+
+```python
+def on_start():
+    margelet.on_send(sign)
+
+def sign(text, chat):
+    if text.startswith("/"):
+        return False          # 干脆不发
+    return text + " 🌿"       # 发这个
+```
+
+返回什么：字符串——发出去的就是它；`False`——不发；什么都不返回——原样发。
+若有多个插件订阅，会依次调用，每个看到的都是上一个改过之后的文本。
+
+这是应用唯一会**等**的事件：处理函数在想的时候，人正盯着还没发出去的消息。
+耗时的活儿要挪到 `margelet.ui` 或 `margelet.every` 里去。处理函数要是想了
+超过十分之一秒，控制台会说一声——不是责备，是让作者知道。
+
+### 消息到来
+
+```python
+def on_start():
+    margelet.on_message(count)
+
+def count(text, chat, message_id, mine):
+    if not mine:
+        margelet.log("来了：", text)
+```
+
+自己发出去的消息也会到这里——`mine` 就是用来区分的。返回值不起作用：消息
+已经到了。
+
+### 聊天里属于自己的按钮
+
+```python
+def on_start():
+    margelet.button("数一数", count)
+
+def count(chat):
+    margelet.toast("这里有 " + str(chat.getMessagesCount()) + " 条消息")
+```
+
+这一行排在聊天菜单最后，在所有常规条目之后：别人的代码不该把熟悉的条目挤开。
 
 某个插件的回调抛错不会连累其他插件：每个都单独调用，出错的那个会在控制台里
 拿到自己的堆栈。
 
 `print()` 也会进控制台——它被接管了。
+
+## 属于自己的设置界面
+
+插件不自己画界面——它只说界面由什么组成，画由应用来画。所以插件里的开关和
+别处的开关一模一样：同一套主题、同一种颜色、同样的点法。
+
+```python
+def on_start():
+    margelet.settings(
+        margelet.header("怎么问好"),
+        margelet.switch("hello", "问好", default=True,
+                        about="打开聊天时说一句你好。"),
+        margelet.text("name", "名字", default="朋友"),
+        margelet.choice("mood", "语气", ["轻快", "平静"]),
+        margelet.note("这些都留在手机上，哪儿也不去。"),
+        margelet.action("全部忘掉", forget, danger=True),
+    )
+    margelet.on_settings(changed)
+
+def changed(key, value):
+    margelet.log("现在", key, "=", value)
+
+def forget():
+    margelet.toast("忘了")
+```
+
+| 行 | 含义 |
+|---|---|
+| `margelet.header(文本)` | 分组标题 |
+| `margelet.note(文本)` | 灰色的说明 |
+| `margelet.switch(键, 标题, default=False, about=None)` | 开关；用 `margelet.flag(键)` 读 |
+| `margelet.text(键, 标题, default="", about=None)` | 手动填的一行；用 `margelet.get(键)` 读 |
+| `margelet.choice(键, 标题, 选项, default=None)` | 多选一 |
+| `margelet.action(标题, 调用, danger=False)` | 只干一件事的按钮 |
+
+`settings()` 在启动时调用一次。默认值会立刻写进去——否则明明谁也没改，第一次
+读却是空的。
+
+有设置的插件会在列表里出现一个齿轮。点齿轮左边的那一行进设置，点右边的开关
+则是开关插件本身。
+
+这份声明和插件的记忆存在一起，而不是留在内存里，所以关着的插件也能打开设置
+界面：有时正是要先把设置改好，再打开插件。
 
 ## 除此之外还能用什么
 
@@ -132,10 +240,16 @@ Python 出错时是沉默的，没有这个界面，作者只能从“怎么什�
 
 也可以直接在聊天里点 `.marp` 文件——应用会提示安装。
 
-新插件安装后是关闭状态。点一下开关打开，长按看详情和删除。
+安装窗口有两个按钮。“安装”装上但保持关闭。“安装并启用”装上、打开，并立刻
+重启 Margelet——插件马上就开始工作，不必等着手动关掉应用。
+
+如果插件声明的 `min_version` 高于你的版本，它就装不上，并会告诉你需要哪个
+版本——而不是装上了再坏掉。
+
+长按那一行看插件详情和删除。
 
 关闭的意思是“不再启动它”。已经跑起来的 Python 代码没有办法停下——它会活到应用
-重启为止。
+重启为止。插件界面上的“重启 Margelet”按钮就是为此：关掉、点一下，插件就没了。
 
 ## 示例
 

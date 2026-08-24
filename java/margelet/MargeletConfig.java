@@ -27,7 +27,7 @@ public class MargeletConfig {
      * Забыть про него значит выпустить сборку, которая всю жизнь будет
      * предлагать обновиться сама на себя.
      */
-    public static final String APP_VERSION = "0.2.4";
+    public static final String APP_VERSION = "0.3";
 
     /**
      * Как часто спрашивать гитхаб про новую версию, в минутах. Ноль — не

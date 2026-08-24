@@ -29,6 +29,34 @@ public class MargeletPython {
         host.callAttr("chat_opened", fragment);
     }
 
+    /**
+     * Человек отправляет текст. Ответ нужен сразу же, поэтому это
+     * единственный вызов питона, который не откладывается, а ждёт.
+     */
+    public static String sending(String text, long dialogId) {
+        final PyObject host = Python.getInstance().getModule("margelet_host");
+        final PyObject answer = host.callAttr("sending", text, dialogId);
+        return answer == null ? text : answer.toString();
+    }
+
+    /** Пришло сообщение. */
+    public static void received(String text, long dialogId, int messageId, boolean out) {
+        final PyObject host = Python.getInstance().getModule("margelet_host");
+        host.callAttr("received", text, dialogId, messageId, out);
+    }
+
+    /** Нажали кнопку плагина в меню чата. */
+    public static void buttonClicked(String pluginId, String key, Object fragment) {
+        final PyObject host = Python.getInstance().getModule("margelet_host");
+        host.callAttr("button_clicked", pluginId, key, fragment);
+    }
+
+    /** Человек поменял настройку плагина на его экране настроек. */
+    public static void settingsChanged(String pluginId, String key, String value) {
+        final PyObject host = Python.getInstance().getModule("margelet_host");
+        host.callAttr("settings_changed", pluginId, key, value);
+    }
+
     public static void run(String id, String name, String folder) {
         final PyObject host = Python.getInstance().getModule("margelet_host");
         host.callAttr("run_plugin", id, name, folder);

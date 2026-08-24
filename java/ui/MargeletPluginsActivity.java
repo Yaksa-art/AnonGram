@@ -7,6 +7,7 @@ import android.text.SpannableStringBuilder;
 import android.view.View;
 
 import org.telegram.margelet.MargeletConfig;
+import org.telegram.margelet.MargeletHooks;
 import org.telegram.margelet.MargeletPluginHost;
 import org.telegram.margelet.MargeletPlugins;
 import org.telegram.messenger.ApplicationLoader;
@@ -38,6 +39,7 @@ public class MargeletPluginsActivity extends UniversalFragment {
     private static final int ID_CONSOLE = 3;
     private static final int ID_DOCS = 4;
     private static final int ID_FORUM = 5;
+    private static final int ID_RESTART = 6;
     /** Строки самих плагинов идут отсюда и дальше, по одному номеру на плагин. */
     private static final int ID_PLUGIN = 100;
 
@@ -77,6 +79,11 @@ public class MargeletPluginsActivity extends UniversalFragment {
                             : R.string.MargeletPluginsOffHint)));
         }
 
+        // Перезапуск прямо здесь: включённый плагин поднимается только на
+        // старте, а выключенный доживает до него. Раньше человеку приходилось
+        // закрывать телеграм самому и догадываться, что это вообще нужно.
+        items.add(UItem.asButton(ID_RESTART, LocaleController.getString(R.string.MargeletPluginsRestart)));
+        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletPluginsRestartAbout)));
         items.add(UItem.asButton(ID_INSTALL, LocaleController.getString(R.string.MargeletPluginInstall)));
         items.add(UItem.asButton(ID_CONSOLE, LocaleController.getString(R.string.MargeletPluginConsole)));
         items.add(UItem.asShadow(null));
@@ -89,6 +96,8 @@ public class MargeletPluginsActivity extends UniversalFragment {
     protected void onClick(UItem item, View view, int position, float x, float y) {
         if (item.id == ID_MASTER) {
             toggleMaster();
+        } else if (item.id == ID_RESTART) {
+            MargeletPlugins.restart(getParentActivity());
         } else if (item.id == ID_INSTALL) {
             pickFile();
         } else if (item.id == ID_CONSOLE) {
@@ -98,7 +107,7 @@ public class MargeletPluginsActivity extends UniversalFragment {
         } else if (item.id == ID_FORUM) {
             Browser.openUrl(getContext(), MargeletConfig.FORUM_URL);
         } else if (item.id >= ID_PLUGIN) {
-            toggle(plugin(item.id));
+            open(plugin(item.id), view, x);
         }
     }
 
@@ -136,6 +145,30 @@ public class MargeletPluginsActivity extends UniversalFragment {
                 })
                 .setNegativeButton(LocaleController.getString(R.string.Cancel), null)
                 .show();
+    }
+
+    /**
+     * Нажатие по строке плагина. У строки два смысла, и разводим их по месту
+     * нажатия: справа переключатель — значит включить или выключить, слева
+     * всё остальное — значит открыть настройки, если плагин их заявил.
+     *
+     * Нажатие приходит вместе с координатой, так что гадать не приходится.
+     * У плагина без настроек строка целиком остаётся выключателем: пустой
+     * экран вместо настроек был бы хуже, чем его отсутствие.
+     */
+    private void open(MargeletPlugins.Plugin plugin, View view, float x) {
+        if (plugin == null) {
+            return;
+        }
+        final int edge = org.telegram.messenger.AndroidUtilities.dp(60);
+        final boolean onSwitch = LocaleController.isRTL
+                ? x < edge
+                : x > view.getWidth() - edge;
+        if (!onSwitch && MargeletHooks.hasSettings(plugin.id)) {
+            presentFragment(new MargeletPluginSettingsActivity(plugin));
+            return;
+        }
+        toggle(plugin);
     }
 
     private void toggle(MargeletPlugins.Plugin plugin) {

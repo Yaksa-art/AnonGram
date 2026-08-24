@@ -178,6 +178,17 @@ public class MargeletPluginHost {
         });
     }
 
+    /**
+     * Отдать работу потоку плагинов. Если питон ещё не поднят, работы просто
+     * не будет: событие без слушателя — не повод будить одиннадцать мегабайт.
+     */
+    static void post(Runnable work) {
+        final Handler h = handler;
+        if (h != null) {
+            h.post(work);
+        }
+    }
+
     /** Короткое сообщение на экране. Зовётся из плагина. */
     public static void toast(String text) {
         AndroidUtilities.runOnUIThread(() -> {
@@ -212,9 +223,14 @@ public class MargeletPluginHost {
         }
     }
 
-    private static void python(String method, Class<?>[] types, Object... args) throws Throwable {
+    static void python(String method, Class<?>[] types, Object... args) throws Throwable {
+        pythonValue(method, types, args);
+    }
+
+    /** То же самое, но с ответом: нужен там, где питона спрашивают, а не зовут. */
+    static Object pythonValue(String method, Class<?>[] types, Object... args) throws Throwable {
         try {
-            Class.forName("org.telegram.margelet.MargeletPython")
+            return Class.forName("org.telegram.margelet.MargeletPython")
                     .getMethod(method, types)
                     .invoke(null, args);
         } catch (java.lang.reflect.InvocationTargetException e) {

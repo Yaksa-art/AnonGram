@@ -59,16 +59,19 @@ public class MargeletPlugins {
         public final String author;
         public final String description;
         public final List<String> permissions;
+        /** Какая версия форка нужна плагину. Пусто — любая. */
+        public final String minVersion;
         public final File folder;
 
         Plugin(String id, String name, String version, String author, String description,
-               List<String> permissions, File folder) {
+               List<String> permissions, String minVersion, File folder) {
             this.id = id;
             this.name = name;
             this.version = version;
             this.author = author;
             this.description = description;
             this.permissions = permissions;
+            this.minVersion = minVersion;
             this.folder = folder;
         }
 
@@ -146,6 +149,7 @@ public class MargeletPlugins {
                     json.optString("author", "?"),
                     localized(json, "description", ""),
                     permissions,
+                    json.optString("min_version", ""),
                     folder);
         } catch (Exception e) {
             FileLog.e(e);
@@ -347,6 +351,30 @@ public class MargeletPlugins {
      * @param whenInstalled что сделать после установки; может быть null.
      * @return false, если это не плагин — тогда звать было не за чем.
      */
+    /**
+     * Хватает ли этой сборки форка для такого плагина.
+     *
+     * Автор пишет в манифесте `min_version`. Ставить плагин, которому нужны
+     * двери, которых в этой сборке ещё нет, — значит отдать человеку молча
+     * ничего не делающий плагин; он будет думать, что сломано у него.
+     */
+    public static boolean supported(Plugin plugin) {
+        if (plugin == null || plugin.minVersion == null || plugin.minVersion.isEmpty()) {
+            return true;
+        }
+        return !MargeletUpdate.newer(plugin.minVersion, MargeletConfig.APP_VERSION);
+    }
+
+    /**
+     * Перезапуск приложения: включённый плагин поднимается только на старте,
+     * а выключенный до перезапуска доживает — остановить работающий питон
+     * нечем. Раньше человеку приходилось убивать телеграм самому.
+     */
+    public static void restart(Context context) {
+        MargeletFonts.restart(context instanceof android.app.Activity
+                ? (android.app.Activity) context : null);
+    }
+
     public static boolean askInstall(Context context, InputStream source, Runnable whenInstalled) {
         final Plugin[] staged = { stage(context, source) };
         if (staged[0] == null) {
@@ -364,6 +392,20 @@ public class MargeletPlugins {
             }
         }
 
+        if (!supported(plugin)) {
+            // Не ставим вовсе: плагин рассчитан на сборку новее этой.
+            discard(staged[0]);
+            staged[0] = null;
+            new AlertDialog.Builder(context)
+                    .setTitle(plugin.name)
+                    .setMessage(LocaleController.formatString(R.string.MargeletPluginTooOld,
+                            plugin.minVersion, MargeletConfig.APP_VERSION))
+                    .setPositiveButton(LocaleController.getString(R.string.OK), null)
+                    .show();
+            return true;
+        }
+
+        final boolean[] startNow = { false };
         final SpannableStringBuilder text = new SpannableStringBuilder();
         text.append(LocaleController.formatString(R.string.MargeletPluginBy, plugin.author)).append("\n\n");
         if (existing != null) {
@@ -393,6 +435,21 @@ public class MargeletPlugins {
                     if (whenInstalled != null) {
                         whenInstalled.run();
                     }
+                })
+                .setNeutralButton(LocaleController.getString(R.string.MargeletPluginInstallAndRun), (d, w) -> {
+                    // Поставить, включить и перезапуститься: без перезапуска
+                    // плагин всё равно не поднимется, и человеку пришлось бы
+                    // закрывать телеграм руками.
+                    startNow[0] = true;
+                    final Plugin ready = commit(staged[0]);
+                    staged[0] = null;
+                    if (ready != null) {
+                        MargeletConfig.setPluginEnabled(ready.id, true);
+                    }
+                    if (whenInstalled != null) {
+                        whenInstalled.run();
+                    }
+                    restart(context);
                 })
                 .setNegativeButton(LocaleController.getString(R.string.Cancel), null)
                 // Отказ бывает и кнопкой «назад» — распакованное не должно

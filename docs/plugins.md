@@ -44,6 +44,7 @@ margelet_example.marp
   "version": "1.0",
   "author": "narezany",
   "description": "Says hello in the console.",
+  "min_version": "0.3",
   "permissions": ["ui"]
 }
 ```
@@ -55,6 +56,7 @@ margelet_example.marp
 | `version` | Version, as a string. |
 | `author` | Who wrote it. |
 | `description` | A line or two: what it does. |
+| `min_version` | The oldest Margelet the plugin works on. On anything older it will not install at all — with an explanation, not silently. Optional. |
 | `permissions` | What the plugin declares about itself. The list is below. |
 | `name_en`, `name_zh`, `description_en`, … | The same in another language. The app picks by its own language and falls back to the plain field. |
 
@@ -87,12 +89,34 @@ The `margelet` object is available without an import:
 | `margelet.toast(text)` | a short line over the screen |
 | `margelet.get(key, fallback=None)` | the plugin's own memory |
 | `margelet.set(key, value)` | write to it |
-| `margelet.on_chat_opened(call)` | called when a chat is opened; gets the chat screen |
+| `margelet.flag(key, fallback=False)` | read a switch from the settings screen as yes/no |
 
 `get` and `set` survive both a restart and an update of the plugin itself:
 they are not kept in the plugin's folder, which is replaced on update.
 
 ## Events
+
+A plugin does not poll the app — the app calls the plugin.
+
+| | |
+|---|---|
+| `margelet.on_chat_opened(call)` | a chat was opened; gets the chat screen |
+| `margelet.on_send(call)` | a text is being sent, before it goes |
+| `margelet.on_message(call)` | a message arrived |
+| `margelet.button(title, call)` | your own line in the chat menu (the three dots) |
+| `margelet.on_settings(call)` | a setting of this plugin was changed |
+
+There are deliberately few doors, and each one has a name. That is not the same
+as letting a plugin replace any method of the app: replacing arbitrary methods
+means rewriting someone else's code at runtime, it needs a separate library
+that patches machine code, and every Telegram update breaks everything written
+on top of it. A named door survives updates, because we are the ones who keep
+it, not a coincidence of names.
+
+If you need a door that is not here, [say so on the forum](https://t.me/margeletforum).
+We will add a named one rather than open all of them at once.
+
+### A chat was opened
 
 ```python
 def on_start():
@@ -103,15 +127,107 @@ def sit_on_the_box(chat):
     ...
 ```
 
-`on_chat_opened` is called every time a chat screen comes up, and is handed
-that screen. Before it existed, a plugin that needed the open chat had to ask
-several times a second whether one had appeared — that is polling for what the
-app already knows, and it costs battery for nothing.
+Called every time a chat screen comes up, and handed that screen.
+
+### Sending
+
+```python
+def on_start():
+    margelet.on_send(sign)
+
+def sign(text, chat):
+    if text.startswith("/"):
+        return False          # do not send at all
+    return text + " 🌿"       # this goes instead
+```
+
+What to return: a string — that is what gets sent; `False` — do not send;
+nothing — leave it alone. If several plugins are subscribed they are called in
+turn, each seeing the text as the previous one left it.
+
+This is the one event the app **waits** for: while the handler thinks, a person
+is looking at an unsent message. Long work belongs in `margelet.ui` or
+`margelet.every`. If a handler took longer than a tenth of a second, the console
+says so — not as a reproach, but so the author knows.
+
+### Messages arriving
+
+```python
+def on_start():
+    margelet.on_message(count)
+
+def count(text, chat, message_id, mine):
+    if not mine:
+        margelet.log("arrived:", text)
+```
+
+Your own sent messages arrive here too — that is what `mine` is for. The return
+value changes nothing: the message has already arrived.
+
+### Your own button in a chat
+
+```python
+def on_start():
+    margelet.button("Count", count)
+
+def count(chat):
+    margelet.toast("there are " + str(chat.getMessagesCount()) + " messages here")
+```
+
+The line goes last in the chat menu, after all the usual entries: someone
+else's code should not push the familiar ones around.
 
 If one plugin's callback throws, the others still get called: each is called
 separately and the broken one gets its traceback in the console.
 
 `print()` goes to the console as well — it is intercepted.
+
+## A settings screen of your own
+
+A plugin does not draw its own screens — it says what the screen is made of,
+and the app draws it. That is why a plugin's switch looks like every other
+switch: same theme, same colour, same tap.
+
+```python
+def on_start():
+    margelet.settings(
+        margelet.header("How to say hello"),
+        margelet.switch("hello", "Say hello", default=True,
+                        about="Says hi when you open a chat."),
+        margelet.text("name", "Name", default="friend"),
+        margelet.choice("mood", "Mood", ["cheerful", "calm"]),
+        margelet.note("All of this stays on the phone and goes nowhere."),
+        margelet.action("Forget everything", forget, danger=True),
+    )
+    margelet.on_settings(changed)
+
+def changed(key, value):
+    margelet.log("now", key, "=", value)
+
+def forget():
+    margelet.toast("forgotten")
+```
+
+| Row | What it is |
+|---|---|
+| `margelet.header(text)` | a section title |
+| `margelet.note(text)` | an explanation in grey |
+| `margelet.switch(key, title, default=False, about=None)` | a switch; read with `margelet.flag(key)` |
+| `margelet.text(key, title, default="", about=None)` | a line typed by hand; read with `margelet.get(key)` |
+| `margelet.choice(key, title, options, default=None)` | one of several |
+| `margelet.action(title, call, danger=False)` | a button that just does something |
+
+`settings()` is called once, at start. Defaults are written straight away —
+otherwise the first read would come back empty although nobody changed
+anything.
+
+A plugin with settings gets a gear in the list. Tapping the row to the left of
+it opens the settings; tapping the switch on the right turns the plugin itself
+on and off.
+
+The declaration is kept together with the plugin's memory rather than in RAM,
+so the settings screen opens for a disabled plugin too: you may want to fix a
+setting before turning it on.
 
 ## What else is available
 
@@ -141,11 +257,19 @@ author and the declared permissions.
 You can also tap a `.marp` file right in a chat — the app will offer to install
 it.
 
-A new plugin is installed disabled. Tap the row to turn it on, hold it for the
-card and for deleting.
+The install dialog has two buttons. "Install" installs the plugin disabled.
+"Install and run" installs it, turns it on and restarts Margelet right away, so
+the plugin starts working without waiting for the app to be closed by hand.
+
+If the plugin declares a `min_version` above yours it will not install, and you
+are told which version it needs — instead of installing and then breaking.
+
+Hold the row for the plugin's card and for deleting.
 
 Turning a plugin off means "do not start it again". There is no way to stop
-Python code that is already running — it lives until the app is restarted.
+Python code that is already running — it lives until the app is restarted. That
+is what the "Restart Margelet" button on the plugins screen is for: switch it
+off, tap, and the plugin is gone.
 
 ## The example
 

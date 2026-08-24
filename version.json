@@ -1,7 +1,7 @@
 {
-  "version": "0.2.4",
+  "version": "0.3",
   "apk": "https://github.com/narezany/margelet/raw/apk/margelet.apk",
-  "about": "Plugins get events and their own memory; installing over an installed plugin no longer runs it twice.",
-  "about_ru": "Плагины получили события и свою память; установка поверх уже стоящего больше не запускает его дважды.",
-  "about_zh": "插件获得了事件与自己的存储；覆盖安装不会再让同一个插件运行两次。"
+  "about": "Plugins get named events, a settings screen of their own and a line in the chat menu; a plugin can now require a minimum Margelet version.",
+  "about_ru": "У плагинов появились названные события, свой экран настроек и строчка в меню чата; плагин теперь может требовать минимальную версию Margelet.",
+  "about_zh": "插件获得了具名事件、属于自己的设置界面和聊天菜单里的一行；插件现在可以要求最低的 Margelet 版本。"
 }
