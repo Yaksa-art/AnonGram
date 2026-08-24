@@ -1,7 +1,7 @@
 {
-  "version": "0.3.1",
+  "version": "0.3.2",
   "apk": "https://github.com/narezany/margelet/raw/apk/margelet.apk",
-  "about": "Fixes: the install dialog no longer claims every plugin is already installed; enabling a plugin needs no restart, disabling asks for one; a button in a photo caption now responds along its whole width.",
-  "about_ru": "Починено: окно установки больше не говорит «уже стоит» про каждый плагин; включение плагина обходится без перезапуска, а выключение о нём просит; кнопка в подписи к картинке нажимается по всей ширине.",
-  "about_zh": "修复：安装窗口不再对每个插件都说「已经装过」；启用插件无需重启，关闭插件才会询问；图片说明里的按钮现在整条都可以点。"
+  "about": "Plugins can now do slow work off the drawing thread and send their answer when it arrives; the install dialog lets you read the archive before installing.",
+  "about_ru": "Плагины теперь умеют делать долгое в стороне от экрана и отправлять ответ, когда он пришёл; на окне установки можно прочитать архив до установки.",
+  "about_zh": "插件现在可以把耗时的活儿放到绘制线程之外，等结果回来再发送；安装窗口里可以在安装前先读压缩包。"
 }

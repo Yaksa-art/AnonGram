@@ -730,7 +730,7 @@ index 00000000..a775cdbc
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
 new file mode 100644
-index 00000000..fa29b802
+index 00000000..b23e079a
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
 @@ -0,0 +1,409 @@
@@ -763,7 +763,7 @@ index 00000000..fa29b802
 +     * Забыть про него значит выпустить сборку, которая всю жизнь будет
 +     * предлагать обновиться сама на себя.
 +     */
-+    public static final String APP_VERSION = "0.3.1";
++    public static final String APP_VERSION = "0.3.2";
 +
 +    /**
 +     * Как часто спрашивать гитхаб про новую версию, в минутах. Ноль — не
@@ -2005,83 +2005,104 @@ index 00000000..33ff716b
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletHooks.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletHooks.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..37b3533cf896e2d7248e0578741f8af9a8796f1e
+index 0000000000000000000000000000000000000000..25b979f7ba90fa3e06f89a455aa8efe553f339b4
 GIT binary patch
-literal 10655
-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
+literal 13615
+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
 
 literal 0
 HcmV?d00001
@@ -3376,10 +3397,10 @@ index 00000000..cfc704d6
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletPlugins.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletPlugins.java
 new file mode 100644
-index 00000000..b1b0ba29
+index 00000000..cf7482e0
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletPlugins.java
-@@ -0,0 +1,520 @@
+@@ -0,0 +1,623 @@
 +package org.telegram.margelet;
 +
 +import android.content.Context;
@@ -3771,7 +3792,19 @@ index 00000000..b1b0ba29
 +    }
 +
 +    public static boolean askInstall(Context context, InputStream source, Runnable whenInstalled) {
-+        final Plugin[] staged = { stage(context, source) };
++        // Сначала кладём архив на диск, и уже из него разбираем. Поток читается
++        // один раз, а архив нужен ещё и потом: человек вправе прочитать код
++        // до установки, а не после.
++        final File archive = keepArchive(context, source);
++        if (archive == null) {
++            return false;
++        }
++        Plugin first = null;
++        try {
++            first = stage(context, new java.io.FileInputStream(archive));
++        } catch (Exception ignored) {
++        }
++        final Plugin[] staged = { first };
 +        if (staged[0] == null) {
 +            return false;
 +        }
@@ -3801,6 +3834,8 @@ index 00000000..b1b0ba29
 +        }
 +
 +        final boolean[] startNow = { false };
++        final boolean[] keep = { false };
++        final Runnable[] show = new Runnable[1];
 +        final SpannableStringBuilder text = new SpannableStringBuilder();
 +        text.append(LocaleController.formatString(R.string.MargeletPluginBy, plugin.author)).append("\n\n");
 +        if (existing != null) {
@@ -3820,6 +3855,23 @@ index 00000000..b1b0ba29
 +            text.append("\n\n").append(LocaleController.getString(R.string.MargeletPluginAlreadyRestart));
 +        }
 +
++        // Копия: existing присваивается в цикле выше, а лямбда берёт только
++        // то, что после присвоения уже не меняется.
++        final Plugin already = existing;
++        show[0] = () -> buildInstallDialog(context, staged, plugin, already, archive,
++                text, startNow, keep, show, whenInstalled);
++        show[0].run();
++        return true;
++    }
++
++    /**
++     * Само окно установки. Вынесено отдельно ровно потому, что показать его
++     * надо уметь дважды: человек уходит читать архив и возвращается.
++     */
++    private static void buildInstallDialog(Context context, Plugin[] staged, Plugin plugin,
++                                           Plugin existing, File archive,
++                                           SpannableStringBuilder text, boolean[] startNow,
++                                           boolean[] keep, Runnable[] show, Runnable whenInstalled) {
 +        final AlertDialog.Builder builder = new AlertDialog.Builder(context)
 +                .setTitle(plugin.name + " " + plugin.version)
 +                .setMessage(text)
@@ -3842,11 +3894,31 @@ index 00000000..b1b0ba29
 +                    }
 +                })
 +                .setNegativeButton(LocaleController.getString(R.string.Cancel), null)
++                // Прочитать код до установки. Правило форума — «плагин едет
++                // исходником, и открыть его должен мочь любой» — до сих пор
++                // держалось на честном слове: посмотреть содержимое можно было
++                // только после установки, то есть уже пустив чужой код внутрь.
++                .setNeutralButton(LocaleController.getString(R.string.MargeletPluginViewSource), (d, w) -> {
++                    keep[0] = true;
++                    openArchive(context, archive);
++                    // Окно закрылось нажатием, а вернувшись из архиватора,
++                    // человек ожидает застать его на месте — иначе придётся
++                    // заново искать файл. Показываем его заново.
++                    AndroidUtilities.runOnUIThread(() -> {
++                        keep[0] = false;
++                        show[0].run();
++                    }, 300);
++                })
 +                // Отказ бывает и кнопкой «назад» — распакованное не должно
-+                // остаться лежать в папке.
++                // остаться лежать в папке. Но уход в архиватор отказом не
++                // считается.
 +                .setOnDismissListener(d -> {
++                    if (keep[0]) {
++                        return;
++                    }
 +                    discard(staged[0]);
 +                    staged[0] = null;
++                    archive.delete();
 +                });
 +        // Галочка «включить сразу». Раньше это была третья кнопка, и окно из-за
 +        // неё читалось как выбор между двумя установками, хотя установка одна,
@@ -3884,7 +3956,59 @@ index 00000000..b1b0ba29
 +            }
 +        }
 +        builder.show();
-+        return true;
++    }
++
++    /** Кладёт присланный архив на диск: из потока читать можно только раз. */
++    private static File keepArchive(Context context, InputStream source) {
++        try {
++            final File folder = new File(context.getFilesDir(), "cache");
++            folder.mkdirs();
++            // Имя одно на всех: смотрят архив по одному, и копить их незачем.
++            final File file = new File(folder, "margelet_plugin.marp");
++            final FileOutputStream out = new FileOutputStream(file);
++            final byte[] buffer = new byte[8192];
++            int read;
++            while ((read = source.read(buffer)) > 0) {
++                out.write(buffer, 0, read);
++            }
++            out.close();
++            return file.length() > 0 ? file : null;
++        } catch (Exception e) {
++            FileLog.e(e);
++            return null;
++        }
++    }
++
++    /**
++     * Открывает архив плагина чем-нибудь, что умеет архивы.
++     *
++     * Своей смотрелки не пишем: файловые менеджеры показывают zip лучше, чем
++     * это сделали бы мы, и человеку привычнее. Если открыть нечем, предлагаем
++     * передать файл куда угодно — тогда он хотя бы дойдёт до архиватора.
++     */
++    private static void openArchive(Context context, File file) {
++        try {
++            final android.net.Uri uri = androidx.core.content.FileProvider.getUriForFile(
++                    context, ApplicationLoader.getApplicationId() + ".provider", file);
++            final android.content.Intent view = new android.content.Intent(
++                    android.content.Intent.ACTION_VIEW);
++            view.setDataAndType(uri, "application/zip");
++            view.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION);
++            if (view.resolveActivity(context.getPackageManager()) != null) {
++                context.startActivity(view);
++                return;
++            }
++            // Смотреть zip нечем — отдаём файл наружу.
++            final android.content.Intent share = new android.content.Intent(
++                    android.content.Intent.ACTION_SEND);
++            share.setType("application/zip");
++            share.putExtra(android.content.Intent.EXTRA_STREAM, uri);
++            share.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION);
++            context.startActivity(android.content.Intent.createChooser(share,
++                    LocaleController.getString(R.string.MargeletPluginViewSource)));
++        } catch (Exception e) {
++            FileLog.e(e);
++        }
 +    }
 +
 +    /**
@@ -18459,7 +18583,7 @@ index 03d0ba33..17f98fa6 100644
      <string name="English">Inglês</string>
      <string name="LanguageNameInEnglish">Portuguese (Brazil)</string>
 diff --git a/TMessagesProj/src/main/res/values-ru/strings.xml b/TMessagesProj/src/main/res/values-ru/strings.xml
-index 24c56292..aed0be7c 100644
+index 24c56292..452077a8 100644
 --- a/TMessagesProj/src/main/res/values-ru/strings.xml
 +++ b/TMessagesProj/src/main/res/values-ru/strings.xml
 @@ -1,7 +1,7 @@
@@ -18472,7 +18596,7 @@ index 24c56292..aed0be7c 100644
      <string name="LanguageName">Русский</string>
      <string name="English">Английский</string>
      <string name="LanguageNameInEnglish">Russian</string>
-@@ -263,4 +263,197 @@
+@@ -263,4 +263,198 @@
      <string name="RemindTodayAt">\'Отправить сегодня в\' HH:mm</string>
      <string name="RemindDayAt">\'Отправить\' d MMM \'в\' HH:mm</string>
      <string name="RemindDayYearAt">\'Напомнить\' d MMM yyyy \'в\' HH:mm</string>
@@ -18648,6 +18772,7 @@ index 24c56292..aed0be7c 100644
 +    <string name="MargeletPluginsRestart">Перезапустить Margelet</string>
 +    <string name="MargeletPluginsRestartAbout">Плагин поднимается только при запуске приложения, а выключенный доживает до него же: остановить работающий код нечем. Поэтому включение и выключение требуют перезапуска.</string>
 +    <string name="MargeletPluginNoSettings">Настраивать в этом плагине нечего.</string>
++    <string name="MargeletPluginViewSource">Посмотреть архив</string>
 +    <string name="MargeletPluginEnableAfter">Включить сразу после установки</string>
 +    <string name="MargeletPluginLibrary">Библиотека плагинов</string>
 +    <string name="MargeletFeedback">Фидбек</string>
@@ -18687,10 +18812,10 @@ index d4683443..57d10109 100644
      <string name="LanguageNameInEnglish">Ukrainian</string>
 diff --git a/TMessagesProj/src/main/res/values-zh/strings.xml b/TMessagesProj/src/main/res/values-zh/strings.xml
 new file mode 100644
-index 00000000..19da51c8
+index 00000000..b204fc54
 --- /dev/null
 +++ b/TMessagesProj/src/main/res/values-zh/strings.xml
-@@ -0,0 +1,196 @@
+@@ -0,0 +1,197 @@
 +<?xml version="1.0" encoding="utf-8"?>
 +<resources>
 +    <string name="MargeletSettings">分支设置</string>
@@ -18865,6 +18990,7 @@ index 00000000..19da51c8
 +    <string name="MargeletPluginsRestart">重启 Margelet</string>
 +    <string name="MargeletPluginsRestartAbout">插件只在应用启动时加载，而被关闭的插件会一直运行到下次启动：没有办法停止已在运行的代码。因此开关插件都需要重启。</string>
 +    <string name="MargeletPluginNoSettings">这个插件没有可设置的项目。</string>
++    <string name="MargeletPluginViewSource">查看压缩包</string>
 +    <string name="MargeletPluginEnableAfter">安装后立即启用</string>
 +    <string name="MargeletPluginLibrary">插件库</string>
 +    <string name="MargeletFeedback">反馈</string>
@@ -18904,7 +19030,7 @@ index cc49d135..a8a51c3a 100644
      <item name="menu_regular" type="id"/>
      <item name="menu_bold" type="id"/>
 diff --git a/TMessagesProj/src/main/res/values/strings.xml b/TMessagesProj/src/main/res/values/strings.xml
-index ffa4d566..a2e210f6 100644
+index ffa4d566..a6a97c9e 100644
 --- a/TMessagesProj/src/main/res/values/strings.xml
 +++ b/TMessagesProj/src/main/res/values/strings.xml
 @@ -1,7 +1,7 @@
@@ -18917,7 +19043,7 @@ index ffa4d566..a2e210f6 100644
      <string name="LanguageName">English</string>
      <string name="English">English</string>
      <string name="LanguageNameInEnglish">English</string>
-@@ -11221,4 +11221,197 @@
+@@ -11221,4 +11221,198 @@
      <string name="UnsupportedMessageTitle">Unsupported Message</string>
      <string name="UnsupportedMessageMessage">Update Telegram to view this message</string>
      <string name="UnsupportedUpdate">Update</string>
@@ -19093,6 +19219,7 @@ index ffa4d566..a2e210f6 100644
 +    <string name="MargeletPluginsRestart">Restart Margelet</string>
 +    <string name="MargeletPluginsRestartAbout">A plugin starts only when the app starts, and a plugin switched off keeps working until then: there is no way to stop running code. So switching one on or off takes a restart.</string>
 +    <string name="MargeletPluginNoSettings">This plugin has nothing to set up.</string>
++    <string name="MargeletPluginViewSource">View the archive</string>
 +    <string name="MargeletPluginEnableAfter">Enable right after installing</string>
 +    <string name="MargeletPluginLibrary">Plugin library</string>
 +    <string name="MargeletFeedback">Feedback</string>
@@ -19458,10 +19585,10 @@ index 00000000..986d1fb1
 +    margelet.log("настройка", key, "теперь", value)
 diff --git a/TMessagesProj_AppStandalone/src/main/python/margelet_host.py b/TMessagesProj_AppStandalone/src/main/python/margelet_host.py
 new file mode 100644
-index 00000000..0de5e332
+index 00000000..f2b3947d
 --- /dev/null
 +++ b/TMessagesProj_AppStandalone/src/main/python/margelet_host.py
-@@ -0,0 +1,360 @@
+@@ -0,0 +1,408 @@
 +# -*- coding: utf-8 -*-
 +"""Прослойка между приложением и плагинами Margelet.
 +
@@ -19556,6 +19683,7 @@ index 00000000..0de5e332
 +        self._on_settings = []
 +        self._buttons = {}
 +        self._actions = {}
++        self._cancel_send = False
 +
 +    def log(self, *parts):
 +        _Host.log(self.name, " ".join(str(p) for p in parts), False)
@@ -19577,10 +19705,24 @@ index 00000000..0de5e332
 +        _Android.runOnUIThread(task, ms)
 +        return task
 +
-+    def cancel(self, task):
-+        """Прекратить повтор, поставленный every или ui."""
-+        if task is not None:
-+            task.cancelled = True
++    def cancel(self, task=None):
++        """Прекратить повтор, поставленный every или ui.
++
++        Аргумент необязателен не по доброте. Автор первого стороннего плагина
++        написал margelet.cancel() в обработчике отправки, имея в виду «не
++        отправляй это». Вызов падал, ошибка уходила в лог, который автор не
++        открывал, а сообщение уходило в чат как есть — то есть в переписку
++        улетала сама команда. Название виновато, а не он: теперь без аргумента
++        это значит ровно то, за чем к нему потянулись.
++        """
++        if task is None:
++            # Возврата мало: в том самом плагине cancel() вызвали, а результат
++            # не вернули — функция закончилась молчанием, и команда всё равно
++            # улетала в чат. Поэтому отмену запоминаем, а не только отдаём.
++            self._cancel_send = True
++            return False
++        task.cancelled = True
++        return None
 +
 +    def toast(self, text):
 +        """Короткая надпись поверх экрана."""
@@ -19593,6 +19735,35 @@ index 00000000..0de5e332
 +
 +    def set(self, key, value):
 +        _Host.set(self.id, str(key), None if value is None else str(value))
++
++    def background(self, call):
++        """Сделать что-то долгое в стороне от экрана.
++
++        Всё, что ходит в сеть или читает большой файл, должно жить здесь.
++        Прямо в обработчике отправки этого делать нельзя: пока он думает,
++        телефон не рисует ничего, а привычной андроидовской защиты «полез в
++        сеть с главного потока — упади» тут нет. Питон ходит в сеть мимо
++        джавы, и охранник его не видит: приложение не падает, оно замирает.
++        """
++        _Hooks.background(_Task(call, None, self.name))
++
++    def send(self, chat, text):
++        """Отправить сообщение в переписку. Так плагин отвечает на команду.
++
++        Обычный порядок для команды: увидел её в on_send, вернул False, ушёл
++        в margelet.background, а когда ответ пришёл — отправил его отсюда.
++        """
++        _Hooks.send(int(chat), str(text))
++
++    def dont_send(self):
++        """Не отправлять то, что человек набрал. То же, что вернуть False.
++
++        Заведено потому, что за этим тянулись рукой к margelet.cancel — а
++        cancel про другое, он останавливает повтор. Слово нашлось раньше,
++        чем правило, значит слово и надо было дать.
++        """
++        self._cancel_send = True
++        return False
 +
 +    def flag(self, key, fallback=False):
 +        """Прочитать переключатель с экрана настроек как да/нет."""
@@ -19725,12 +19896,16 @@ index 00000000..0de5e332
 +    result = text
 +    for margelet in list(_margelets.values()):
 +        for call in list(margelet._on_send):
++            margelet._cancel_send = False
 +            try:
 +                answer = call(result, dialog_id)
 +            except Exception:
 +                _Host.log(margelet.name, traceback.format_exc(), True)
 +                continue
-+            if answer is False:
++            # Отмена засчитывается и когда её вернули, и когда о ней просто
++            # сказали: margelet.cancel() или margelet.dont_send() внутри
++            # обработчика значат то же самое, что return False.
++            if answer is False or margelet._cancel_send:
 +                return _CANCEL
 +            if isinstance(answer, str):
 +                result = answer

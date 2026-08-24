@@ -90,6 +90,8 @@ The `margelet` object is available without an import:
 | `margelet.get(key, fallback=None)` | the plugin's own memory |
 | `margelet.set(key, value)` | write to it |
 | `margelet.flag(key, fallback=False)` | read a switch from the settings screen as yes/no |
+| `margelet.background(call)` | do something slow away from the screen |
+| `margelet.send(chat, text)` | send a message to a chat |
 
 `get` and `set` survive both a restart and an update of the plugin itself:
 they are not kept in the plugin's folder, which is replaced on update.
@@ -146,9 +148,50 @@ nothing — leave it alone. If several plugins are subscribed they are called in
 turn, each seeing the text as the previous one left it.
 
 This is the one event the app **waits** for: while the handler thinks, a person
-is looking at an unsent message. Long work belongs in `margelet.ui` or
-`margelet.every`. If a handler took longer than a tenth of a second, the console
-says so — not as a reproach, but so the author knows.
+is looking at an unsent message. If a handler took longer than a tenth of a
+second, the console says so — not as a reproach, but so the author knows.
+
+> **Never go to the network from a send handler.**
+>
+> This is a warning, not a style note. The handler runs on the same thread that
+> draws the screen: while a request is in flight, the phone draws nothing. A
+> request with a six-second timeout is six seconds of frozen app; three requests
+> in a row are eighteen.
+>
+> Android normally catches this itself and crashes the app with a clear message.
+> That protection does not apply here: it lives in Java's sockets, and Python
+> goes to the network through its own, bypassing Java. No crash, no warning —
+> just a frozen app. The first two plugins that were not ours were written
+> exactly this way, and both authors believed everything was fine.
+>
+> The right shape is below, under "A command that answers from the network".
+
+### A command that answers from the network
+
+```python
+def on_start():
+    margelet.on_send(command)
+
+def command(text, chat):
+    if text.strip() != ".weather":
+        return None
+    margelet.background(lambda: margelet.send(chat, weather()))
+    return False        # the command itself is not sent
+
+def weather():
+    ...                 # network and slowness are fine here
+```
+
+| | |
+|---|---|
+| `margelet.background(call)` | do something slow away from the screen |
+| `margelet.send(chat, text)` | send a message to a chat |
+| `margelet.dont_send()` | the same as returning `False` |
+
+There are three equal ways to cancel a send: return `False`, call
+`margelet.dont_send()`, or call `margelet.cancel()` with no argument. Three,
+because people reach for `cancel` — and until now it only meant "stop
+repeating" and silently cancelled nothing.
 
 ### Messages arriving
 
@@ -263,6 +306,11 @@ the plugin starts working without waiting for the app to be closed by hand.
 
 If the plugin declares a `min_version` above yours it will not install, and you
 are told which version it needs — instead of installing and then breaking.
+
+The install dialog has a "View the archive" button: it opens the `.marp` with
+whatever on the phone handles archives, so the code can be read before
+installing rather than after. The forum rule demands that the code be open —
+so there has to be something to open it with.
 
 Hold the row for the plugin's card and for deleting.
 

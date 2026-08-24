@@ -389,7 +389,19 @@ public class MargeletPlugins {
     }
 
     public static boolean askInstall(Context context, InputStream source, Runnable whenInstalled) {
-        final Plugin[] staged = { stage(context, source) };
+        // Сначала кладём архив на диск, и уже из него разбираем. Поток читается
+        // один раз, а архив нужен ещё и потом: человек вправе прочитать код
+        // до установки, а не после.
+        final File archive = keepArchive(context, source);
+        if (archive == null) {
+            return false;
+        }
+        Plugin first = null;
+        try {
+            first = stage(context, new java.io.FileInputStream(archive));
+        } catch (Exception ignored) {
+        }
+        final Plugin[] staged = { first };
         if (staged[0] == null) {
             return false;
         }
@@ -419,6 +431,8 @@ public class MargeletPlugins {
         }
 
         final boolean[] startNow = { false };
+        final boolean[] keep = { false };
+        final Runnable[] show = new Runnable[1];
         final SpannableStringBuilder text = new SpannableStringBuilder();
         text.append(LocaleController.formatString(R.string.MargeletPluginBy, plugin.author)).append("\n\n");
         if (existing != null) {
@@ -438,6 +452,23 @@ public class MargeletPlugins {
             text.append("\n\n").append(LocaleController.getString(R.string.MargeletPluginAlreadyRestart));
         }
 
+        // Копия: existing присваивается в цикле выше, а лямбда берёт только
+        // то, что после присвоения уже не меняется.
+        final Plugin already = existing;
+        show[0] = () -> buildInstallDialog(context, staged, plugin, already, archive,
+                text, startNow, keep, show, whenInstalled);
+        show[0].run();
+        return true;
+    }
+
+    /**
+     * Само окно установки. Вынесено отдельно ровно потому, что показать его
+     * надо уметь дважды: человек уходит читать архив и возвращается.
+     */
+    private static void buildInstallDialog(Context context, Plugin[] staged, Plugin plugin,
+                                           Plugin existing, File archive,
+                                           SpannableStringBuilder text, boolean[] startNow,
+                                           boolean[] keep, Runnable[] show, Runnable whenInstalled) {
         final AlertDialog.Builder builder = new AlertDialog.Builder(context)
                 .setTitle(plugin.name + " " + plugin.version)
                 .setMessage(text)
@@ -460,11 +491,31 @@ public class MargeletPlugins {
                     }
                 })
                 .setNegativeButton(LocaleController.getString(R.string.Cancel), null)
+                // Прочитать код до установки. Правило форума — «плагин едет
+                // исходником, и открыть его должен мочь любой» — до сих пор
+                // держалось на честном слове: посмотреть содержимое можно было
+                // только после установки, то есть уже пустив чужой код внутрь.
+                .setNeutralButton(LocaleController.getString(R.string.MargeletPluginViewSource), (d, w) -> {
+                    keep[0] = true;
+                    openArchive(context, archive);
+                    // Окно закрылось нажатием, а вернувшись из архиватора,
+                    // человек ожидает застать его на месте — иначе придётся
+                    // заново искать файл. Показываем его заново.
+                    AndroidUtilities.runOnUIThread(() -> {
+                        keep[0] = false;
+                        show[0].run();
+                    }, 300);
+                })
                 // Отказ бывает и кнопкой «назад» — распакованное не должно
-                // остаться лежать в папке.
+                // остаться лежать в папке. Но уход в архиватор отказом не
+                // считается.
                 .setOnDismissListener(d -> {
+                    if (keep[0]) {
+                        return;
+                    }
                     discard(staged[0]);
                     staged[0] = null;
+                    archive.delete();
                 });
         // Галочка «включить сразу». Раньше это была третья кнопка, и окно из-за
         // неё читалось как выбор между двумя установками, хотя установка одна,
@@ -502,7 +553,59 @@ public class MargeletPlugins {
             }
         }
         builder.show();
-        return true;
+    }
+
+    /** Кладёт присланный архив на диск: из потока читать можно только раз. */
+    private static File keepArchive(Context context, InputStream source) {
+        try {
+            final File folder = new File(context.getFilesDir(), "cache");
+            folder.mkdirs();
+            // Имя одно на всех: смотрят архив по одному, и копить их незачем.
+            final File file = new File(folder, "margelet_plugin.marp");
+            final FileOutputStream out = new FileOutputStream(file);
+            final byte[] buffer = new byte[8192];
+            int read;
+            while ((read = source.read(buffer)) > 0) {
+                out.write(buffer, 0, read);
+            }
+            out.close();
+            return file.length() > 0 ? file : null;
+        } catch (Exception e) {
+            FileLog.e(e);
+            return null;
+        }
+    }
+
+    /**
+     * Открывает архив плагина чем-нибудь, что умеет архивы.
+     *
+     * Своей смотрелки не пишем: файловые менеджеры показывают zip лучше, чем
+     * это сделали бы мы, и человеку привычнее. Если открыть нечем, предлагаем
+     * передать файл куда угодно — тогда он хотя бы дойдёт до архиватора.
+     */
+    private static void openArchive(Context context, File file) {
+        try {
+            final android.net.Uri uri = androidx.core.content.FileProvider.getUriForFile(
+                    context, ApplicationLoader.getApplicationId() + ".provider", file);
+            final android.content.Intent view = new android.content.Intent(
+                    android.content.Intent.ACTION_VIEW);
+            view.setDataAndType(uri, "application/zip");
+            view.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            if (view.resolveActivity(context.getPackageManager()) != null) {
+                context.startActivity(view);
+                return;
+            }
+            // Смотреть zip нечем — отдаём файл наружу.
+            final android.content.Intent share = new android.content.Intent(
+                    android.content.Intent.ACTION_SEND);
+            share.setType("application/zip");
+            share.putExtra(android.content.Intent.EXTRA_STREAM, uri);
+            share.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            context.startActivity(android.content.Intent.createChooser(share,
+                    LocaleController.getString(R.string.MargeletPluginViewSource)));
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
     }
 
     /**

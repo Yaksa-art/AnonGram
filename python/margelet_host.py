@@ -92,6 +92,7 @@ class Margelet:
         self._on_settings = []
         self._buttons = {}
         self._actions = {}
+        self._cancel_send = False
 
     def log(self, *parts):
         _Host.log(self.name, " ".join(str(p) for p in parts), False)
@@ -113,10 +114,24 @@ class Margelet:
         _Android.runOnUIThread(task, ms)
         return task
 
-    def cancel(self, task):
-        """Прекратить повтор, поставленный every или ui."""
-        if task is not None:
-            task.cancelled = True
+    def cancel(self, task=None):
+        """Прекратить повтор, поставленный every или ui.
+
+        Аргумент необязателен не по доброте. Автор первого стороннего плагина
+        написал margelet.cancel() в обработчике отправки, имея в виду «не
+        отправляй это». Вызов падал, ошибка уходила в лог, который автор не
+        открывал, а сообщение уходило в чат как есть — то есть в переписку
+        улетала сама команда. Название виновато, а не он: теперь без аргумента
+        это значит ровно то, за чем к нему потянулись.
+        """
+        if task is None:
+            # Возврата мало: в том самом плагине cancel() вызвали, а результат
+            # не вернули — функция закончилась молчанием, и команда всё равно
+            # улетала в чат. Поэтому отмену запоминаем, а не только отдаём.
+            self._cancel_send = True
+            return False
+        task.cancelled = True
+        return None
 
     def toast(self, text):
         """Короткая надпись поверх экрана."""
@@ -129,6 +144,35 @@ class Margelet:
 
     def set(self, key, value):
         _Host.set(self.id, str(key), None if value is None else str(value))
+
+    def background(self, call):
+        """Сделать что-то долгое в стороне от экрана.
+
+        Всё, что ходит в сеть или читает большой файл, должно жить здесь.
+        Прямо в обработчике отправки этого делать нельзя: пока он думает,
+        телефон не рисует ничего, а привычной андроидовской защиты «полез в
+        сеть с главного потока — упади» тут нет. Питон ходит в сеть мимо
+        джавы, и охранник его не видит: приложение не падает, оно замирает.
+        """
+        _Hooks.background(_Task(call, None, self.name))
+
+    def send(self, chat, text):
+        """Отправить сообщение в переписку. Так плагин отвечает на команду.
+
+        Обычный порядок для команды: увидел её в on_send, вернул False, ушёл
+        в margelet.background, а когда ответ пришёл — отправил его отсюда.
+        """
+        _Hooks.send(int(chat), str(text))
+
+    def dont_send(self):
+        """Не отправлять то, что человек набрал. То же, что вернуть False.
+
+        Заведено потому, что за этим тянулись рукой к margelet.cancel — а
+        cancel про другое, он останавливает повтор. Слово нашлось раньше,
+        чем правило, значит слово и надо было дать.
+        """
+        self._cancel_send = True
+        return False
 
     def flag(self, key, fallback=False):
         """Прочитать переключатель с экрана настроек как да/нет."""
@@ -261,12 +305,16 @@ def sending(text, dialog_id):
     result = text
     for margelet in list(_margelets.values()):
         for call in list(margelet._on_send):
+            margelet._cancel_send = False
             try:
                 answer = call(result, dialog_id)
             except Exception:
                 _Host.log(margelet.name, traceback.format_exc(), True)
                 continue
-            if answer is False:
+            # Отмена засчитывается и когда её вернули, и когда о ней просто
+            # сказали: margelet.cancel() или margelet.dont_send() внутри
+            # обработчика значат то же самое, что return False.
+            if answer is False or margelet._cancel_send:
                 return _CANCEL
             if isinstance(answer, str):
                 result = answer

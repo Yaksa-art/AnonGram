@@ -172,6 +172,7 @@
     <string name="MargeletPluginsRestart">重启 Margelet</string>
     <string name="MargeletPluginsRestartAbout">插件只在应用启动时加载，而被关闭的插件会一直运行到下次启动：没有办法停止已在运行的代码。因此开关插件都需要重启。</string>
     <string name="MargeletPluginNoSettings">这个插件没有可设置的项目。</string>
+    <string name="MargeletPluginViewSource">查看压缩包</string>
     <string name="MargeletPluginEnableAfter">安装后立即启用</string>
     <string name="MargeletPluginLibrary">插件库</string>
     <string name="MargeletFeedback">反馈</string>
