@@ -67,10 +67,10 @@ public class MargeletBadgeGalleryActivity extends UniversalFragment {
             items.add(UItem.asCustomShadow(preview, 92));
         }
         for (int i = 0; i < badges.length; i++) {
-            items.add(UItem.asRadio(i, LocaleController.getString(badges[i].title))
+            items.add(UItem.asRadio(i, badges[i].title())
                     .setChecked(chosen == i));
         }
-        items.add(UItem.asShadow(LocaleController.getString(badges[chosen].about)));
+        items.add(UItem.asShadow(badges[chosen].about()));
     }
 
     @Override
@@ -137,9 +137,7 @@ public class MargeletBadgeGalleryActivity extends UniversalFragment {
         }
 
         void set(MargeletBadge.Badge badge) {
-            final Drawable icon = badge.icon == 0 ? null
-                    : ContextCompat.getDrawable(getContext(), badge.icon);
-            badgeView.setImageDrawable(icon);
+            badgeView.setImageDrawable(MargeletBadge.iconDrawable(getContext(), badge));
             requestLayout();
         }
 

@@ -172,6 +172,9 @@ applies: **plugin code is not obfuscated**, anyone must be able to read it.
 
 Plugins are off entirely by default, and a new one is installed disabled.
 Documentation for authors: [docs/plugins.md](docs/plugins.md).
+
+Badges are described in [docs/badges.md](docs/badges.md): the list lives in
+`badges.json` and the app re-reads it on every start.
 </details>
 
 ## Building it yourself
@@ -215,7 +218,8 @@ the patch is now generated after `git add -N`.)
 | `FEATURES.md` | **every change, where it lives and why** — the porting document |
 | `java/`, `res/` | files the fork adds whole |
 | `python/` | the layer between the app and its plugins |
-| `docs/` | plugin documentation and an example plugin |
+| `badges.json` | **who has which badge** — edited here, no rebuild needed |
+| `docs/` | plugin and badge documentation, and an example plugin |
 | `tools/` | scripts: draw the icon, install it, synthesise a sound |
 | `assets/` | the logo, in svg and png |
 | `ATTRIBUTION.md` | the things in here that someone else made |

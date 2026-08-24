@@ -1,0 +1,66 @@
+[
+  {
+    "peer": 7826361017,
+    "title": "Margelet creator",
+    "title_ru": "Создатель Margelet",
+    "title_zh": "Margelet 作者",
+    "about": "Made this fork.",
+    "about_ru": "Сделал этот форк.",
+    "about_zh": "制作了这个分支。",
+    "color": "8DD1B0",
+    "url": "https://t.me/narezanyinf"
+  },
+  {
+    "peer": 8675724972,
+    "title": "Best friend",
+    "title_ru": "Лучший друг",
+    "title_zh": "最好的朋友",
+    "about": "The creator's best friend.",
+    "about_ru": "Лучший друг создателя форка.",
+    "about_zh": "分支作者最好的朋友。",
+    "color": "B7A8E0",
+    "url": "https://t.me/mizoginichka_y"
+  },
+  {
+    "peer": -4426743212,
+    "title": "Official channel",
+    "title_ru": "Официальный канал",
+    "title_zh": "官方频道",
+    "about": "The fork's own channel.",
+    "about_ru": "Собственный канал форка.",
+    "about_zh": "分支自己的频道。",
+    "color": "8DD1B0",
+    "url": "https://t.me/margeletter"
+  },
+  {
+    "peer": -4436273526,
+    "title": "Official forum",
+    "title_ru": "Официальный форум",
+    "title_zh": "官方论坛",
+    "about": "The fork's own chat.",
+    "about_ru": "Собственный чат форка.",
+    "about_zh": "分支自己的聊天。",
+    "color": "8DD1B0",
+    "url": "https://t.me/margeletforum"
+  },
+  {
+    "peer": 7826361017,
+    "title": "Cat in Margelet",
+    "title_ru": "Кот в Margelet",
+    "title_zh": "Margelet 里的猫",
+    "about": "Their cat lives inside the app.",
+    "about_ru": "Его кот живёт внутри приложения.",
+    "about_zh": "他的猫住在这个应用里。",
+    "color": "EBC85C"
+  },
+  {
+    "peer": 6092720414,
+    "title": "Cat in Margelet",
+    "title_ru": "Кот в Margelet",
+    "title_zh": "Margelet 里的猫",
+    "about": "Their cat lives inside the app.",
+    "about_ru": "Его кот живёт внутри приложения.",
+    "about_zh": "他的猫住在这个应用里。",
+    "color": "EBC85C"
+  }
+]

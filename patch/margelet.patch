@@ -51,13 +51,16 @@ index aeab02b2..f3fb03ca 100644
 \ No newline at end of file
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletBadge.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletBadge.java
 new file mode 100644
-index 00000000..1f5cac95
+index 00000000..52d1ea78
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletBadge.java
-@@ -0,0 +1,217 @@
+@@ -0,0 +1,398 @@
 +package org.telegram.margelet;
 +
 +import android.content.Context;
++import android.graphics.drawable.Drawable;
++import android.graphics.drawable.GradientDrawable;
++import android.graphics.drawable.LayerDrawable;
 +import android.util.TypedValue;
 +import android.view.Gravity;
 +import android.view.View;
@@ -68,6 +71,11 @@ index 00000000..1f5cac95
 +import android.widget.LinearLayout;
 +import android.widget.TextView;
 +
++import androidx.core.content.ContextCompat;
++
++import org.json.JSONArray;
++import org.json.JSONObject;
++import org.telegram.messenger.AndroidUtilities;
 +import org.telegram.messenger.LocaleController;
 +import org.telegram.messenger.R;
 +import org.telegram.messenger.browser.Browser;
@@ -104,45 +112,191 @@ index 00000000..1f5cac95
 +    public static final class Badge {
 +        /** Человек — положительный номер, канал или группа — отрицательный. */
 +        public final long peerId;
-+        public final int title;
-+        public final int about;
-+        public final int icon;
-+        /** Цвет поля — им же красится объёмный значок в окне. */
++        /** Название и описание вшитого значка. У приехавшего из файла — ноль. */
++        private final int titleRes;
++        private final int aboutRes;
++        /** Значок из файла: название и описание берутся отсюда, с языками. */
++        private final JSONObject remote;
++        /** Цвет поля — им же красится и сам значок, и объёмный в окне. */
 +        public final int color;
 +        /** Куда ведёт кнопка в окне. null — кнопки нет. */
 +        public final String url;
 +
-+        Badge(long peerId, int title, int about, int icon, int color, String url) {
++        Badge(long peerId, int titleRes, int aboutRes, int color, String url) {
 +            this.peerId = peerId;
-+            this.title = title;
-+            this.about = about;
-+            this.icon = icon;
++            this.titleRes = titleRes;
++            this.aboutRes = aboutRes;
++            this.remote = null;
 +            this.color = color;
 +            this.url = url;
 +        }
++
++        Badge(long peerId, JSONObject remote, int color, String url) {
++            this.peerId = peerId;
++            this.titleRes = 0;
++            this.aboutRes = 0;
++            this.remote = remote;
++            this.color = color;
++            this.url = url;
++        }
++
++        /**
++         * Название значка. У вшитых берётся из строк приложения, а не
++         * запоминается заранее: человек может переключить язык, не выходя.
++         */
++        public String title() {
++            return remote != null ? localized(remote, "title", "") : LocaleController.getString(titleRes);
++        }
++
++        public String about() {
++            return remote != null ? localized(remote, "about", "") : LocaleController.getString(aboutRes);
++        }
 +    }
 +
-+    private static final Badge[] BADGES = {
++    /**
++     * Вшитый запас. Работает, пока файл ни разу не скачался: на свежей
++     * установке без интернета значки должны быть на месте, а не появляться
++     * через минуту после первого удачного запроса.
++     */
++    private static final Badge[] BUILT_IN = {
 +            // Владелец форка.
 +            new Badge(7826361017L, R.string.MargeletBadgeTitle, R.string.MargeletBadgeAbout,
-+                    R.drawable.margelet_badge, 0xFF8DD1B0, "https://t.me/narezanyinf"),
++                    0xFF8DD1B0, "https://t.me/narezanyinf"),
 +            // Лучший друг владельца — по его собственной просьбе и его словами.
 +            new Badge(8675724972L, R.string.MargeletBadgeFriendTitle, R.string.MargeletBadgeFriendAbout,
-+                    R.drawable.margelet_badge_lavender, 0xFFB7A8E0, "https://t.me/mizoginichka_y"),
++                    0xFFB7A8E0, "https://t.me/mizoginichka_y"),
 +            // Свои площадки форка. Значок тут не украшение, а ответ на вопрос
-+            // «а это точно тот самый канал»: подделать чужой значок внутри
-+            // чужой сборки можно, а вот в этой — нет.
++            // «а это точно тот самый канал».
 +            new Badge(-4426743212L, R.string.MargeletBadgeChannelTitle, R.string.MargeletBadgeChannelAbout,
-+                    R.drawable.margelet_badge, 0xFF8DD1B0, MargeletConfig.CHANNEL_URL),
++                    0xFF8DD1B0, MargeletConfig.CHANNEL_URL),
 +            new Badge(-4436273526L, R.string.MargeletBadgeForumTitle, R.string.MargeletBadgeForumAbout,
-+                    R.drawable.margelet_badge, 0xFF8DD1B0, MargeletConfig.FORUM_URL),
++                    0xFF8DD1B0, MargeletConfig.FORUM_URL),
 +            // Чьи коты живут в приложении. Кнопки у этого значка нет: вести
 +            // некуда, он не про площадку, а про кота.
 +            new Badge(7826361017L, R.string.MargeletBadgeCatTitle, R.string.MargeletBadgeCatAbout,
-+                    R.drawable.margelet_badge_yellow, 0xFFEBC85C, null),
++                    0xFFEBC85C, null),
 +            new Badge(6092720414L, R.string.MargeletBadgeCatTitle, R.string.MargeletBadgeCatAbout,
-+                    R.drawable.margelet_badge_yellow, 0xFFEBC85C, null),
++                    0xFFEBC85C, null),
 +    };
++
++    /** Файл со значками в репозитории и ключ, под которым он лежит в кэше. */
++    private static final String FILE = "badges.json";
++    private static final String CACHE_KEY = "badges";
++
++    /** Разобранный список. null — ещё не разбирали или разбирать было нечего. */
++    private static Badge[] parsed;
++    /** Язык, на котором разбирали: сменился — придётся разобрать заново. */
++    private static String parsedLanguage;
++
++    /**
++     * Перечитывает список с гитхаба. Зовётся при запуске приложения.
++     *
++     * Ответа никто не ждёт: пока он едет, показывается прошлый список, а на
++     * свежей установке — вшитый.
++     */
++    public static void refresh() {
++        MargeletRemote.fetch(FILE, CACHE_KEY, text -> {
++            if (text != null) {
++                parsed = null;      // приехало новое — разберём при первом спросе
++            }
++        });
++    }
++
++    /**
++     * Список, по которому и работают все проверки: разобранный файл, если он
++     * есть, иначе вшитый.
++     */
++    private static Badge[] badges() {
++        final String language = language();
++        if (parsed != null && equal(parsedLanguage, language)) {
++            return parsed;
++        }
++        final String text = MargeletRemote.cached(CACHE_KEY);
++        if (text == null) {
++            return BUILT_IN;
++        }
++        final Badge[] fromFile = parse(text);
++        if (fromFile == null || fromFile.length == 0) {
++            // Файл битый или пустой. Молча остаёмся на вшитом: пустой список
++            // значков выглядел бы как «у всех всё отобрали».
++            return BUILT_IN;
++        }
++        parsed = fromFile;
++        parsedLanguage = language;
++        return parsed;
++    }
++
++    private static boolean equal(String a, String b) {
++        return a == null ? b == null : a.equals(b);
++    }
++
++    private static String language() {
++        try {
++            return LocaleController.getInstance().getCurrentLocale().getLanguage();
++        } catch (Exception ignored) {
++            return null;
++        }
++    }
++
++    /**
++     * Разбор файла. Формат нарочно простой, чтобы владелец правил его руками:
++     *
++     * [ { "peer": 7826361017, "title": "...", "title_ru": "...",
++     *     "about": "...", "color": "8DD1B0", "url": "https://..." } ]
++     *
++     * Цвет — шестнадцатеричный, с решёткой или без, с прозрачностью или без.
++     * Строка, которую разобрать не вышло, пропускается: из-за одной опечатки
++     * не должен пропадать весь список.
++     */
++    private static Badge[] parse(String text) {
++        final List<Badge> out = new ArrayList<>();
++        try {
++            final JSONArray array = new JSONArray(text);
++            for (int i = 0; i < array.length(); i++) {
++                try {
++                    final JSONObject item = array.getJSONObject(i);
++                    final long peer = item.getLong("peer");
++                    final String url = item.optString("url", null);
++                    out.add(new Badge(peer, item, color(item.optString("color", null)),
++                            url == null || url.isEmpty() ? null : url));
++                } catch (Exception ignored) {
++                }
++            }
++        } catch (Exception ignored) {
++            return null;
++        }
++        return out.toArray(new Badge[0]);
++    }
++
++    /** Цвет поля значка. Не разобрали — зелёный, он же основной. */
++    private static int color(String value) {
++        if (value == null) {
++            return 0xFF8DD1B0;
++        }
++        String hex = value.trim();
++        if (hex.startsWith("#")) {
++            hex = hex.substring(1);
++        }
++        try {
++            final long parsedColor = Long.parseLong(hex, 16);
++            // Написали шесть знаков — значит про прозрачность не думали,
++            // дорисовываем непрозрачность сами.
++            return hex.length() <= 6 ? (int) (0xFF000000L | parsedColor) : (int) parsedColor;
++        } catch (Exception ignored) {
++            return 0xFF8DD1B0;
++        }
++    }
++
++    private static String localized(JSONObject json, String key, String fallback) {
++        final String language = language();
++        if (language != null) {
++            final String value = json.optString(key + "_" + language, null);
++            if (value != null && value.length() > 0) {
++                return value;
++            }
++        }
++        return json.optString(key, fallback);
++    }
 +
 +    /** Номер канала или группы в том виде, в каком он лежит в таблице. */
 +    public static long chatPeer(long chatId) {
@@ -158,10 +312,10 @@ index 00000000..1f5cac95
 +     */
 +    public static Badge[] list() {
 +        final List<Badge> kinds = new ArrayList<>();
-+        for (Badge badge : BADGES) {
++        for (Badge badge : badges()) {
 +            boolean seen = false;
 +            for (Badge already : kinds) {
-+                if (already.title == badge.title) {
++                if (already.title().equals(badge.title())) {
 +                    seen = true;
 +                    break;
 +                }
@@ -178,7 +332,7 @@ index 00000000..1f5cac95
 +        if (!MargeletConfig.badgesEnabled()) {
 +            return null;
 +        }
-+        for (Badge badge : BADGES) {
++        for (Badge badge : badges()) {
 +            if (badge.peerId == peerId) {
 +                return badge;
 +            }
@@ -192,7 +346,7 @@ index 00000000..1f5cac95
 +        if (!MargeletConfig.badgesEnabled()) {
 +            return found;
 +        }
-+        for (Badge badge : BADGES) {
++        for (Badge badge : badges()) {
 +            if (badge.peerId == peerId) {
 +                found.add(badge);
 +            }
@@ -204,10 +358,37 @@ index 00000000..1f5cac95
 +        return of(peerId) != null;
 +    }
 +
-+    /** Ресурс значка у имени или ноль, если такого в таблице нет. */
-+    public static int icon(long peerId) {
-+        final Badge badge = of(peerId);
-+        return badge == null ? 0 : badge.icon;
++    /**
++     * Картинка значка у имени или null, если такого в таблице нет.
++     *
++     * Картинка одна на всех, а цвет поля свой у каждого значка: он приезжает
++     * из файла строкой вида «8DD1B0», и заводить по вектору на каждый новый
++     * цвет незачем. Поле рисуется скруглённым квадратом, самолётик кладётся
++     * сверху отдельным слоем.
++     */
++    public static Drawable iconDrawable(Context context, long peerId) {
++        return iconDrawable(context, of(peerId));
++    }
++
++    public static Drawable iconDrawable(Context context, Badge badge) {
++        if (context == null || badge == null) {
++            return null;
++        }
++        try {
++            final GradientDrawable field = new GradientDrawable();
++            field.setShape(GradientDrawable.RECTANGLE);
++            // Скругление то же, что было в векторе: пять частей из двадцати
++            // четырёх, пересчитанные в точки экрана.
++            field.setCornerRadius(AndroidUtilities.dp(24) * 5f / 24f);
++            field.setColor(badge.color);
++            final Drawable plane = ContextCompat.getDrawable(context, R.drawable.margelet_badge_plane);
++            if (plane == null) {
++                return field;
++            }
++            return new LayerDrawable(new Drawable[]{field, plane});
++        } catch (Throwable t) {
++            return null;
++        }
 +    }
 +
 +    /**
@@ -216,7 +397,7 @@ index 00000000..1f5cac95
 +     */
 +    public static String title(long peerId) {
 +        final Badge badge = of(peerId);
-+        return badge == null ? null : LocaleController.getString(badge.title);
++        return badge == null ? null : badge.title();
 +    }
 +
 +    public static void show(Context context, long peerId) {
@@ -240,7 +421,7 @@ index 00000000..1f5cac95
 +                spinner = new MargeletPlane3D(context, badge.color);
 +            } catch (Throwable t) {
 +                final ImageView icon = new ImageView(context);
-+                icon.setImageResource(badge.icon);
++                icon.setImageDrawable(iconDrawable(context, badge));
 +                final RotateAnimation spin = new RotateAnimation(0, 360,
 +                        Animation.RELATIVE_TO_SELF, 0.5f, Animation.RELATIVE_TO_SELF, 0.5f);
 +                spin.setDuration(2600);
@@ -255,12 +436,12 @@ index 00000000..1f5cac95
 +            text.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
 +            text.setTextColor(Theme.getColor(Theme.key_dialogTextBlack));
 +            text.setGravity(Gravity.CENTER);
-+            text.setText(LocaleController.getString(badge.about));
++            text.setText(badge.about());
 +            layout.addView(text, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT,
 +                    LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL, 8, 0, 8, 0));
 +
 +            final AlertDialog.Builder builder = new AlertDialog.Builder(context)
-+                    .setTitle(LocaleController.getString(badge.title))
++                    .setTitle(badge.title())
 +                    .setView(layout);
 +            if (badge.url != null) {
 +                builder.setPositiveButton(LocaleController.getString(R.string.MargeletBadgeChannel),
@@ -3098,6 +3279,117 @@ index 00000000..09f68164
 +        return out.toString();
 +    }
 +}
+diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletRemote.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletRemote.java
+new file mode 100644
+index 00000000..05b0c251
+--- /dev/null
++++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletRemote.java
+@@ -0,0 +1,105 @@
++package org.telegram.margelet;
++
++import android.content.Context;
++import android.content.SharedPreferences;
++
++import org.telegram.messenger.AndroidUtilities;
++import org.telegram.messenger.ApplicationLoader;
++import org.telegram.messenger.FileLog;
++
++import java.io.ByteArrayOutputStream;
++import java.io.InputStream;
++import java.net.HttpURLConnection;
++import java.net.URL;
++
++/**
++ * Небольшие файлы с гитхаба: список значков, номер последней версии.
++ *
++ * Смысл в том, чтобы такие вещи правились без пересборки клиента — дописал
++ * строчку в репозитории, и она приехала людям. Поэтому здесь нет ничего, кроме
++ * «скачать текст и запомнить»: разбор формата — дело того, кто заказывал.
++ *
++ * Скачанное всегда кладётся в настройки. Без сети показывается последнее
++ * скачанное, а пока не скачалось ни разу — тот, кто спрашивал, обходится своим
++ * вшитым запасом. Значит, ни один экран не зависит от того, есть ли интернет.
++ */
++public class MargeletRemote {
++
++    /** Куда смотрим за файлами. Ветка main репозитория форка. */
++    public static final String BASE =
++            "https://raw.githubusercontent.com/narezany/margelet/main/";
++
++    private static final String PREFS = "margelet_remote";
++    /** Файлы здесь маленькие; всё, что больше, — уже не наш файл. */
++    private static final int MAX_BYTES = 256 * 1024;
++    private static final int TIMEOUT_MS = 15000;
++
++    public interface Callback {
++        /** Вызывается в главном потоке. text — null, если скачать не вышло. */
++        void onResult(String text);
++    }
++
++    private static SharedPreferences prefs() {
++        return ApplicationLoader.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
++    }
++
++    /** Последнее удачно скачанное содержимое или null. */
++    public static String cached(String key) {
++        return prefs().getString(key, null);
++    }
++
++    /** Когда в последний раз удалось скачать, в миллисекундах. */
++    public static long cachedAt(String key) {
++        return prefs().getLong(key + "_at", 0);
++    }
++
++    /**
++     * Качает файл в фоне и отдаёт ответ в главный поток.
++     *
++     * Удачная загрузка перезаписывает кэш. Неудачная не трогает его вовсе:
++     * лучше показать вчерашний список, чем пустой.
++     */
++    public static void fetch(String path, String key, Callback callback) {
++        final Thread worker = new Thread(() -> {
++            String result = null;
++            HttpURLConnection connection = null;
++            try {
++                connection = (HttpURLConnection) new URL(BASE + path).openConnection();
++                connection.setConnectTimeout(TIMEOUT_MS);
++                connection.setReadTimeout(TIMEOUT_MS);
++                connection.setRequestProperty("User-Agent", MargeletConfig.APP_NAME);
++                if (connection.getResponseCode() == 200) {
++                    try (InputStream in = connection.getInputStream()) {
++                        final ByteArrayOutputStream out = new ByteArrayOutputStream();
++                        final byte[] buffer = new byte[8192];
++                        int read;
++                        while ((read = in.read(buffer)) > 0 && out.size() <= MAX_BYTES) {
++                            out.write(buffer, 0, read);
++                        }
++                        if (out.size() <= MAX_BYTES) {
++                            result = out.toString("UTF-8");
++                        }
++                    }
++                }
++            } catch (Throwable t) {
++                FileLog.e(t);
++            } finally {
++                if (connection != null) {
++                    connection.disconnect();
++                }
++            }
++            if (result != null) {
++                prefs().edit()
++                        .putString(key, result)
++                        .putLong(key + "_at", System.currentTimeMillis())
++                        .apply();
++            }
++            final String delivered = result;
++            if (callback != null) {
++                AndroidUtilities.runOnUIThread(() -> callback.onResult(delivered));
++            }
++        }, "margelet-remote");
++        worker.setDaemon(true);
++        worker.start();
++    }
++}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletSeizure.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletSeizure.java
 new file mode 100644
 index 00000000..8a3b8ef8
@@ -4343,7 +4635,7 @@ index bcc7fe85..13d5a79d 100644
                          CharacterStyle[] link = buffer.getSpans(off, off, ClickableSpan.class);
                          boolean isMono = false;
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/Cells/DialogCell.java b/TMessagesProj/src/main/java/org/telegram/ui/Cells/DialogCell.java
-index 790e4493..663cb2a8 100644
+index 790e4493..1d03f089 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/Cells/DialogCell.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/Cells/DialogCell.java
 @@ -630,6 +630,13 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
@@ -4426,20 +4718,19 @@ index 790e4493..663cb2a8 100644
                      nameMuteLeft = (int) (nameLeft + left + dp(6));
                      if (drawPremium) {
                          nameMutedIconLeft = nameMuteLeft + dp(24 + 6);
-@@ -3036,6 +3058,12 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
+@@ -3036,6 +3058,11 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
          return forumFormattedNames.formattedNames;
      }
  
 +    /** Значок форка для номера или null, если такого в таблице нет. */
 +    private android.graphics.drawable.Drawable margeletBadgeFor(long peerId) {
-+        final int icon = org.telegram.margelet.MargeletBadge.icon(peerId);
-+        return icon == 0 ? null : androidx.core.content.ContextCompat.getDrawable(getContext(), icon);
++        return org.telegram.margelet.MargeletBadge.iconDrawable(getContext(), peerId);
 +    }
 +
      public boolean isForumCell() {
          return !isDialogFolder() && !insideCommunityListNoDialog && chat != null && (chat.forum || ChatObject.isMonoForum(chat) && ChatObject.canManageMonoForum(currentAccount, chat)) && !isTopic;
      }
-@@ -4469,6 +4497,17 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
+@@ -4469,6 +4496,17 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                  setDrawableBounds(Theme.dialogs_verifiedCheckDrawable, nameMuteLeft - dp(1), y);
                  Theme.dialogs_verifiedDrawable.draw(canvas);
                  Theme.dialogs_verifiedCheckDrawable.draw(canvas);
@@ -4457,7 +4748,7 @@ index 790e4493..663cb2a8 100644
              } else if (drawPremium) {
                  int y = dp(useForceThreeLines || SharedConfig.useThreeLinesLayout ? 12.5f : 15.5f);
                  if ((!(useForceThreeLines || SharedConfig.useThreeLinesLayout) || isForumCell()) && hasTags()) {
-@@ -5537,6 +5576,10 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
+@@ -5537,6 +5575,10 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
              sb.append(getString(R.string.AccDescrVerified));
              sb.append(". ");
          }
@@ -5019,7 +5310,7 @@ index 4153ceb2..d1557801 100644
          ssb.setSpan(new ImageSpan(logoDrawable), 0, ssb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
          titles[0] = ssb;
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/LaunchActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/LaunchActivity.java
-index 470be57c..7d91871a 100644
+index 470be57c..3ac8932d 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/LaunchActivity.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/LaunchActivity.java
 @@ -443,6 +443,10 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
@@ -5033,7 +5324,7 @@ index 470be57c..7d91871a 100644
          Theme.createCommonChatResources();
          Theme.createDialogsResources(this);
          if (SharedConfig.passcodeHash.length() != 0 && SharedConfig.appLocked) {
-@@ -455,6 +459,13 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
+@@ -455,6 +459,17 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
          frameLayout.setClipToPadding(false);
          frameLayout.setClipChildren(false);
          setContentView(frameLayout);
@@ -5044,6 +5335,10 @@ index 470be57c..7d91871a 100644
 +        // только если человек сам что-то включил.
 +        org.telegram.margelet.MargeletPlugins.preinstallExample();
 +        org.telegram.margelet.MargeletPluginHost.start();
++        // Список значков перечитывается с гитхаба при каждом запуске: правка в
++        // репозитории должна доезжать до людей без новой сборки. Ответа никто
++        // не ждёт — пока он едет, показывается прошлый список.
++        org.telegram.margelet.MargeletBadge.refresh();
          rootAnimatedInsetsListener = new WindowAnimatedInsetsProvider(frameLayout);
          pipActivityController.addPipListener(new IPipActivityListener() {
              final ActivityVisibilityController activityVisibilityController = createActivityVisibilityController(false);
@@ -5094,10 +5389,10 @@ index 18411328..d7a2f80e 100644
                  }
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletBadgeGalleryActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletBadgeGalleryActivity.java
 new file mode 100644
-index 00000000..616cfd64
+index 00000000..022075eb
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletBadgeGalleryActivity.java
-@@ -0,0 +1,154 @@
+@@ -0,0 +1,152 @@
 +package org.telegram.ui;
 +
 +import android.content.Context;
@@ -5167,10 +5462,10 @@ index 00000000..616cfd64
 +            items.add(UItem.asCustomShadow(preview, 92));
 +        }
 +        for (int i = 0; i < badges.length; i++) {
-+            items.add(UItem.asRadio(i, LocaleController.getString(badges[i].title))
++            items.add(UItem.asRadio(i, badges[i].title())
 +                    .setChecked(chosen == i));
 +        }
-+        items.add(UItem.asShadow(LocaleController.getString(badges[chosen].about)));
++        items.add(UItem.asShadow(badges[chosen].about()));
 +    }
 +
 +    @Override
@@ -5237,9 +5532,7 @@ index 00000000..616cfd64
 +        }
 +
 +        void set(MargeletBadge.Badge badge) {
-+            final Drawable icon = badge.icon == 0 ? null
-+                    : ContextCompat.getDrawable(getContext(), badge.icon);
-+            badgeView.setImageDrawable(icon);
++            badgeView.setImageDrawable(MargeletBadge.iconDrawable(getContext(), badge));
 +            requestLayout();
 +        }
 +
@@ -7338,7 +7631,7 @@ index 00000000..d73e1cc9
 +    }
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java
-index 40634647..10759752 100644
+index 40634647..6cb2ad45 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java
 @@ -626,6 +626,21 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
@@ -7460,8 +7753,8 @@ index 40634647..10759752 100644
 +                        // «проверено» или пометку «скам» затирать нельзя, они
 +                        // говорят о человеке важнее, чем наше украшение.
 +                        final long badgeUserId = user.id;
-+                        nameTextView[a].setRightDrawable2(ContextCompat.getDrawable(getContext(),
-+                                org.telegram.margelet.MargeletBadge.icon(badgeUserId)));
++                        nameTextView[a].setRightDrawable2(
++                                org.telegram.margelet.MargeletBadge.iconDrawable(getContext(), badgeUserId));
 +                        nameTextViewRightDrawable2ContentDescription = org.telegram.margelet.MargeletBadge.title(badgeUserId);
 +                        // У второго значка нет своего обработчика нажатия — в
 +                        // SimpleTextView он есть только у первого. Поэтому
@@ -7484,8 +7777,8 @@ index 40634647..10759752 100644
 +                        // профиля. В первый раз я поправил только первый, и
 +                        // владелец у себя значка не увидел.
 +                        final long badgeUserId = user.id;
-+                        nameTextView[a].setRightDrawable2(ContextCompat.getDrawable(getContext(),
-+                                org.telegram.margelet.MargeletBadge.icon(badgeUserId)));
++                        nameTextView[a].setRightDrawable2(
++                                org.telegram.margelet.MargeletBadge.iconDrawable(getContext(), badgeUserId));
 +                        nameTextView[a].setOnClickListener(v -> org.telegram.margelet.MargeletBadge.show(getContext(), badgeUserId));
                      } else {
                          nameTextView[a].setRightDrawable2(null);
@@ -7502,7 +7795,7 @@ index 40634647..10759752 100644
 +                        // Свои площадки форка. Тот же слот и то же правило:
 +                        // занимаем его, только если он свободен.
 +                        final long badgePeerId = org.telegram.margelet.MargeletBadge.chatPeer(chat.id);
-+                        nameTextView[a].setRightDrawable2(ContextCompat.getDrawable(getContext(), org.telegram.margelet.MargeletBadge.icon(badgePeerId)));
++                        nameTextView[a].setRightDrawable2(org.telegram.margelet.MargeletBadge.iconDrawable(getContext(), badgePeerId));
 +                        nameTextViewRightDrawableContentDescription = org.telegram.margelet.MargeletBadge.title(badgePeerId);
 +                        nameTextView[a].setOnClickListener(v -> org.telegram.margelet.MargeletBadge.show(getContext(), badgePeerId));
                      } else {
@@ -7514,26 +7807,27 @@ index 40634647..10759752 100644
                          nameTextView[a].setRightDrawable2(getThemedDrawable(Theme.key_drawable_muteIconDrawable));
 +                    } else if (org.telegram.margelet.MargeletBadge.has(org.telegram.margelet.MargeletBadge.chatPeer(chat.id))) {
 +                        final long badgePeerId = org.telegram.margelet.MargeletBadge.chatPeer(chat.id);
-+                        nameTextView[a].setRightDrawable2(ContextCompat.getDrawable(getContext(), org.telegram.margelet.MargeletBadge.icon(badgePeerId)));
++                        nameTextView[a].setRightDrawable2(org.telegram.margelet.MargeletBadge.iconDrawable(getContext(), badgePeerId));
 +                        nameTextView[a].setOnClickListener(v -> org.telegram.margelet.MargeletBadge.show(getContext(), badgePeerId));
                      } else {
                          nameTextView[a].setRightDrawable2(null);
                      }
-@@ -13456,7 +13544,23 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -13456,7 +13544,24 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                      TextDetailCell detailCell = (TextDetailCell) holder.itemView;
                      boolean containsQr = false;
                      boolean containsGift = false;
 -                    if (position == birthdayRow) {
 +                    // Значок форка рисуется у своей же строки: строка про
 +                    // значок без значка выглядит странно.
-+                    int margeletIcon = 0;
++                    Drawable margeletIcon = null;
 +                    if (margeletBadgesStartRow != -1 && position >= margeletBadgesStartRow && position < margeletBadgesEndRow) {
 +                        final org.telegram.margelet.MargeletBadge.Badge badge = margeletBadgeAt(position);
 +                        if (badge != null) {
-+                            detailCell.setTextAndValue(LocaleController.getString(badge.title),
++                            detailCell.setTextAndValue(badge.title(),
 +                                    LocaleController.getString(R.string.MargeletBadgeRow),
 +                                    position < margeletBadgesEndRow - 1);
-+                            margeletIcon = badge.icon;
++                            margeletIcon = org.telegram.margelet.MargeletBadge
++                                    .iconDrawable(detailCell.getContext(), badge);
 +                        }
 +                    } else if (position == margeletIdRow) {
 +                        // Айди показываем как есть, без знака у каналов: в таком
@@ -7544,7 +7838,7 @@ index 40634647..10759752 100644
                          TLRPC.UserFull userFull = getMessagesController().getUserFull(userId);
                          if (userFull != null && userFull.birthday != null) {
                              final boolean today = BirthdayController.isToday(userFull);
-@@ -13491,7 +13595,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -13491,7 +13596,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                              text = PhoneFormat.getInstance().format("+" + vcardPhone);
                              phoneNumber = vcardPhone;
                          } else if (user != null && !TextUtils.isEmpty(user.phone)) {
@@ -7553,7 +7847,7 @@ index 40634647..10759752 100644
                              phoneNumber = user.phone;
                          } else {
                              text = LocaleController.getString(R.string.PhoneHidden);
-@@ -13585,7 +13689,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -13585,7 +13690,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                          TLRPC.User user = UserConfig.getInstance(currentAccount).getCurrentUser();
                          String value;
                          if (user != null && user.phone != null && user.phone.length() != 0) {
@@ -7562,7 +7856,7 @@ index 40634647..10759752 100644
                          } else {
                              value = LocaleController.getString(R.string.NumberUnknown);
                          }
-@@ -13610,13 +13714,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -13610,13 +13715,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                              if (username == null || TextUtils.isEmpty(username)) {
                                  text = LocaleController.getString(R.string.UsernameEmpty);
                              } else {
@@ -7578,22 +7872,22 @@ index 40634647..10759752 100644
                              } else {
                                  text = LocaleController.getString(R.string.UsernameEmpty);
                              }
-@@ -13624,7 +13728,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -13624,7 +13729,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                          detailCell.setTextAndValue(text, value, true);
                          detailCell.setContentDescriptionValueFirst(true);
                      }
 -                    if (containsGift) {
-+                    if (margeletIcon != 0) {
++                    if (margeletIcon != null) {
 +                        // Свой цвет, без перекраски под тему: значок тем и
 +                        // отличается, что у каждого он свой.
-+                        detailCell.setImage(ContextCompat.getDrawable(detailCell.getContext(), margeletIcon),
++                        detailCell.setImage(margeletIcon,
 +                                LocaleController.getString(R.string.MargeletBadgeRow));
 +                        detailCell.setImageClickListener(null);
 +                    } else if (containsGift) {
                          Drawable drawable = ContextCompat.getDrawable(detailCell.getContext(), R.drawable.msg_input_gift);
                          drawable.setColorFilter(new PorterDuffColorFilter(dontApplyPeerColor(getThemedColor(Theme.key_switch2TrackChecked), false), PorterDuff.Mode.MULTIPLY));
                          if (UserObject.areGiftsDisabled(userInfo)) {
-@@ -13839,6 +13949,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -13839,6 +13950,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                          textCell.setTextAndIcon(LocaleController.getString(R.string.PrivacySettings), R.drawable.msg2_secret, true);
                      } else if (position == dataRow) {
                          textCell.setTextAndIcon(LocaleController.getString(R.string.DataSettings), R.drawable.msg2_data, true);
@@ -7602,7 +7896,7 @@ index 40634647..10759752 100644
                      } else if (position == chatRow) {
                          textCell.setTextAndIcon(LocaleController.getString(R.string.ChatSettings), R.drawable.msg2_discussion, true);
                      } else if (position == filtersRow) {
-@@ -14286,7 +14398,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -14286,7 +14399,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                          position == clearLogsRow || position == switchBackendRow || position == setAvatarRow ||
                          position == addToGroupButtonRow || position == premiumRow || position == premiumGiftingRow ||
                          position == businessRow || position == liteModeRow || position == birthdayRow || position == channelRow ||
@@ -7613,7 +7907,7 @@ index 40634647..10759752 100644
              }
              if (holder.itemView instanceof UserCell) {
                  UserCell userCell = (UserCell) holder.itemView;
-@@ -14314,7 +14428,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -14314,7 +14429,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
              if (position == infoHeaderRow || position == membersHeaderRow || position == settingsSectionRow2 ||
                      position == numberSectionRow || position == helpHeaderRow || position == debugHeaderRow || position == botPermissionsHeader) {
                  return VIEW_TYPE_HEADER;
@@ -7623,7 +7917,7 @@ index 40634647..10759752 100644
                  return VIEW_TYPE_TEXT_DETAIL;
              } else if (position == usernameRow || position == setUsernameRow) {
                  return VIEW_TYPE_TEXT_DETAIL_MULTILINE;
-@@ -14332,7 +14447,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -14332,7 +14448,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                      position == clearLogsRow || position == switchBackendRow || position == setAvatarRow || position == addToGroupButtonRow ||
                      position == addToContactsRow || position == liteModeRow || position == premiumGiftingRow || position == businessRow ||
                      position == botStarsBalanceRow || position == botTonBalanceRow || position == channelBalanceRow || position == botPermissionLocation ||
@@ -7633,7 +7927,7 @@ index 40634647..10759752 100644
              ) {
                  return VIEW_TYPE_TEXT;
              } else if (position == notificationsDividerRow) {
-@@ -14346,7 +14462,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -14346,7 +14463,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                      position == helpSectionCell || position == setAvatarSectionRow || position == passwordSuggestionSectionRow ||
                      position == phoneSuggestionSectionRow || position == premiumSectionsRow || position == reportDividerRow ||
                      position == channelDividerRow || position == graceSuggestionSectionRow || position == balanceDividerRow ||
@@ -12560,6 +12854,36 @@ index 00000000..34f053ae
 +    <path
 +        android:fillColor="#B7A8E0"
 +        android:pathData="M5,0 L19,0 A5,5 0 0 1 24,5 L24,19 A5,5 0 0 1 19,24 L5,24 A5,5 0 0 1 0,19 L0,5 A5,5 0 0 1 5,0 Z" />
++    <path
++        android:fillColor="#FFFFFF"
++        android:pathData="M12,6.64 L6.12,14.99 L11.57,13.14 Z" />
++    <path
++        android:fillColor="#EEF3FA"
++        android:pathData="M12,6.64 L17.88,14.99 L12.43,13.14 Z" />
++    <path
++        android:fillColor="#CCD5E9"
++        android:pathData="M12,6.64 L11.57,13.14 L12,14.25 L12.43,13.14 Z" />
++</vector>
+diff --git a/TMessagesProj/src/main/res/drawable/margelet_badge_plane.xml b/TMessagesProj/src/main/res/drawable/margelet_badge_plane.xml
+new file mode 100644
+index 00000000..70312cc3
+--- /dev/null
++++ b/TMessagesProj/src/main/res/drawable/margelet_badge_plane.xml
+@@ -0,0 +1,24 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!--
++    Самолётик значка без поля под ним. Поле рисуется отдельно и красится в
++    цвет самого значка: цвета теперь приезжают из файла на гитхабе, и
++    заводить по картинке на каждый новый цвет было бы глупо.
++
++    Координаты те же, что в margelet_badge.xml, вместе с подъёмом на три
++    процента: на 24 точках он и решает, выглядит знак ровным или съехавшим.
++-->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="24"
++    android:viewportHeight="24">
 +    <path
 +        android:fillColor="#FFFFFF"
 +        android:pathData="M12,6.64 L6.12,14.99 L11.57,13.14 Z" />
