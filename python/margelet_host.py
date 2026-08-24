@@ -25,7 +25,7 @@ _Android = jclass("org.telegram.messenger.AndroidUtilities")
 # Ответ, по которому приложение понимает «не отправляй это сообщение».
 # Такой же строки нет в MargeletHooks.CANCEL по случайности: она там же и
 # записана, и обычным текстом её не набрать.
-_CANCEL = " margelet-cancel"
+_CANCEL = "\u0000margelet-cancel"
 
 
 class _Task(dynamic_proxy(Runnable)):

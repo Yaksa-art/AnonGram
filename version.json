@@ -1,7 +1,7 @@
 {
-  "version": "0.3.2",
+  "version": "0.3.3",
   "apk": "https://github.com/narezany/margelet/raw/apk/margelet.apk",
-  "about": "Plugins can now do slow work off the drawing thread and send their answer when it arrives; the install dialog lets you read the archive before installing.",
-  "about_ru": "Плагины теперь умеют делать долгое в стороне от экрана и отправлять ответ, когда он пришёл; на окне установки можно прочитать архив до установки.",
-  "about_zh": "插件现在可以把耗时的活儿放到绘制线程之外，等结果回来再发送；安装窗口里可以在安装前先读压缩包。"
+  "about": "Fix: a plugin cancelling a send sent a stray service marker into the chat instead. Cancelling never worked; now it does.",
+  "about_ru": "Починено: когда плагин отменял отправку, вместо отмены в переписку уходила служебная метка. Отмена не работала вовсе; теперь работает.",
+  "about_zh": "修复：插件取消发送时，聊天里反而会出现一串内部标记。取消此前根本没生效，现在可以了。"
 }

@@ -730,7 +730,7 @@ index 00000000..a775cdbc
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
 new file mode 100644
-index 00000000..b23e079a
+index 00000000..bf71cf4f
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
 @@ -0,0 +1,409 @@
@@ -763,7 +763,7 @@ index 00000000..b23e079a
 +     * Забыть про него значит выпустить сборку, которая всю жизнь будет
 +     * предлагать обновиться сама на себя.
 +     */
-+    public static final String APP_VERSION = "0.3.2";
++    public static final String APP_VERSION = "0.3.3";
 +
 +    /**
 +     * Как часто спрашивать гитхаб про новую версию, в минутах. Ноль — не
@@ -2005,108 +2005,316 @@ index 00000000..33ff716b
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletHooks.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletHooks.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..25b979f7ba90fa3e06f89a455aa8efe553f339b4
-GIT binary patch
-literal 13615
-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
-
-literal 0
-HcmV?d00001
-
+index 00000000..ecbcc08f
+--- /dev/null
++++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletHooks.java
+@@ -0,0 +1,306 @@
++package org.telegram.margelet;
++
++import org.telegram.messenger.AndroidUtilities;
++import org.telegram.messenger.FileLog;
++import org.telegram.messenger.MessageObject;
++import org.telegram.messenger.NotificationCenter;
++import org.telegram.messenger.UserConfig;
++
++import java.util.ArrayList;
++import java.util.List;
++
++/**
++ * Двери, через которые плагин узнаёт о происходящем.
++ *
++ * Раньше плагину оставалось одно: просыпаться по будильнику и смотреть, не
++ * изменилось ли что-нибудь. Так написан первый наш плагин, и так писать
++ * плохо: телефон греется впустую, а плагин всё равно узнаёт о событии позже,
++ * чем оно случилось.
++ *
++ * Дверей нарочно немного, и каждая названа. Это не то же самое, что дать
++ * плагину подменять любой метод приложения: подмена любого метода — это
++ * переписывание чужого кода на ходу, для этого нужна отдельная библиотека,
++ * которая правит машинный код, и любое обновление телеграма ломает всё, что
++ * на ней написано. Названная дверь переживает обновление, потому что за неё
++ * отвечаем мы, а не случайное совпадение имён.
++ *
++ * Флаги здесь не для красоты: пока никто не подписан, питон не дёргается
++ * вовсе, и отправка сообщения стоит ровно столько же, сколько без плагинов.
++ */
++public class MargeletHooks {
++
++    /**
++     * Ответ питона, означающий «не отправляй».
++     *
++     * Записан экранированием нарочно. Раньше здесь стоял сам знак — невидимый
++     * нулевой байт прямо в исходнике, — а в питоне на его месте оказался
++     * обычный пробел. Строки не совпадали никогда, отмена не срабатывала ни
++     * разу, и вместо неё в переписку уходила сама эта метка. Увидел это не я,
++     * а человек, у которого перед каждым курсом биткоина появлялось
++     * «margelet-cancel».
++     *
++     * Невидимый знак в исходнике нельзя ни прочитать глазами, ни сверить.
++     * Поэтому — только экранированием, и в обоих файлах одинаково.
++     */
++    public static final String CANCEL = "\u0000margelet-cancel";
++
++    /** Кнопка плагина в меню чата. */
++    public static final class Button {
++        public final String pluginId;
++        public final String key;
++        public final String title;
++
++        Button(String pluginId, String key, String title) {
++            this.pluginId = pluginId;
++            this.key = key;
++            this.title = title;
++        }
++    }
++
++    private static volatile boolean wantsSend;
++    private static volatile boolean wantsMessage;
++    private static final List<Button> buttons = new ArrayList<>();
++    private static boolean watching;
++
++    // --- подписка со стороны питона ---
++
++    public static void wantSend() {
++        wantsSend = true;
++    }
++
++    public static void wantMessage() {
++        wantsMessage = true;
++        watch();
++    }
++
++    public static boolean hasSend() {
++        return wantsSend;
++    }
++
++    /**
++     * Кнопка плагина в меню чата. Плагин зовёт это при запуске; при
++     * перезапуске приложения список собирается заново, поэтому одинаковую
++     * запись заменяем, а не копим.
++     */
++    public static synchronized void addButton(String pluginId, String key, String title) {
++        for (int i = buttons.size() - 1; i >= 0; i--) {
++            if (buttons.get(i).pluginId.equals(pluginId) && buttons.get(i).key.equals(key)) {
++                buttons.remove(i);
++            }
++        }
++        buttons.add(new Button(pluginId, key, title));
++    }
++
++    public static synchronized List<Button> buttons() {
++        return new ArrayList<>(buttons);
++    }
++
++    public static synchronized Button button(int index) {
++        return index >= 0 && index < buttons.size() ? buttons.get(index) : null;
++    }
++
++    /** Нажали кнопку плагина. Экран чата уходит плагину как есть. */
++    public static void buttonClicked(int index, Object fragment) {
++        final Button button = button(index);
++        if (button == null) {
++            return;
++        }
++        MargeletPluginHost.post(() -> {
++            try {
++                MargeletPluginHost.python("buttonClicked",
++                        new Class<?>[]{String.class, String.class, Object.class},
++                        button.pluginId, button.key, fragment);
++            } catch (Throwable t) {
++                FileLog.e(t);
++                MargeletPluginHost.log(button.title, String.valueOf(t), true);
++            }
++        });
++    }
++
++    // --- отправка ---
++
++    /**
++     * Человек отправляет текст. Плагин может его поменять или отменить
++     * отправку совсем.
++     *
++     * Здесь единственное место во всём движке плагинов, где питон зовётся
++     * прямо на том потоке, который его позвал, и ждать приходится по-честному.
++     * Иначе никак: сообщение уже уходит, и ответ «поменяй текст» нужен сейчас,
++     * а не через секунду. Поэтому долгая работа в этом обработчике задержит
++     * отправку — и мы говорим об этом вслух, в консоль, когда замечаем.
++     *
++     * @return текст, который надо отправить, или null — не отправлять.
++     */
++    public static String sending(String text, long dialogId) {
++        if (!wantsSend || text == null) {
++            return text;
++        }
++        final long started = System.currentTimeMillis();
++        try {
++            final Object answer = MargeletPluginHost.pythonValue("sending",
++                    new Class<?>[]{String.class, long.class}, text, dialogId);
++            final long spent = System.currentTimeMillis() - started;
++            if (spent > 100) {
++                MargeletPluginHost.log("margelet",
++                        "обработчик отправки думал " + spent + " мс — столько же ждал человек", true);
++            }
++            if (answer == null) {
++                return text;
++            }
++            final String result = String.valueOf(answer);
++            // Сравнение с меткой — основной путь. Проверка на нулевой байт —
++            // страховка от того, что уже один раз случилось: метки разошлись
++            // между двумя файлами, и мусор ушёл в переписку. Набрать такое с
++            // клавиатуры нельзя, значит это в любом случае не текст человека.
++            if (CANCEL.equals(result) || result.indexOf('\u0000') >= 0) {
++                return null;
++            }
++            return result;
++        } catch (Throwable t) {
++            FileLog.e(t);
++            MargeletPluginHost.log("margelet", String.valueOf(t), true);
++            return text;
++        }
++    }
++
++    // --- приход сообщений ---
++
++    /**
++     * Ставит наблюдателя за новыми сообщениями — по одному на каждую учётную
++     * запись, потому что уведомления в телеграме заведены отдельно на каждую.
++     *
++     * Второй раз не ставим: два наблюдателя означали бы, что каждое сообщение
++     * придёт плагину дважды.
++     */
++    private static void watch() {
++        AndroidUtilities.runOnUIThread(() -> {
++            if (watching) {
++                return;
++            }
++            watching = true;
++            final NotificationCenter.NotificationCenterDelegate delegate = (id, account, args) -> {
++                if (id != NotificationCenter.didReceiveNewMessages || !wantsMessage
++                        || args == null || args.length < 2) {
++                    return;
++                }
++                deliver(args);
++            };
++            for (int account = 0; account < UserConfig.MAX_ACCOUNT_COUNT; account++) {
++                NotificationCenter.getInstance(account)
++                        .addObserver(delegate, NotificationCenter.didReceiveNewMessages);
++            }
++        });
++    }
++
++    @SuppressWarnings("unchecked")
++    private static void deliver(Object[] args) {
++        final long dialogId;
++        final ArrayList<MessageObject> messages;
++        try {
++            dialogId = (Long) args[0];
++            messages = (ArrayList<MessageObject>) args[1];
++        } catch (Throwable ignored) {
++            return;
++        }
++        if (messages == null || messages.isEmpty()) {
++            return;
++        }
++        for (MessageObject message : messages) {
++            if (message == null) {
++                continue;
++            }
++            final String text = message.messageText == null ? "" : message.messageText.toString();
++            final int messageId = message.getId();
++            final boolean out = message.isOut();
++            MargeletPluginHost.post(() -> {
++                try {
++                    MargeletPluginHost.python("received",
++                            new Class<?>[]{String.class, long.class, int.class, boolean.class},
++                            text, dialogId, messageId, out);
++                } catch (Throwable t) {
++                    FileLog.e(t);
++                }
++            });
++        }
++    }
++
++    // --- работа в стороне и своя отправка ---
++
++    /**
++     * Отдельный поток для долгой работы плагина.
++     *
++     * Появился не из красоты, а по чужому коду. Первые два плагина не от нас —
++     * погода и курс валют — оба ходят в сеть прямо внутри обработчика
++     * отправки. А обработчик этот исполняется на том же потоке, что рисует
++     * экран: пока идёт запрос, телефон не рисует ничего. У погоды это до пяти
++     * секунд, у курса — до восемнадцати, три запроса подряд по шесть.
++     *
++     * Обычно андроид ловит такое сам: полез в сеть с главного потока — сразу
++     * падение с понятным объяснением. Здесь эта защита не срабатывает. Она
++     * живёт в джавовых сокетах, а питон ходит в сеть своими, мимо джавы, и
++     * охранник этого просто не видит. Ни падения, ни предупреждения — телефон
++     * молча замирает. Оба автора были уверены, что у них всё хорошо.
++     *
++     * Значит, виновата не их невнимательность, а то, что замены не было.
++     * Теперь есть.
++     */
++    public static void background(Runnable work) {
++        final Thread thread = new Thread(work, "margelet-plugin-work");
++        // Приложение не должно ждать закрытия из-за плагина, ушедшего в сеть.
++        thread.setDaemon(true);
++        thread.start();
++    }
++
++    /**
++     * Отправить сообщение от имени человека. Так плагин отвечает на команду,
++     * когда ответ наконец пришёл, — вместо того чтобы держать отправку.
++     */
++    public static void send(long dialogId, String text) {
++        if (text == null || text.length() == 0 || dialogId == 0) {
++            return;
++        }
++        AndroidUtilities.runOnUIThread(() -> {
++            try {
++                final int account = org.telegram.messenger.UserConfig.selectedAccount;
++                org.telegram.messenger.SendMessagesHelper.getInstance(account).sendMessage(
++                        org.telegram.messenger.SendMessagesHelper.SendMessageParams.of(text, dialogId));
++            } catch (Throwable t) {
++                FileLog.e(t);
++                MargeletPluginHost.log("margelet", "не отправилось: " + t, true);
++            }
++        });
++    }
++
++    // --- настройки плагина ---
++
++    /**
++     * Плагин заявляет, из чего состоит его экран настроек. Заявка хранится
++     * рядом с его памятью, а не в оперативной: экран настроек надо уметь
++     * открыть и у выключенного плагина, который сейчас не выполняется.
++     */
++    public static void declare(String pluginId, String json) {
++        MargeletPluginHost.set(pluginId, "__settings", json);
++    }
++
++    public static String declared(String pluginId) {
++        return MargeletPluginHost.get(pluginId, "__settings", null);
++    }
++
++    public static boolean hasSettings(String pluginId) {
++        final String json = declared(pluginId);
++        return json != null && json.length() > 2;
++    }
++
++    /** Человек поменял настройку. Плагин узнаёт об этом сразу, без перезапуска. */
++    public static void settingsChanged(String pluginId, String key, String value) {
++        MargeletPluginHost.post(() -> {
++            try {
++                MargeletPluginHost.python("settingsChanged",
++                        new Class<?>[]{String.class, String.class, String.class},
++                        pluginId, key, value);
++            } catch (Throwable t) {
++                FileLog.e(t);
++            }
++        });
++    }
++}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletMarkup.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletMarkup.java
 new file mode 100644
 index 00000000..011c384c
@@ -19585,7 +19793,7 @@ index 00000000..986d1fb1
 +    margelet.log("настройка", key, "теперь", value)
 diff --git a/TMessagesProj_AppStandalone/src/main/python/margelet_host.py b/TMessagesProj_AppStandalone/src/main/python/margelet_host.py
 new file mode 100644
-index 00000000..f2b3947d
+index 00000000..73837b14
 --- /dev/null
 +++ b/TMessagesProj_AppStandalone/src/main/python/margelet_host.py
 @@ -0,0 +1,408 @@
@@ -19616,7 +19824,7 @@ index 00000000..f2b3947d
 +# Ответ, по которому приложение понимает «не отправляй это сообщение».
 +# Такой же строки нет в MargeletHooks.CANCEL по случайности: она там же и
 +# записана, и обычным текстом её не набрать.
-+_CANCEL = " margelet-cancel"
++_CANCEL = "\u0000margelet-cancel"
 +
 +
 +class _Task(dynamic_proxy(Runnable)):
