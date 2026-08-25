@@ -29,27 +29,7 @@ public class MargeletConveniencesActivity extends UniversalFragment {
     private static final int ID_FILTER_ZALGO = 6;
     private static final int ID_HIDE_SEND_AS = 7;
     private static final int ID_HIDE_BOT_BUTTON = 8;
-    private static final int ID_AVATAR_CORNERS = 9;
-    private static final int ID_HIDE_BOTTOM_TABS = 10;
-    private static final int ID_GLASS_OUTLINE = 11;
-    private static final int ID_CLASSIC_DRAWER = 12;
-
-    private String getAvatarCornerName(int mode) {
-        switch (mode) {
-            case 1: return LocaleController.getString(R.string.MargeletAvatarCornersSquare);
-            case 2: return LocaleController.getString(R.string.MargeletAvatarCornersSquircle);
-            case 3: return LocaleController.getString(R.string.MargeletAvatarCornersMedium);
-            default: return LocaleController.getString(R.string.MargeletAvatarCornersDefault);
-        }
-    }
-
-    private String getGlassOutlineName(int mode) {
-        switch (mode) {
-            case 1: return LocaleController.getString(R.string.MargeletGlassOutlineSolid);
-            case 2: return LocaleController.getString(R.string.MargeletGlassOutlineHidden);
-            default: return LocaleController.getString(R.string.MargeletGlassOutlineGlare);
-        }
-    }
+    private static final int ID_ANTI_DELETE = 9;
 
     @Override
     protected CharSequence getTitle() {
@@ -66,6 +46,9 @@ public class MargeletConveniencesActivity extends UniversalFragment {
 
     @Override
     protected void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
+        items.add(UItem.asCheck(ID_ANTI_DELETE, LocaleController.getString(R.string.MargeletAntiDelete))
+                .setChecked(MargeletConfig.antiDelete()));
+        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletAntiDeleteAbout)));
         items.add(UItem.asCheck(ID_CHANNEL_TOP, LocaleController.getString(R.string.MargeletChannelOnTop))
                 .setChecked(MargeletConfig.channelOnTop()));
         items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletChannelOnTopAbout)));
@@ -81,18 +64,6 @@ public class MargeletConveniencesActivity extends UniversalFragment {
         items.add(UItem.asCheck(ID_HIDE_BOT_BUTTON, LocaleController.getString(R.string.MargeletHideBotButton))
                 .setChecked(MargeletConfig.hideBotButton()));
         items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletHideBotButtonAbout)));
-        items.add(UItem.asButton(ID_AVATAR_CORNERS, LocaleController.getString(R.string.MargeletAvatarCorners),
-                getAvatarCornerName(MargeletConfig.avatarRadius())));
-        items.add(UItem.asShadow(null));
-        items.add(UItem.asButton(ID_GLASS_OUTLINE, LocaleController.getString(R.string.MargeletGlassOutlineStyle),
-                getGlassOutlineName(MargeletConfig.glassOutlineStyle())));
-        items.add(UItem.asShadow(null));
-        items.add(UItem.asCheck(ID_HIDE_BOTTOM_TABS, LocaleController.getString(R.string.MargeletHideBottomTabs))
-                .setChecked(MargeletConfig.hideBottomTabs()));
-        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletHideBottomTabsAbout)));
-        items.add(UItem.asCheck(ID_CLASSIC_DRAWER, LocaleController.getString(R.string.MargeletClassicDrawer))
-                .setChecked(MargeletConfig.classicDrawer()));
-        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletClassicDrawerAbout)));
         items.add(UItem.asCheck(ID_TRACKS, LocaleController.getString(R.string.MargeletTracksEnabled))
                 .setChecked(MargeletConfig.tagsEnabled()));
         items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletTracksEnabledAbout)));
@@ -106,7 +77,10 @@ public class MargeletConveniencesActivity extends UniversalFragment {
 
     @Override
     protected void onClick(UItem item, View view, int position, float x, float y) {
-        if (item.id == ID_CHANNEL_TOP) {
+        if (item.id == ID_ANTI_DELETE) {
+            MargeletConfig.setAntiDelete(!MargeletConfig.antiDelete());
+            listView.adapter.update(true);
+        } else if (item.id == ID_CHANNEL_TOP) {
             MargeletConfig.setChannelOnTop(!MargeletConfig.channelOnTop());
             listView.adapter.update(true);
         } else if (item.id == ID_RELATIVE_ONLINE_TIME) {
@@ -124,47 +98,6 @@ public class MargeletConveniencesActivity extends UniversalFragment {
         } else if (item.id == ID_HIDE_BOT_BUTTON) {
             MargeletConfig.setHideBotButton(!MargeletConfig.hideBotButton());
             listView.adapter.update(true);
-        } else if (item.id == ID_AVATAR_CORNERS) {
-            final CharSequence[] options = new CharSequence[]{
-                    LocaleController.getString(R.string.MargeletAvatarCornersDefault),
-                    LocaleController.getString(R.string.MargeletAvatarCornersSquare),
-                    LocaleController.getString(R.string.MargeletAvatarCornersSquircle),
-                    LocaleController.getString(R.string.MargeletAvatarCornersMedium)
-            };
-            new AlertDialog.Builder(getContext())
-                    .setTitle(LocaleController.getString(R.string.MargeletAvatarCorners))
-                    .setItems(options, (d, which) -> {
-                        MargeletConfig.setAvatarRadius(which);
-                        listView.adapter.update(true);
-                        org.telegram.messenger.NotificationCenter.getGlobalInstance().postNotificationName(org.telegram.messenger.NotificationCenter.reloadInterface);
-                        org.telegram.messenger.NotificationCenter.getInstance(currentAccount).postNotificationName(org.telegram.messenger.NotificationCenter.updateInterfaces, org.telegram.messenger.MessagesController.UPDATE_MASK_ALL);
-                    })
-                    .setNegativeButton(LocaleController.getString(R.string.Cancel), null)
-                    .show();
-        } else if (item.id == ID_GLASS_OUTLINE) {
-            final CharSequence[] options = new CharSequence[]{
-                    LocaleController.getString(R.string.MargeletGlassOutlineGlare),
-                    LocaleController.getString(R.string.MargeletGlassOutlineSolid),
-                    LocaleController.getString(R.string.MargeletGlassOutlineHidden)
-            };
-            new AlertDialog.Builder(getContext())
-                    .setTitle(LocaleController.getString(R.string.MargeletGlassOutlineStyle))
-                    .setItems(options, (d, which) -> {
-                        MargeletConfig.setGlassOutlineStyle(which);
-                        listView.adapter.update(true);
-                        org.telegram.messenger.NotificationCenter.getGlobalInstance().postNotificationName(org.telegram.messenger.NotificationCenter.reloadInterface);
-                    })
-                    .setNegativeButton(LocaleController.getString(R.string.Cancel), null)
-                    .show();
-        } else if (item.id == ID_HIDE_BOTTOM_TABS) {
-            MargeletConfig.setHideBottomTabs(!MargeletConfig.hideBottomTabs());
-            listView.adapter.update(true);
-            org.telegram.messenger.NotificationCenter.getGlobalInstance().postNotificationName(org.telegram.messenger.NotificationCenter.reloadInterface);
-            org.telegram.messenger.NotificationCenter.getInstance(currentAccount).postNotificationName(org.telegram.messenger.NotificationCenter.updateInterfaces, org.telegram.messenger.MessagesController.UPDATE_MASK_ALL);
-        } else if (item.id == ID_CLASSIC_DRAWER) {
-            MargeletConfig.setClassicDrawer(!MargeletConfig.classicDrawer());
-            listView.adapter.update(true);
-            org.telegram.messenger.NotificationCenter.getGlobalInstance().postNotificationName(org.telegram.messenger.NotificationCenter.reloadInterface);
         } else if (item.id == ID_TRACKS) {
             MargeletConfig.setTagsEnabled(!MargeletConfig.tagsEnabled());
             listView.adapter.update(true);

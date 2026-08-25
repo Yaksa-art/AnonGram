@@ -498,4 +498,12 @@ public class MargeletConfig {
     public static void setGlassOutlineStyle(int style) {
         prefs().edit().putInt("glass_outline_style", style).apply();
     }
+
+    public static boolean antiDelete() {
+        return prefs().getBoolean("anti_delete", false);
+    }
+
+    public static void setAntiDelete(boolean on) {
+        prefs().edit().putBoolean("anti_delete", on).apply();
+    }
 }
