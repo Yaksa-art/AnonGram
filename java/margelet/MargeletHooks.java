@@ -179,15 +179,17 @@ public class MargeletHooks {
             }
             watching = true;
             final NotificationCenter.NotificationCenterDelegate delegate = (id, account, args) -> {
-                if (id != NotificationCenter.didReceiveNewMessages || !wantsMessage
-                        || args == null || args.length < 2) {
-                    return;
+                if (id == NotificationCenter.didReceiveNewMessages && wantsMessage && args != null && args.length >= 2) {
+                    deliver(args);
+                } else if (id == NotificationCenter.messagesDeleted && args != null && args.length >= 1) {
+                    deliverDeleted(args);
                 }
-                deliver(args);
             };
             for (int account = 0; account < UserConfig.MAX_ACCOUNT_COUNT; account++) {
                 NotificationCenter.getInstance(account)
                         .addObserver(delegate, NotificationCenter.didReceiveNewMessages);
+                NotificationCenter.getInstance(account)
+                        .addObserver(delegate, NotificationCenter.messagesDeleted);
             }
         });
     }
@@ -217,6 +219,34 @@ public class MargeletHooks {
                     MargeletPluginHost.python("received",
                             new Class<?>[]{String.class, long.class, int.class, boolean.class},
                             text, dialogId, messageId, out);
+                } catch (Throwable t) {
+                    FileLog.e(t);
+                }
+            });
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void deliverDeleted(Object[] args) {
+        final ArrayList<Integer> deletedIds;
+        final long channelId;
+        try {
+            deletedIds = (ArrayList<Integer>) args[0];
+            channelId = args.length > 1 && args[1] instanceof Long ? (Long) args[1] : 0;
+        } catch (Throwable ignored) {
+            return;
+        }
+        if (deletedIds == null || deletedIds.isEmpty()) {
+            return;
+        }
+        for (Integer msgId : deletedIds) {
+            if (msgId == null) continue;
+            final int id = msgId;
+            MargeletPluginHost.post(() -> {
+                try {
+                    MargeletPluginHost.python("deleted",
+                            new Class<?>[]{int.class, long.class},
+                            id, channelId);
                 } catch (Throwable t) {
                     FileLog.e(t);
                 }

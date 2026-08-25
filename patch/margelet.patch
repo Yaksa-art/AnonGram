@@ -30,10 +30,10 @@ index 61a653057..15f1649a7 100644
              buildConfigField "String", "APP_CENTER_HASH", "\"\""
              buildConfigField "String", "BETA_URL", "\"" + getProps("BETA_PRIVATE_URL") + "\""
 diff --git a/TMessagesProj/proguard-rules.pro b/TMessagesProj/proguard-rules.pro
-index aeab02b29..5e2c4f452 100644
+index aeab02b29..1443e2a47 100644
 --- a/TMessagesProj/proguard-rules.pro
 +++ b/TMessagesProj/proguard-rules.pro
-@@ -111,6 +111,22 @@
+@@ -111,6 +111,25 @@
  -keep class ru.noties.jlatexmath.** { *; }
  -dontwarn org.scilab.forge.jlatexmath.**
  
@@ -49,7 +49,10 @@ index aeab02b29..5e2c4f452 100644
 +# Плагин реализует этот интерфейс из питона, то есть по имени. В этой сборке
 +# он уцелел и без правила — проверено в собранном APK, — но держаться на
 +# везении такие вещи не должны.
-+-keep interface org.telegram.margelet.MargeletHooks$FetchCallback { *; }
++-keep class org.telegram.margelet.hook.** { *; }
++-keep interface org.telegram.margelet.hook.** { *; }
++-keep class de.robv.android.xposed.** { *; }
++-keep interface de.robv.android.xposed.** { *; }
 +-keep class com.chaquo.python.** { *; }
 +-dontwarn com.chaquo.python.**
 +
@@ -626,7 +629,7 @@ index cd393c4dd..4173e938f 100644
  
          dialogsCount = array.size();
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/Cells/ChatMessageCell.java b/TMessagesProj/src/main/java/org/telegram/ui/Cells/ChatMessageCell.java
-index f988b1e6f..9f4309202 100644
+index f988b1e6f..1bc78642c 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/Cells/ChatMessageCell.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/Cells/ChatMessageCell.java
 @@ -2380,7 +2380,12 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
@@ -726,6 +729,16 @@ index f988b1e6f..9f4309202 100644
                          Spannable buffer = (Spannable) currentCaption;
                          CharacterStyle[] link = buffer.getSpans(off, off, ClickableSpan.class);
                          boolean isMono = false;
+@@ -18427,6 +18489,9 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
+         if (currentMessageObject.messageOwner.video_processing_pending) {
+             timeString = formatString(R.string.ScheduledTimeApprox, timeString);
+         }
++        if (currentMessageObject.deleted && org.telegram.margelet.MargeletConfig.antiDelete()) {
++            timeString = "🗑 " + timeString;
++        }
+         if (signString != null) {
+             if (messageObject.messageOwner.via_business_bot_id != 0) {
+                 currentTimeString = timeString + ", ";
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/Cells/DialogCell.java b/TMessagesProj/src/main/java/org/telegram/ui/Cells/DialogCell.java
 index b9f0f8330..c654f37bd 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/Cells/DialogCell.java
@@ -880,7 +893,7 @@ index af32ccff6..165ea0bb3 100644
                  nameString = getString(R.string.HiddenName);
              }
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
-index 6f752348f..e9d0fec52 100644
+index 6f752348f..bb62d7831 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
 @@ -1191,6 +1191,9 @@ public class ChatActivity extends BaseFragment implements
@@ -1008,7 +1021,25 @@ index 6f752348f..e9d0fec52 100644
                  } else {
                      avatarContainer.setTitle(AndroidUtilities.removeRTL(AndroidUtilities.removeDiacritics(UserObject.getUserName(currentUser))), currentUser.scam, currentUser.fake, currentUser.verified, getMessagesController().isPremiumUser(currentUser), currentUser.emoji_status, animated);
                  }
-@@ -27465,6 +27514,13 @@ public class ChatActivity extends BaseFragment implements
+@@ -26206,6 +26255,17 @@ public class ChatActivity extends BaseFragment implements
+                     }
+                 }
+                 obj.deleted = true;
++                if (org.telegram.margelet.MargeletConfig.antiDelete() && !obj.isOutOwner()) {
++                    // Оставляем сообщение в списке и обновляем ячейку со значком корзины 🗑
++                    int idx = chatAdapter != null && chatAdapter.isFiltered && filteredMessagesDict != null ? chatAdapter.filteredMessages.indexOf(filteredMessagesDict.get(mid)) : (messages != null ? messages.indexOf(obj) : -1);
++                    if (idx != -1 && chatAdapter != null && !chatAdapter.isFrozen) {
++                        try {
++                            chatAdapter.notifyItemChanged(chatAdapter.messagesStartRow + idx);
++                        } catch (Throwable ignored) {
++                        }
++                    }
++                    continue;
++                }
+                 if (obj.scheduled && sent) {
+                     obj.scheduledSent = true;
+                 }
+@@ -27465,6 +27525,13 @@ public class ChatActivity extends BaseFragment implements
              menu.add(R.id.menu_groupbolditalic, R.id.menu_quote, order++, LocaleController.getString(R.string.Quote));
          }
          menu.add(R.id.menu_groupbolditalic, R.id.menu_spoiler, order++, LocaleController.getString(R.string.Spoiler));
@@ -1022,7 +1053,7 @@ index 6f752348f..e9d0fec52 100644
  
          SpannableStringBuilder stringBuilder = new SpannableStringBuilder(LocaleController.getString(R.string.Bold));
          stringBuilder.setSpan(new TypefaceSpan(AndroidUtilities.bold()), 0, stringBuilder.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-@@ -29582,6 +29638,10 @@ public class ChatActivity extends BaseFragment implements
+@@ -29582,6 +29649,10 @@ public class ChatActivity extends BaseFragment implements
      @Override
      public void onResume() {
          super.onResume();
@@ -1033,7 +1064,7 @@ index 6f752348f..e9d0fec52 100644
          checkShowBlur(false);
          activityResumeTime = System.currentTimeMillis();
          if (openImport && getSendMessagesHelper().getImportingHistory(dialog_id) != null) {
-@@ -33199,6 +33259,19 @@ public class ChatActivity extends BaseFragment implements
+@@ -33199,6 +33270,19 @@ public class ChatActivity extends BaseFragment implements
                  undoView.showWithAction(0, UndoView.ACTION_MESSAGE_COPIED, null);
                  break;
              }
@@ -2464,7 +2495,7 @@ index 03d0ba337..17f98fa6e 100644
      <string name="English">Inglês</string>
      <string name="LanguageNameInEnglish">Portuguese (Brazil)</string>
 diff --git a/TMessagesProj/src/main/res/values-ru/strings.xml b/TMessagesProj/src/main/res/values-ru/strings.xml
-index 24c562920..6cc3863dc 100644
+index 24c562920..b9c075500 100644
 --- a/TMessagesProj/src/main/res/values-ru/strings.xml
 +++ b/TMessagesProj/src/main/res/values-ru/strings.xml
 @@ -1,7 +1,7 @@
@@ -2477,7 +2508,7 @@ index 24c562920..6cc3863dc 100644
      <string name="LanguageName">Русский</string>
      <string name="English">Английский</string>
      <string name="LanguageNameInEnglish">Russian</string>
-@@ -263,4 +263,231 @@
+@@ -263,4 +263,234 @@
      <string name="RemindTodayAt">\'Отправить сегодня в\' HH:mm</string>
      <string name="RemindDayAt">\'Отправить\' d MMM \'в\' HH:mm</string>
      <string name="RemindDayYearAt">\'Напомнить\' d MMM yyyy \'в\' HH:mm</string>
@@ -2710,6 +2741,9 @@ index 24c562920..6cc3863dc 100644
 +
 +    <string name="MargeletM3SwitchStyle">Тумблеры в стиле Material 3</string>
 +    <string name="MargeletM3SwitchStyleAbout">Современный дизайн переключателей Material You с увеличенной дорожкой и ползунком.</string>
++
++    <string name="MargeletAntiDelete">Не удалять сообщения (Анти-удаление)</string>
++    <string name="MargeletAntiDeleteAbout">Сохраняет удалённые собеседником сообщения прямо в чате с пометкой «удалено».</string>
 +</resources>
 diff --git a/TMessagesProj/src/main/res/values-uk/strings.xml b/TMessagesProj/src/main/res/values-uk/strings.xml
 index d46834430..57d101095 100644
@@ -2756,7 +2790,7 @@ index 64a578127..92e35290e 100644
      <item name="menu_regular" type="id"/>
      <item name="menu_bold" type="id"/>
 diff --git a/TMessagesProj/src/main/res/values/strings.xml b/TMessagesProj/src/main/res/values/strings.xml
-index 02b01e23e..9eba9f66e 100644
+index 02b01e23e..2220d5e44 100644
 --- a/TMessagesProj/src/main/res/values/strings.xml
 +++ b/TMessagesProj/src/main/res/values/strings.xml
 @@ -1,7 +1,7 @@
@@ -2769,7 +2803,7 @@ index 02b01e23e..9eba9f66e 100644
      <string name="LanguageName">English</string>
      <string name="English">English</string>
      <string name="LanguageNameInEnglish">English</string>
-@@ -11167,4 +11167,231 @@
+@@ -11167,4 +11167,234 @@
      <string name="ArticleAIPrompt">Write a prompt...</string>
      <string name="ArticleAIGenerate">Generate</string>
      <string name="ArticleAIAddToPage">Add to Page</string>
@@ -3000,6 +3034,9 @@ index 02b01e23e..9eba9f66e 100644
 +
 +    <string name="MargeletM3SwitchStyle">Material 3 switches</string>
 +    <string name="MargeletM3SwitchStyleAbout">Modern Material Design 3 style switches with expanded tracks and thumbs.</string>
++
++    <string name="MargeletAntiDelete">Do not delete messages (Anti-Delete)</string>
++    <string name="MargeletAntiDeleteAbout">Keeps messages deleted by other users visible directly in the chat with a deleted marker.</string>
  </resources>
 diff --git a/TMessagesProj_App/build.gradle b/TMessagesProj_App/build.gradle
 index 2aa197cb3..8fd9c9eca 100644
