@@ -516,7 +516,7 @@ diff --git a/TMessagesProj/src/main/java/org/telegram/ui/ActionBar/Theme.java b/
 index c3616f58f..e1bbeefaf 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/ActionBar/Theme.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/ActionBar/Theme.java
-@@ -8161,17 +8161,48 @@ public class Theme {
+@@ -8161,17 +8161,37 @@ public class Theme {
                              break;
                          } else {
                              if ((idx = line.indexOf('=')) != -1) {
@@ -548,16 +548,6 @@ index c3616f58f..e1bbeefaf 100644
 +                                            value = Color.parseColor(param);
 +                                            parsed = true;
 +                                        }
-+                                    } catch (Exception ignore) {}
-+                                }
-+                                if (!parsed && (param.length() == 6 || param.length() == 8)) {
-+                                    try {
-+                                        long v = Long.parseLong(param, 16);
-+                                        if (param.length() == 6) {
-+                                            v |= 0xFF000000L;
-+                                        }
-+                                        value = (int) v;
-+                                        parsed = true;
 +                                    } catch (Exception ignore) {}
 +                                }
 +                                if (!parsed) {
