@@ -737,7 +737,7 @@ new file mode 100644
 index 00000000..fc57492a
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
-@@ -0,0 +1,409 @@
+@@ -0,0 +1,421 @@
 +package org.telegram.margelet;
 +
 +import android.content.Context;
@@ -947,6 +947,18 @@ index 00000000..fc57492a
 +
 +    public static void setChannelOnTop(boolean on) {
 +        prefs().edit().putBoolean("channel_on_top", on).apply();
++    }
++
++    /**
++     * Показывать ли относительное время последнего посещения («был 5 минут назад»)
++     * вместо абсолютного времени («был сегодня в 7:55»).
++     */
++    public static boolean relativeOnlineTime() {
++        return prefs().getBoolean("relative_online_time", false);
++    }
++
++    public static void setRelativeOnlineTime(boolean on) {
++        prefs().edit().putBoolean("relative_online_time", on).apply();
 +    }
 +
 +    /**
@@ -6072,6 +6084,28 @@ index df646cf4..b25e5001 100644
      }
  
      public static String getServerString(String key) {
+@@ -2692,7 +2701,21 @@ public class LocaleController {
+             int dateDay = rightNow.get(Calendar.DAY_OF_YEAR);
+             int dateYear = rightNow.get(Calendar.YEAR);
+             int dateHour = rightNow.get(Calendar.HOUR_OF_DAY);
+ 
++            if (org.telegram.margelet.MargeletConfig.relativeOnlineTime()) {
++                long currentTime = System.currentTimeMillis();
++                long diff = Math.max(0, (currentTime - date) / 1000);
++                if (diff < 60) {
++                    return LocaleController.formatString(R.string.LastSeenFormatted, LocaleController.getString(R.string.LessMinuteAgo));
++                } else if (diff < 3600) {
++                    int minutes = (int) (diff / 60);
++                    return LocaleController.formatString(R.string.LastSeenFormatted, LocaleController.formatPluralString("MinutesAgo", minutes, minutes));
++                } else if (diff < 86400 && dateDay == day && year == dateYear) {
++                    int hours = (int) (diff / 3600);
++                    return LocaleController.formatString(R.string.LastSeenFormatted, LocaleController.formatPluralString("HoursAgo", hours, hours));
++                }
++            }
++
+             if (dateDay == day && year == dateYear) {
+                 return LocaleController.formatString(R.string.LastSeenFormatted, LocaleController.formatString("TodayAtFormatted", R.string.TodayAtFormatted, getInstance().getFormatterDay().format(new Date(date))));
+                 /*int diff = (int) (ConnectionsManager.getInstance().getCurrentTime() - date) / 60;
 diff --git a/TMessagesProj/src/main/java/org/telegram/messenger/MediaDataController.java b/TMessagesProj/src/main/java/org/telegram/messenger/MediaDataController.java
 index 95495c32..5d00f2d9 100644
 --- a/TMessagesProj/src/main/java/org/telegram/messenger/MediaDataController.java
@@ -7438,7 +7472,7 @@ new file mode 100644
 index 00000000..93e14280
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletConveniencesActivity.java
-@@ -0,0 +1,99 @@
+@@ -0,0 +1,108 @@
 +package org.telegram.ui;
 +
 +import android.view.View;
@@ -7466,6 +7500,7 @@ index 00000000..93e14280
 +    private static final int ID_TRACKS = 2;
 +    private static final int ID_SEIZURE = 3;
 +    private static final int ID_FONTS = 4;
++    private static final int ID_RELATIVE_ONLINE_TIME = 5;
 +
 +    @Override
 +    protected CharSequence getTitle() {
@@ -7485,6 +7520,9 @@ index 00000000..93e14280
 +        items.add(UItem.asCheck(ID_CHANNEL_TOP, LocaleController.getString(R.string.MargeletChannelOnTop))
 +                .setChecked(MargeletConfig.channelOnTop()));
 +        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletChannelOnTopAbout)));
++        items.add(UItem.asCheck(ID_RELATIVE_ONLINE_TIME, LocaleController.getString(R.string.MargeletRelativeOnlineTime))
++                .setChecked(MargeletConfig.relativeOnlineTime()));
++        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletRelativeOnlineTimeAbout)));
 +        items.add(UItem.asCheck(ID_TRACKS, LocaleController.getString(R.string.MargeletTracksEnabled))
 +                .setChecked(MargeletConfig.tagsEnabled()));
 +        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletTracksEnabledAbout)));
@@ -7501,6 +7539,11 @@ index 00000000..93e14280
 +        if (item.id == ID_CHANNEL_TOP) {
 +            MargeletConfig.setChannelOnTop(!MargeletConfig.channelOnTop());
 +            listView.adapter.update(true);
++        } else if (item.id == ID_RELATIVE_ONLINE_TIME) {
++            MargeletConfig.setRelativeOnlineTime(!MargeletConfig.relativeOnlineTime());
++            listView.adapter.update(true);
++            org.telegram.messenger.NotificationCenter.getGlobalInstance().postNotificationName(org.telegram.messenger.NotificationCenter.reloadInterface);
++            org.telegram.messenger.NotificationCenter.getInstance(currentAccount).postNotificationName(org.telegram.messenger.NotificationCenter.updateInterfaces, org.telegram.messenger.MessagesController.UPDATE_MASK_STATUS);
 +        } else if (item.id == ID_TRACKS) {
 +            MargeletConfig.setTagsEnabled(!MargeletConfig.tagsEnabled());
 +            listView.adapter.update(true);
@@ -19090,7 +19133,7 @@ index 24c56292..5fece35b 100644
      <string name="LanguageName">Русский</string>
      <string name="English">Английский</string>
      <string name="LanguageNameInEnglish">Russian</string>
-@@ -263,4 +263,201 @@
+@@ -263,4 +263,203 @@
      <string name="RemindTodayAt">\'Отправить сегодня в\' HH:mm</string>
      <string name="RemindDayAt">\'Отправить\' d MMM \'в\' HH:mm</string>
      <string name="RemindDayYearAt">\'Напомнить\' d MMM yyyy \'в\' HH:mm</string>
@@ -19291,6 +19334,8 @@ index 24c56292..5fece35b 100644
 +    <string name="MargeletDonatePageAbout">Откроется в браузере: там готовая форма, вставлять цифры руками не нужно.</string>
 +    <string name="MargeletChannelOnTop">Канал форка сверху</string>
 +    <string name="MargeletChannelOnTopAbout">Первая строка в списке чатов, даже если вы не подписаны.</string>
++    <string name="MargeletRelativeOnlineTime">Относительное время в сети</string>
++    <string name="MargeletRelativeOnlineTimeAbout">Показывать время последнего посещения в относительном формате («был 5 минут назад», «был 2 часа назад») вместо точного времени («был сегодня в 7:55»).</string>
  </resources>
 \ No newline at end of file
 diff --git a/TMessagesProj/src/main/res/values-uk/strings.xml b/TMessagesProj/src/main/res/values-uk/strings.xml
@@ -19312,7 +19357,7 @@ new file mode 100644
 index 00000000..c40463b9
 --- /dev/null
 +++ b/TMessagesProj/src/main/res/values-zh/strings.xml
-@@ -0,0 +1,200 @@
+@@ -0,0 +1,202 @@
 +<?xml version="1.0" encoding="utf-8"?>
 +<resources>
 +    <string name="MargeletSettings">分支设置</string>
@@ -19512,6 +19557,8 @@ index 00000000..c40463b9
 +    <string name="MargeletDonatePageAbout">在浏览器里打开：那边是现成的表单，不用手动粘贴数字。</string>
 +    <string name="MargeletChannelOnTop">分支频道置顶</string>
 +    <string name="MargeletChannelOnTopAbout">聊天列表的第一行，即使你没有订阅。</string>
++    <string name="MargeletRelativeOnlineTime">相对在线时间</string>
++    <string name="MargeletRelativeOnlineTimeAbout">以相对格式（“5分钟前在线”、“2小时前在线”）显示最后在线时间，而不是确切时间。</string>
 +</resources>
 diff --git a/TMessagesProj/src/main/res/values/ids.xml b/TMessagesProj/src/main/res/values/ids.xml
 index cc49d135..a8a51c3a 100644
@@ -19543,7 +19590,7 @@ index ffa4d566..37342d60 100644
      <string name="LanguageName">English</string>
      <string name="English">English</string>
      <string name="LanguageNameInEnglish">English</string>
-@@ -11221,4 +11221,201 @@
+@@ -11221,4 +11221,203 @@
      <string name="UnsupportedMessageTitle">Unsupported Message</string>
      <string name="UnsupportedMessageMessage">Update Telegram to view this message</string>
      <string name="UnsupportedUpdate">Update</string>
@@ -19744,6 +19791,8 @@ index ffa4d566..37342d60 100644
 +    <string name="MargeletDonatePageAbout">Opens in the browser: the form is already there, nothing to paste by hand.</string>
 +    <string name="MargeletChannelOnTop">Fork channel on top</string>
 +    <string name="MargeletChannelOnTopAbout">The first row in the chat list, even if you are not subscribed.</string>
++    <string name="MargeletRelativeOnlineTime">Relative online time</string>
++    <string name="MargeletRelativeOnlineTimeAbout">Show last seen time in relative format (\"last seen 5 minutes ago\", \"last seen 2 hours ago\") instead of exact time.</string>
  </resources>
 diff --git a/TMessagesProj_App/build.gradle b/TMessagesProj_App/build.gradle
 index 2aa197cb..8fd9c9ec 100644

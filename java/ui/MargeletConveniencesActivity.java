@@ -25,6 +25,7 @@ public class MargeletConveniencesActivity extends UniversalFragment {
     private static final int ID_TRACKS = 2;
     private static final int ID_SEIZURE = 3;
     private static final int ID_FONTS = 4;
+    private static final int ID_RELATIVE_ONLINE_TIME = 5;
 
     @Override
     protected CharSequence getTitle() {
@@ -44,6 +45,9 @@ public class MargeletConveniencesActivity extends UniversalFragment {
         items.add(UItem.asCheck(ID_CHANNEL_TOP, LocaleController.getString(R.string.MargeletChannelOnTop))
                 .setChecked(MargeletConfig.channelOnTop()));
         items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletChannelOnTopAbout)));
+        items.add(UItem.asCheck(ID_RELATIVE_ONLINE_TIME, LocaleController.getString(R.string.MargeletRelativeOnlineTime))
+                .setChecked(MargeletConfig.relativeOnlineTime()));
+        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletRelativeOnlineTimeAbout)));
         items.add(UItem.asCheck(ID_TRACKS, LocaleController.getString(R.string.MargeletTracksEnabled))
                 .setChecked(MargeletConfig.tagsEnabled()));
         items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletTracksEnabledAbout)));
@@ -60,6 +64,11 @@ public class MargeletConveniencesActivity extends UniversalFragment {
         if (item.id == ID_CHANNEL_TOP) {
             MargeletConfig.setChannelOnTop(!MargeletConfig.channelOnTop());
             listView.adapter.update(true);
+        } else if (item.id == ID_RELATIVE_ONLINE_TIME) {
+            MargeletConfig.setRelativeOnlineTime(!MargeletConfig.relativeOnlineTime());
+            listView.adapter.update(true);
+            org.telegram.messenger.NotificationCenter.getGlobalInstance().postNotificationName(org.telegram.messenger.NotificationCenter.reloadInterface);
+            org.telegram.messenger.NotificationCenter.getInstance(currentAccount).postNotificationName(org.telegram.messenger.NotificationCenter.updateInterfaces, org.telegram.messenger.MessagesController.UPDATE_MASK_STATUS);
         } else if (item.id == ID_TRACKS) {
             MargeletConfig.setTagsEnabled(!MargeletConfig.tagsEnabled());
             listView.adapter.update(true);

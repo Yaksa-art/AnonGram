@@ -210,6 +210,18 @@ public class MargeletConfig {
     }
 
     /**
+     * Показывать ли относительное время последнего посещения («был 5 минут назад»)
+     * вместо абсолютного времени («был сегодня в 7:55»).
+     */
+    public static boolean relativeOnlineTime() {
+        return prefs().getBoolean("relative_online_time", false);
+    }
+
+    public static void setRelativeOnlineTime(boolean on) {
+        prefs().edit().putBoolean("relative_online_time", on).apply();
+    }
+
+    /**
      * Дописывать ли строку со ссылкой на форк в свои оформленные сообщения.
      * По умолчанию да: форк живёт тем, что о нём узнают.
      */
