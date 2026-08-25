@@ -418,4 +418,84 @@ public class MargeletConfig {
         prefs().edit().putBoolean("plugin_example_done", true).apply();
         return true;
     }
+
+    public static boolean filterZalgo() {
+        return prefs().getBoolean("filter_zalgo", false);
+    }
+
+    public static void setFilterZalgo(boolean on) {
+        prefs().edit().putBoolean("filter_zalgo", on).apply();
+    }
+
+    public static boolean hideSendAsPeer() {
+        return prefs().getBoolean("hide_send_as_peer", false);
+    }
+
+    public static void setHideSendAsPeer(boolean on) {
+        prefs().edit().putBoolean("hide_send_as_peer", on).apply();
+    }
+
+    public static boolean hideBotButton() {
+        return prefs().getBoolean("hide_bot_button", false);
+    }
+
+    public static void setHideBotButton(boolean on) {
+        prefs().edit().putBoolean("hide_bot_button", on).apply();
+    }
+
+    public static int avatarRadius() {
+        return prefs().getInt("avatar_radius", 0);
+    }
+
+    public static void setAvatarRadius(int radius) {
+        prefs().edit().putInt("avatar_radius", radius).apply();
+    }
+
+    public static boolean classicDrawer() {
+        return prefs().getBoolean("classic_drawer", false);
+    }
+
+    public static void setClassicDrawer(boolean on) {
+        prefs().edit().putBoolean("classic_drawer", on).apply();
+    }
+
+    public static boolean hideAllChats() {
+        return prefs().getBoolean("hide_all_chats", false);
+    }
+
+    public static void setHideAllChats(boolean hide) {
+        prefs().edit().putBoolean("hide_all_chats", hide).apply();
+    }
+
+    public static boolean m3SwitchStyle() {
+        return prefs().getBoolean("m3_switch_style", false);
+    }
+
+    public static void setM3SwitchStyle(boolean on) {
+        prefs().edit().putBoolean("m3_switch_style", on).apply();
+    }
+
+    public static boolean hideBottomTabs() {
+        return prefs().getBoolean("hide_bottom_tabs", false);
+    }
+
+    public static void setHideBottomTabs(boolean on) {
+        prefs().edit().putBoolean("hide_bottom_tabs", on).apply();
+    }
+
+    public static boolean hideTabLabels() {
+        return prefs().getBoolean("hide_tab_labels", false);
+    }
+
+    public static void setHideTabLabels(boolean on) {
+        prefs().edit().putBoolean("hide_tab_labels", on).apply();
+    }
+
+    public static int glassOutlineStyle() {
+        return prefs().getInt("glass_outline_style", 0); // 0: GLARE, 1: SOLID, 2: HIDDEN
+    }
+
+    public static void setGlassOutlineStyle(int style) {
+        prefs().edit().putInt("glass_outline_style", style).apply();
+    }
 }
