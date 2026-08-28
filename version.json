@@ -1,7 +1,7 @@
 {
-  "version": "0.99.2",
+  "version": "0.99.3",
   "apk": "https://github.com/narezany/margelet/raw/apk/margelet.apk",
-  "about": "Pre-release 1.0.2. The wall no longer looks like a private chat: authors have names and avatars again, bubbles look like the app's own, and reactions work right there instead of throwing you into the group.",
-  "about_ru": "Пререлиз 1.0.2. Стена больше не выглядит личкой: у авторов вернулись имена и аватарки, пузыри стали настоящими, а реакции ставятся прямо на ней, без переброса в группу.",
-  "about_zh": "预发布 1.0.2。留言墙不再像私聊：作者的名字和头像回来了，气泡是应用自己的样式，表情回应就在墙上点，不会再把你扔进群里。"
+  "about": "Pre-release 1.0.3. The wall is no longer a screen that looks like a chat — it is the chat screen itself, opened on the group and filtered to that person's wall.",
+  "about_ru": "Пререлиз 1.0.3. Стена больше не экран, похожий на переписку, — это сама переписка, открытая на группе и отфильтрованная по стене человека.",
+  "about_zh": "预发布 1.0.3。留言墙不再是一个长得像聊天的界面——它就是聊天界面本身，打开群组并按这个人的墙过滤。"
 }
