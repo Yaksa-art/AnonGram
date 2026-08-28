@@ -1,8 +1,9 @@
 <div align="center">
 
-<img src="assets/banner.png" alt="Margelet" width="640">
+<img src="assets/banner.png" alt="Margy" width="640">
 
 **A Telegram fork for Android.**
+Formerly **Margelet** — renamed to Margy; the package name, links and settings are unchanged.
 Built from [DrKLO/Telegram](https://github.com/DrKLO/Telegram) with the patch in this repository.
 
 [Русский](README.ru.md) · [中文](README.zh.md)
@@ -18,7 +19,7 @@ Built from [DrKLO/Telegram](https://github.com/DrKLO/Telegram) with the patch in
 Package `cat.narezany.margelet`. It installs **next to** the official Telegram,
 not over it. arm64 only.
 
-Everything the fork adds lives in one place: **Settings → Margelet**, the first row.
+Everything the fork adds lives in one place: **Settings → Margy**, the first row.
 
 ## What it adds
 
@@ -89,7 +90,7 @@ scratch, the idea is his.
 <details>
 <summary><b>A dark green theme out of the box</b></summary>
 
-On first launch Margelet turns on Telegram's own *Night* theme with its green
+On first launch Margy turns on Telegram's own *Night* theme with its green
 accent. Once. Pick another one and the fork stays out of it.
 </details>
 
@@ -134,7 +135,7 @@ name — in the profile, as its own block under the details, and in the chat lis
 Tapping it opens a window with the icon spinning in 3D: green and lavender
 respectively.
 
-The Margelet channel and forum carry one too. There it answers "is this really
+The Margy channel and forum carry one too. There it answers "is this really
 the right channel": the ids are compiled into the build.
 
 The badge certifies nothing and asks no server: whoever builds their own fork
@@ -161,7 +162,7 @@ Somewhere. Want yours in the app? Write to [@narezany](https://t.me/narezany).
 <details>
 <summary><b>Python plugins</b></summary>
 
-Settings → Margelet → Plugins. A plugin is a `.marp` archive: a manifest,
+Settings → Margy → Plugins. A plugin is a `.marp` archive: a manifest,
 `main.py`, and anything else it needs. Install from a file, a list, a console
 with errors.
 

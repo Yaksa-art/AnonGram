@@ -1,8 +1,9 @@
 <div align="center">
 
-<img src="assets/banner.png" alt="Margelet" width="640">
+<img src="assets/banner.png" alt="Margy" width="640">
 
 **安卓上的 Telegram 分支客户端。**
+原名 **Margelet**，现更名为 Margy；包名、链接和设置都没有变。
 基于 [DrKLO/Telegram](https://github.com/DrKLO/Telegram)，应用本仓库中的补丁构建。
 
 [English](README.md) · [Русский](README.ru.md)
@@ -19,7 +20,7 @@
 
 包名 `cat.narezany.margelet`，与官方 Telegram **并存**安装，不会覆盖。仅支持 arm64。
 
-分支添加的功能都在一处：**设置 → Margelet**，位于第一行。
+分支添加的功能都在一处：**设置 → Margy**，位于第一行。
 
 ## 新增功能
 
@@ -116,7 +117,7 @@ Telegram 的排版类型是服务端上的封闭列表，加不进新东西。�
 分支的作者和他最好的朋友，名字旁边各有一枚徽章——资料页、资料下方单独的一块，以及
 聊天列表里都能看到。点开会看到图标在窗口里做三维旋转，分别是绿色和薰衣草色。
 
-Margelet 的频道和论坛也各有一枚。那里的徽章回答的是「这是不是那个频道」：编号写死在
+Margy 的频道和论坛也各有一枚。那里的徽章回答的是「这是不是那个频道」：编号写死在
 构建里。
 
 徽章不证明任何事，也不向服务器询问：谁构建自己的分支，就把自己的人写进去。窗口里
@@ -141,7 +142,7 @@ Margelet 的频道和论坛也各有一枚。那里的徽章回答的是「这�
 <details>
 <summary><b>Python 插件</b></summary>
 
-设置 → Margelet → 插件。插件就是 `.marp` 压缩包：清单、`main.py`，以及它需要的
+设置 → Margy → 插件。插件就是 `.marp` 压缩包：清单、`main.py`，以及它需要的
 其它文件。可从文件安装，有列表，有带错误的控制台。
 
 没有沙箱。插件在应用内部运行，应用能做的它都能做；清单里的权限只是作者的说法，

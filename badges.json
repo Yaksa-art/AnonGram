@@ -1,9 +1,9 @@
 [
   {
     "peer": 7826361017,
-    "title": "Margelet creator",
-    "title_ru": "Создатель Margelet",
-    "title_zh": "Margelet 作者",
+    "title": "Margy creator",
+    "title_ru": "Создатель Margy",
+    "title_zh": "Margy 作者",
     "about": "Made this fork.",
     "about_ru": "Сделал этот форк.",
     "about_zh": "制作了这个分支。",
@@ -45,9 +45,9 @@
   },
   {
     "peer": 7826361017,
-    "title": "Cat in Margelet",
-    "title_ru": "Кот в Margelet",
-    "title_zh": "Margelet 里的猫",
+    "title": "Cat in Margy",
+    "title_ru": "Кот в Margy",
+    "title_zh": "Margy 里的猫",
     "about": "Their cat lives inside the app.",
     "about_ru": "Его кот живёт внутри приложения.",
     "about_zh": "他的猫住在这个应用里。",
@@ -55,9 +55,9 @@
   },
   {
     "peer": 6092720414,
-    "title": "Cat in Margelet",
-    "title_ru": "Кот в Margelet",
-    "title_zh": "Margelet 里的猫",
+    "title": "Cat in Margy",
+    "title_ru": "Кот в Margy",
+    "title_zh": "Margy 里的猫",
     "about": "Their cat lives inside the app.",
     "about_ru": "Его кот живёт внутри приложения.",
     "about_zh": "他的猫住在这个应用里。",
@@ -68,9 +68,9 @@
     "title": "Plugin maker",
     "title_ru": "Плагин-мейкер",
     "title_zh": "插件作者",
-    "about": "Writes plugins for Margelet.",
-    "about_ru": "Пишет плагины для Margelet.",
-    "about_zh": "为 Margelet 编写插件。",
+    "about": "Writes plugins for Margy.",
+    "about_ru": "Пишет плагины для Margy.",
+    "about_zh": "为 Margy 编写插件。",
     "color": "E08A8A",
     "url": "https://t.me/kaktus_plugins"
   }
