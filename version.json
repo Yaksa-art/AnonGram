@@ -1,7 +1,7 @@
 {
-  "version": "0.99.1",
+  "version": "0.99.2",
   "apk": "https://github.com/narezany/margelet/raw/apk/margelet.apk",
-  "about": "Pre-release 1.0.1. The wall now sits in every profile and is drawn with the app's own chat bubbles. Banners no longer arrive late. Plugins got a store tab.",
-  "about_ru": "Пререлиз 1.0.1. Стена теперь в каждом профиле и нарисована ячейками самой переписки. Баннеры больше не приезжают с задержкой. У плагинов появилась вкладка магазина.",
-  "about_zh": "预发布 1.0.1。留言墙现在出现在每个人的资料里，并用应用自己的聊天气泡绘制。横幅不再姗姗来迟。插件多了一个商店标签页。"
+  "about": "Pre-release 1.0.2. The wall no longer looks like a private chat: authors have names and avatars again, bubbles look like the app's own, and reactions work right there instead of throwing you into the group.",
+  "about_ru": "Пререлиз 1.0.2. Стена больше не выглядит личкой: у авторов вернулись имена и аватарки, пузыри стали настоящими, а реакции ставятся прямо на ней, без переброса в группу.",
+  "about_zh": "预发布 1.0.2。留言墙不再像私聊：作者的名字和头像回来了，气泡是应用自己的样式，表情回应就在墙上点，不会再把你扔进群里。"
 }
