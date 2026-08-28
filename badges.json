@@ -73,5 +73,16 @@
     "about_zh": "为 Margy 编写插件。",
     "color": "E08A8A",
     "url": "https://t.me/kaktus_plugins"
+  },
+  {
+    "peer": 5330167463,
+    "title": "Plugin maker",
+    "title_ru": "Плагин-мейкер",
+    "title_zh": "插件作者",
+    "about": "Writes plugins for Margy.",
+    "about_ru": "Пишет плагины для Margy.",
+    "about_zh": "为 Margy 编写插件。",
+    "color": "E08A8A",
+    "url": "https://t.me/margelet_marps"
   }
 ]
