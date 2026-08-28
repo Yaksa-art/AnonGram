@@ -1,7 +1,7 @@
 {
-  "version": "0.3.6",
+  "version": "0.99",
   "apk": "https://github.com/narezany/margelet/raw/apk/margelet.apk",
-  "about": "Rescue build. Restores 0.3.4 and installs over the broken 0.3.5: same signature, higher version code.",
-  "about_ru": "Спасательная сборка. Возвращает 0.3.4 и ставится поверх сломанной 0.3.5: подпись та же, код сборки выше.",
-  "about_zh": "救援版本。恢复到 0.3.4，并且可以覆盖装在损坏的 0.3.5 之上：签名相同，版本号更高。"
+  "about": "Pre-release 1.0. Margelet is now Margy. A wall on your profile, profile banners, and plugins that can hook any method of the app.",
+  "about_ru": "Пререлиз 1.0. Margelet теперь Margy. Стена в профиле, баннеры и плагины, которым доступен любой метод приложения.",
+  "about_zh": "预发布 1.0。Margelet 现在叫 Margy。个人资料里的留言墙、横幅，以及能替换应用任意方法的插件。"
 }
