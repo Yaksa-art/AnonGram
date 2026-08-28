@@ -1,8 +1,23 @@
 diff --git a/TMessagesProj/build.gradle b/TMessagesProj/build.gradle
-index 7cc3a8e3..533927ca 100644
+index 7cc3a8e3..90805001 100644
 --- a/TMessagesProj/build.gradle
 +++ b/TMessagesProj/build.gradle
-@@ -133,6 +133,14 @@ android {
+@@ -62,6 +62,14 @@ dependencies {
+     implementation 'com.stripe:stripe-android:2.0.2'
+     implementation 'com.google.mlkit:language-id:17.0.6'
+     implementation 'com.android.billingclient:billing:7.1.1'
++    // Движок хуков: встраивание в методы прямо в работающем приложении, без
++    // рута. Нужен для поддержки плагинов, написанных под Xposed.
++    //
++    // Вещь по своей природе хрупкая: она правит внутренности исполнителя java,
++    // а те меняются от версии андроида к версии. Поэтому включается отдельно,
++    // по умолчанию выключен, и при неудаче говорит об этом в консоль, а не
++    // роняет приложение.
++    implementation 'top.canyie.pine:core:0.3.0'
+     implementation 'com.google.code.gson:gson:2.11.0'
+     implementation 'com.google.guava:guava:31.1-android'
+     implementation 'com.google.android.play:integrity:1.3.0'
+@@ -133,6 +141,14 @@ android {
  
          multiDexEnabled true
  
@@ -17,7 +32,7 @@ index 7cc3a8e3..533927ca 100644
          externalNativeBuild {
              cmake {
                  version '3.10.2'
-@@ -148,7 +156,10 @@ android {
+@@ -148,7 +164,10 @@ android {
              shrinkResources false
              multiDexEnabled true
              proguardFiles getDefaultProguardFile('proguard-android.txt'), '../TMessagesProj/proguard-rules.pro', '../TMessagesProj/proguard-rules-beta.pro'
@@ -30,10 +45,10 @@ index 7cc3a8e3..533927ca 100644
              buildConfigField "String", "APP_CENTER_HASH", "\"\""
              buildConfigField "String", "BETA_URL", "\"" + getProps("BETA_PRIVATE_URL") + "\""
 diff --git a/TMessagesProj/proguard-rules.pro b/TMessagesProj/proguard-rules.pro
-index aeab02b2..5e2c4f45 100644
+index aeab02b2..0b6688fb 100644
 --- a/TMessagesProj/proguard-rules.pro
 +++ b/TMessagesProj/proguard-rules.pro
-@@ -111,6 +111,22 @@
+@@ -111,6 +111,28 @@
  -keep class ru.noties.jlatexmath.** { *; }
  -dontwarn org.scilab.forge.jlatexmath.**
  
@@ -50,6 +65,12 @@ index aeab02b2..5e2c4f45 100644
 +# он уцелел и без правила — проверено в собранном APK, — но держаться на
 +# везении такие вещи не должны.
 +-keep interface org.telegram.margelet.MargeletHooks$FetchCallback { *; }
++# Плагины под Xposed зовут эти классы и методы по имени, из питона. Для
++# сокращателя они выглядят никому не нужными — он и переименует, и выкинет.
++-keep class de.robv.android.xposed.** { *; }
++-keep class top.canyie.pine.** { *; }
++-keep class org.telegram.margelet.MargeletHookEngine { *; }
++-dontwarn top.canyie.pine.**
 +-keep class com.chaquo.python.** { *; }
 +-dontwarn com.chaquo.python.**
 +
@@ -57,6 +78,450 @@ index aeab02b2..5e2c4f45 100644
  -dontoptimize
  -dontobfuscate
 \ No newline at end of file
+diff --git a/TMessagesProj/src/main/java/de/robv/android/xposed/XC_MethodHook.java b/TMessagesProj/src/main/java/de/robv/android/xposed/XC_MethodHook.java
+new file mode 100644
+index 00000000..65d3c943
+--- /dev/null
++++ b/TMessagesProj/src/main/java/de/robv/android/xposed/XC_MethodHook.java
+@@ -0,0 +1,107 @@
++package de.robv.android.xposed;
++
++import java.lang.reflect.Member;
++
++/**
++ * Перехват метода: что сделать до вызова и что после.
++ *
++ * Имена пакета и классов здесь чужие нарочно — так их знают авторы плагинов
++ * под Xposed. Плагин, написанный для него, должен работать у нас без правок,
++ * иначе поддержка Xposed остаётся словом, а не свойством.
++ *
++ * Внутри у нас свой движок, к настоящему Xposed отношения не имеющий: рут не
++ * нужен, подмена живёт только внутри этого приложения и только пока оно
++ * работает.
++ */
++public abstract class XC_MethodHook {
++
++    /** Что известно о вызове и что с ним можно сделать. */
++    public static class MethodHookParam {
++        /** Какой метод вызвали. */
++        public Member method;
++        /** У какого объекта. Для статических — null. */
++        public Object thisObject;
++        /** Доводы вызова. Их можно менять до вызова. */
++        public Object[] args;
++
++        private Object result;
++        private Throwable throwable;
++        private boolean returnEarly;
++
++        public Object getResult() {
++            return result;
++        }
++
++        /**
++         * Подменить ответ. Если сделать это ДО вызова, самого вызова не
++         * будет вовсе: именно так плагин и отменяет чужое действие.
++         */
++        public void setResult(Object value) {
++            result = value;
++            throwable = null;
++            returnEarly = true;
++        }
++
++        /**
++         * Положить ответ, не помечая вызов решённым.
++         *
++         * Нужно после вызова: там ответ уже дал сам метод, и объявлять его
++         * «решённым заранее» — вранье, из-за которого движок пропустил бы
++         * настоящий вызов на следующем хуке.
++         */
++        public void setResultQuietly(Object value) {
++            result = value;
++        }
++
++        public Throwable getThrowable() {
++            return throwable;
++        }
++
++        public boolean hasThrowable() {
++            return throwable != null;
++        }
++
++        public void setThrowable(Throwable value) {
++            throwable = value;
++            result = null;
++            returnEarly = true;
++        }
++
++        /** Решено ли уже за метод, не вызывая его. */
++        public boolean isReturnEarly() {
++            return returnEarly;
++        }
++
++        public Object getResultOrThrowable() throws Throwable {
++            if (throwable != null) {
++                throw throwable;
++            }
++            return result;
++        }
++    }
++
++    /** До вызова. Здесь можно поменять доводы или отменить вызов целиком. */
++    protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
++    }
++
++    /** После вызова. Здесь можно поменять ответ. */
++    protected void afterHookedMethod(MethodHookParam param) throws Throwable {
++    }
++
++    /** Зовётся движком. Ошибка плагина не должна ломать сам метод. */
++    public final void callBefore(MethodHookParam param) {
++        try {
++            beforeHookedMethod(param);
++        } catch (Throwable t) {
++            XposedBridge.log(t);
++        }
++    }
++
++    public final void callAfter(MethodHookParam param) {
++        try {
++            afterHookedMethod(param);
++        } catch (Throwable t) {
++            XposedBridge.log(t);
++        }
++    }
++}
+diff --git a/TMessagesProj/src/main/java/de/robv/android/xposed/XposedBridge.java b/TMessagesProj/src/main/java/de/robv/android/xposed/XposedBridge.java
+new file mode 100644
+index 00000000..0acb2913
+--- /dev/null
++++ b/TMessagesProj/src/main/java/de/robv/android/xposed/XposedBridge.java
+@@ -0,0 +1,96 @@
++package de.robv.android.xposed;
++
++import org.telegram.margelet.MargeletHookEngine;
++import org.telegram.margelet.MargeletPluginHost;
++
++import java.lang.reflect.Member;
++import java.util.ArrayList;
++import java.util.List;
++
++import top.canyie.pine.Pine;
++import top.canyie.pine.callback.MethodHook;
++
++/**
++ * Мост к движку хуков под именем, знакомым авторам плагинов.
++ *
++ * Всё, что здесь есть, — перевод с языка Xposed на язык нашего движка.
++ * Никакой собственной магии: подмену делает движок, мы только раскладываем
++ * доводы по местам и следим, чтобы ошибка плагина не превратилась в ошибку
++ * приложения.
++ */
++public final class XposedBridge {
++
++    private XposedBridge() {
++    }
++
++    /** Что уже подменено. Нужно, чтобы уметь снять всё разом. */
++    private static final List<Object> installed = new ArrayList<>();
++
++    public static void log(String text) {
++        MargeletPluginHost.log("хуки", text, false);
++    }
++
++    public static void log(Throwable t) {
++        MargeletPluginHost.log("хуки", String.valueOf(t), true);
++    }
++
++    /**
++     * Подменить метод.
++     *
++     * Возвращает null, если движок не поднят: на неподдержанном андроиде или
++     * при выключенных хуках плагин должен получить честный отказ, а не тихо
++     * работать вхолостую, думая, что подменил.
++     */
++    public static Object hookMethod(Member method, XC_MethodHook callback) {
++        if (method == null || callback == null) {
++            return null;
++        }
++        if (!MargeletHookEngine.working()) {
++            log("хуки не работают: " + (MargeletHookEngine.enabled()
++                    ? String.valueOf(MargeletHookEngine.failure())
++                    : "выключены в настройках"));
++            return null;
++        }
++        try {
++            final Object token = Pine.hook(method, new MethodHook() {
++                @Override
++                public void beforeCall(Pine.CallFrame frame) throws Throwable {
++                    final XC_MethodHook.MethodHookParam param = paramOf(frame, method);
++                    callback.callBefore(param);
++                    frame.args = param.args;
++                    if (param.isReturnEarly()) {
++                        // Решили за метод — сам метод не вызываем.
++                        if (param.hasThrowable()) {
++                            frame.setThrowable(param.getThrowable());
++                        } else {
++                            frame.setResult(param.getResult());
++                        }
++                    }
++                }
++
++                @Override
++                public void afterCall(Pine.CallFrame frame) throws Throwable {
++                    final XC_MethodHook.MethodHookParam param = paramOf(frame, method);
++                    param.setResultQuietly(frame.getResult());
++                    callback.callAfter(param);
++                    frame.setResult(param.getResult());
++                }
++            });
++            synchronized (installed) {
++                installed.add(token);
++            }
++            return token;
++        } catch (Throwable t) {
++            log(t);
++            return null;
++        }
++    }
++
++    private static XC_MethodHook.MethodHookParam paramOf(Pine.CallFrame frame, Member method) {
++        final XC_MethodHook.MethodHookParam param = new XC_MethodHook.MethodHookParam();
++        param.method = method;
++        param.thisObject = frame.thisObject;
++        param.args = frame.args;
++        return param;
++    }
++}
+diff --git a/TMessagesProj/src/main/java/de/robv/android/xposed/XposedHelpers.java b/TMessagesProj/src/main/java/de/robv/android/xposed/XposedHelpers.java
+new file mode 100644
+index 00000000..d896440b
+--- /dev/null
++++ b/TMessagesProj/src/main/java/de/robv/android/xposed/XposedHelpers.java
+@@ -0,0 +1,223 @@
++package de.robv.android.xposed;
++
++import java.lang.reflect.Constructor;
++import java.lang.reflect.Field;
++import java.lang.reflect.Member;
++import java.lang.reflect.Method;
++import java.util.ArrayList;
++import java.util.List;
++
++/**
++ * То, чем авторы плагинов под Xposed пользуются на самом деле.
++ *
++ * Сам по себе {@link XposedBridge#hookMethod} требует уже найденного метода, а
++ * ищут его почти всегда одинаково: по имени класса, имени метода и списку
++ * типов доводов. Отсюда и эти помощники — они ровно про поиск, подмену делает
++ * мост.
++ *
++ * Имена и порядок доводов повторяют настоящий Xposed. Отличаться было бы
++ * бессмысленно: смысл всей затеи в том, чтобы чужой плагин работал без правок.
++ */
++public final class XposedHelpers {
++
++    private XposedHelpers() {
++    }
++
++    public static Class<?> findClass(String name, ClassLoader loader) {
++        try {
++            return Class.forName(name, false,
++                    loader != null ? loader : XposedHelpers.class.getClassLoader());
++        } catch (Throwable t) {
++            throw new RuntimeException("класс не найден: " + name, t);
++        }
++    }
++
++    /**
++     * Найти и подменить метод.
++     *
++     * Последним доводом идёт сам перехват, перед ним — типы доводов метода.
++     * Типы можно писать и классами, и именами: у Xposed так, и плагины
++     * написаны в расчёте на это.
++     */
++    public static Object findAndHookMethod(Class<?> clazz, String methodName, Object... args) {
++        if (clazz == null || args == null || args.length == 0) {
++            return null;
++        }
++        final Object last = args[args.length - 1];
++        if (!(last instanceof XC_MethodHook)) {
++            XposedBridge.log("последним доводом должен быть перехват");
++            return null;
++        }
++        final Class<?>[] types = typesOf(clazz.getClassLoader(), args, args.length - 1);
++        if (types == null) {
++            return null;
++        }
++        final Member method = find(clazz, methodName, types);
++        if (method == null) {
++            XposedBridge.log("метод не найден: " + clazz.getName() + "." + methodName);
++            return null;
++        }
++        return XposedBridge.hookMethod(method, (XC_MethodHook) last);
++    }
++
++    public static Object findAndHookMethod(String className, ClassLoader loader,
++                                           String methodName, Object... args) {
++        return findAndHookMethod(findClass(className, loader), methodName, args);
++    }
++
++    /** Подменить создание объекта. */
++    public static Object findAndHookConstructor(Class<?> clazz, Object... args) {
++        if (clazz == null || args == null || args.length == 0) {
++            return null;
++        }
++        final Object last = args[args.length - 1];
++        if (!(last instanceof XC_MethodHook)) {
++            return null;
++        }
++        final Class<?>[] types = typesOf(clazz.getClassLoader(), args, args.length - 1);
++        if (types == null) {
++            return null;
++        }
++        try {
++            final Constructor<?> constructor = clazz.getDeclaredConstructor(types);
++            constructor.setAccessible(true);
++            return XposedBridge.hookMethod(constructor, (XC_MethodHook) last);
++        } catch (Throwable t) {
++            XposedBridge.log(t);
++            return null;
++        }
++    }
++
++    /** Типы доводов: и классами, и именами. */
++    private static Class<?>[] typesOf(ClassLoader loader, Object[] args, int count) {
++        final Class<?>[] types = new Class<?>[count];
++        for (int i = 0; i < count; i++) {
++            final Object item = args[i];
++            if (item instanceof Class) {
++                types[i] = (Class<?>) item;
++            } else if (item instanceof String) {
++                try {
++                    types[i] = primitive((String) item);
++                    if (types[i] == null) {
++                        types[i] = findClass((String) item, loader);
++                    }
++                } catch (Throwable t) {
++                    XposedBridge.log(t);
++                    return null;
++                }
++            } else {
++                XposedBridge.log("непонятный тип довода: " + item);
++                return null;
++            }
++        }
++        return types;
++    }
++
++    private static Class<?> primitive(String name) {
++        switch (name) {
++            case "int": return int.class;
++            case "long": return long.class;
++            case "boolean": return boolean.class;
++            case "float": return float.class;
++            case "double": return double.class;
++            case "byte": return byte.class;
++            case "short": return short.class;
++            case "char": return char.class;
++            case "void": return void.class;
++            default: return null;
++        }
++    }
++
++    /**
++     * Ищет метод у класса и его предков.
++     *
++     * Именно у предков тоже: метод может быть объявлен выше по цепочке, а
++     * плагин знает только тот класс, с которым работает.
++     */
++    private static Member find(Class<?> clazz, String name, Class<?>[] types) {
++        Class<?> current = clazz;
++        while (current != null) {
++            try {
++                final Method method = current.getDeclaredMethod(name, types);
++                method.setAccessible(true);
++                return method;
++            } catch (NoSuchMethodException ignored) {
++                current = current.getSuperclass();
++            }
++        }
++        return null;
++    }
++
++    // --- чтение и запись полей: без этого хуки почти бесполезны ---
++
++    private static Field field(Object object, String name) throws NoSuchFieldException {
++        Class<?> current = object instanceof Class ? (Class<?>) object : object.getClass();
++        while (current != null) {
++            try {
++                final Field found = current.getDeclaredField(name);
++                found.setAccessible(true);
++                return found;
++            } catch (NoSuchFieldException ignored) {
++                current = current.getSuperclass();
++            }
++        }
++        throw new NoSuchFieldException(name);
++    }
++
++    public static Object getObjectField(Object object, String name) {
++        try {
++            return field(object, name).get(object);
++        } catch (Throwable t) {
++            XposedBridge.log(t);
++            return null;
++        }
++    }
++
++    public static void setObjectField(Object object, String name, Object value) {
++        try {
++            field(object, name).set(object, value);
++        } catch (Throwable t) {
++            XposedBridge.log(t);
++        }
++    }
++
++    public static int getIntField(Object object, String name) {
++        final Object value = getObjectField(object, name);
++        return value instanceof Number ? ((Number) value).intValue() : 0;
++    }
++
++    public static boolean getBooleanField(Object object, String name) {
++        final Object value = getObjectField(object, name);
++        return value instanceof Boolean && (Boolean) value;
++    }
++
++    /** Позвать метод, даже закрытый. */
++    public static Object callMethod(Object object, String name, Object... args) {
++        if (object == null) {
++            return null;
++        }
++        final Class<?>[] types = new Class<?>[args == null ? 0 : args.length];
++        for (int i = 0; i < types.length; i++) {
++            types[i] = args[i] == null ? Object.class : args[i].getClass();
++        }
++        Class<?> current = object.getClass();
++        while (current != null) {
++            for (Method method : current.getDeclaredMethods()) {
++                if (!method.getName().equals(name)
++                        || method.getParameterTypes().length != types.length) {
++                    continue;
++                }
++                try {
++                    method.setAccessible(true);
++                    return method.invoke(object, args);
++                } catch (Throwable t) {
++                    // Перегрузок может быть несколько: не подошла эта — пробуем
++                    // следующую, а не сдаёмся на первой.
++                }
++            }
++            current = current.getSuperclass();
++        }
++        XposedBridge.log("метод не позвался: " + name);
++        return null;
++    }
++}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletBadge.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletBadge.java
 new file mode 100644
 index 00000000..d0eb7b3c
@@ -2526,12 +2991,143 @@ index 00000000..e57639eb
 +        return MargeletLinks.clean(text, hidden);
 +    }
 +}
+diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletHookEngine.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletHookEngine.java
+new file mode 100644
+index 00000000..8e6c7354
+--- /dev/null
++++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletHookEngine.java
+@@ -0,0 +1,125 @@
++package org.telegram.margelet;
++
++import android.content.Context;
++import android.content.SharedPreferences;
++
++import org.telegram.messenger.ApplicationLoader;
++import org.telegram.messenger.FileLog;
++
++/**
++ * Движок хуков: подмена поведения методов прямо в работающем приложении.
++ *
++ * Это то, от чего я отговаривал, и отговаривал по делу: подмена произвольного
++ * метода — это правка чужого кода на ходу, она держится на внутренностях
++ * исполнителя java, а те меняются от версии андроида к версии. Владелец
++ * настоял, услышав возражение, и это его право: форк его.
++ *
++ * Раз делаем — делаем так, чтобы худший случай не был непоправимым. Худший
++ * случай здесь один: кривой хук роняет приложение при запуске, а чтобы его
++ * выключить, надо открыть настройки в приложении, которое не открывается.
++ * Человек остаётся с кирпичом и без объяснения.
++ *
++ * Поэтому здесь три вещи, и все три — про этот случай:
++ *
++ * Первая. По умолчанию выключено. Согласие даётся один раз и осознанно.
++ *
++ * Вторая. Отметка «мы начали поднимать хуки» ставится ДО их подъёма и
++ * снимается после того, как приложение дожило до готовности. Увидев отметку
++ * при следующем запуске, движок понимает, что прошлый раз кончился падением,
++ * и не поднимается вовсе.
++ *
++ * Третья. Не вышло — говорим в консоль плагинов и живём дальше. На андроиде,
++ * который движок не понимает, приложение обязано работать как обычно, просто
++ * без хуков.
++ */
++public class MargeletHookEngine {
++
++    private static final String PREFS = "margelet_hooks";
++    private static final String KEY_ON = "enabled";
++    private static final String KEY_TRYING = "trying";
++    private static final String KEY_BROKE = "broke";
++
++    private static boolean started;
++    private static boolean working;
++    private static String failure;
++
++    private static SharedPreferences prefs() {
++        return ApplicationLoader.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
++    }
++
++    /** Разрешил ли человек хуки. По умолчанию нет. */
++    public static boolean enabled() {
++        return prefs().getBoolean(KEY_ON, false);
++    }
++
++    public static void setEnabled(boolean on) {
++        prefs().edit().putBoolean(KEY_ON, on).putBoolean(KEY_BROKE, false).apply();
++    }
++
++    /** Сорвался ли прошлый запуск с включёнными хуками. */
++    public static boolean brokeLastTime() {
++        return prefs().getBoolean(KEY_BROKE, false);
++    }
++
++    /** Поднялся ли движок в этот раз. */
++    public static boolean working() {
++        return working;
++    }
++
++    /** Почему не поднялся, если не поднялся. */
++    public static String failure() {
++        return failure;
++    }
++
++    /**
++     * Поднимает движок, если человек разрешил и прошлый раз не кончился
++     * падением. Зовётся один раз, при запуске приложения.
++     */
++    public static synchronized void start() {
++        if (started) {
++            return;
++        }
++        started = true;
++        if (!enabled()) {
++            return;
++        }
++        if (prefs().getBoolean(KEY_TRYING, false)) {
++            // Прошлый запуск поставил отметку и не снял её — значит не дожил.
++            // Второй раз в ту же яму не идём: выключаем и объясняем.
++            prefs().edit().putBoolean(KEY_ON, false)
++                    .putBoolean(KEY_TRYING, false)
++                    .putBoolean(KEY_BROKE, true).apply();
++            failure = "прошлый запуск с хуками не дожил до конца, хуки выключены";
++            MargeletPluginHost.log("margelet", failure, true);
++            return;
++        }
++        prefs().edit().putBoolean(KEY_TRYING, true).apply();
++        try {
++            top.canyie.pine.PineConfig.debug = false;
++            top.canyie.pine.PineConfig.debuggable = false;
++            // Трогаем движок по-настоящему, а не просто выставляем настройки:
++            // не поддержанная версия андроида скажется именно здесь.
++            top.canyie.pine.Pine.ensureInitialized();
++            working = true;
++        } catch (Throwable t) {
++            FileLog.e(t);
++            failure = String.valueOf(t);
++            MargeletPluginHost.log("margelet", "движок хуков не поднялся: " + failure, true);
++        }
++    }
++
++    /**
++     * Приложение дожило до рабочего состояния — снимаем отметку.
++     *
++     * Зовётся не сразу после подъёма, а позже, когда экран уже нарисован:
++     * упасть кривой хук может и не в первую секунду.
++     */
++    public static void survived() {
++        try {
++            if (prefs().getBoolean(KEY_TRYING, false)) {
++                prefs().edit().putBoolean(KEY_TRYING, false).apply();
++            }
++        } catch (Throwable ignored) {
++        }
++    }
++}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletHooks.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletHooks.java
 new file mode 100644
-index 00000000..06ecbc8b
+index 00000000..b2477a4d
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletHooks.java
-@@ -0,0 +1,414 @@
+@@ -0,0 +1,531 @@
 +package org.telegram.margelet;
 +
 +import org.telegram.messenger.AndroidUtilities;
@@ -2665,6 +3261,26 @@ index 00000000..06ecbc8b
 +     *
 +     * @return текст, который надо отправить, или null — не отправлять.
 +     */
++    /**
++     * На что отвечал человек в отправке, которую плагин отменил.
++     *
++     * Нужно вот зачем. Команда плагина устроена так: обработчик отменяет
++     * отправку и шлёт свой ответ отдельным сообщением. При этом «на что
++     * отвечали» оставалось в отменённом, и «.погода» ответом кому-то давала
++     * ответ в пустоту. Искать это сообщение заново неоткуда и незачем — оно
++     * только что было у нас в руках, надо просто не выбросить.
++     */
++    private static final java.util.HashMap<Long, MessageObject> replyOf = new java.util.HashMap<>();
++
++    /** Запоминает ответ отменяемой отправки. Зовётся из места отправки. */
++    public static void rememberReply(long dialogId, MessageObject replyTo) {
++        if (replyTo == null) {
++            replyOf.remove(dialogId);
++        } else {
++            replyOf.put(dialogId, replyTo);
++        }
++    }
++
 +    public static String sending(String text, long dialogId) {
 +        if (!wantsSend || text == null) {
 +            return text;
@@ -2796,13 +3412,110 @@ index 00000000..06ecbc8b
 +        AndroidUtilities.runOnUIThread(() -> {
 +            try {
 +                final int account = org.telegram.messenger.UserConfig.selectedAccount;
-+                org.telegram.messenger.SendMessagesHelper.getInstance(account).sendMessage(
-+                        org.telegram.messenger.SendMessagesHelper.SendMessageParams.of(text, dialogId));
++                final org.telegram.messenger.SendMessagesHelper.SendMessageParams params =
++                        org.telegram.messenger.SendMessagesHelper.SendMessageParams.of(text, dialogId);
++                // Отвечаем туда же, куда отвечал человек. Ответ берётся один
++                // раз: второе сообщение плагина ответом уже не будет, иначе
++                // плагин, пишущий по будильнику, отвечал бы вечно.
++                params.replyToMsg = replyOf.remove(dialogId);
++                org.telegram.messenger.SendMessagesHelper.getInstance(account).sendMessage(params);
 +            } catch (Throwable t) {
 +                FileLog.e(t);
 +                MargeletPluginHost.log("margelet", "не отправилось: " + t, true);
 +            }
 +        });
++    }
++
++    // --- удаление сообщений ---
++
++    private static volatile boolean wantsDeleted;
++    private static boolean watchingDeleted;
++
++    public static void wantDeleted() {
++        wantsDeleted = true;
++        watchDeleted();
++    }
++
++    /**
++     * Сообщения удалили — у нас или у собеседника.
++     *
++     * Той самой двери, которой не хватало для «анти-удаления»: плагин узнаёт
++     * номера пропавших сообщений и может сохранить их у себя до того, как они
++     * исчезнут с экрана.
++     */
++    private static void watchDeleted() {
++        AndroidUtilities.runOnUIThread(() -> {
++            if (watchingDeleted) {
++                return;
++            }
++            watchingDeleted = true;
++            final NotificationCenter.NotificationCenterDelegate delegate = (id, acc, args) -> {
++                if (id != NotificationCenter.messagesDeleted || !wantsDeleted
++                        || args == null || args.length < 2) {
++                    return;
++                }
++                try {
++                    @SuppressWarnings("unchecked")
++                    final ArrayList<Integer> ids = (ArrayList<Integer>) args[0];
++                    final long channelId = (Long) args[1];
++                    if (ids == null || ids.isEmpty()) {
++                        return;
++                    }
++                    final int[] plain = new int[ids.size()];
++                    for (int i = 0; i < ids.size(); i++) {
++                        plain[i] = ids.get(i) == null ? 0 : ids.get(i);
++                    }
++                    MargeletPluginHost.post(() -> {
++                        try {
++                            MargeletPluginHost.python("deleted",
++                                    new Class<?>[]{int[].class, long.class}, plain, channelId);
++                        } catch (Throwable t) {
++                            FileLog.e(t);
++                        }
++                    });
++                } catch (Throwable ignored) {
++                }
++            };
++            for (int acc = 0; acc < UserConfig.MAX_ACCOUNT_COUNT; acc++) {
++                NotificationCenter.getInstance(acc)
++                        .addObserver(delegate, NotificationCenter.messagesDeleted);
++            }
++        });
++    }
++
++    // --- закрепление чата ---
++
++    private static volatile boolean wantsPin;
++
++    public static void wantPin() {
++        wantsPin = true;
++    }
++
++    public static boolean hasPin() {
++        return wantsPin;
++    }
++
++    /**
++     * Чат закрепляют или откепляют. Плагин может это отменить.
++     *
++     * Это первая дверь не в переписку, а в сам интерфейс: владелец просил
++     * уметь менять поведение кнопки закрепления. Названная дверь, а не подмена
++     * метода: нажатие приходит сюда, ответ решает, случится ли действие.
++     *
++     * @return false — не закреплять
++     */
++    public static boolean pinning(long dialogId, boolean pin) {
++        if (!wantsPin) {
++            return true;
++        }
++        try {
++            final Object answer = MargeletPluginHost.pythonValue("pinning",
++                    new Class<?>[]{long.class, boolean.class}, dialogId, pin);
++            return !(answer instanceof Boolean) || (Boolean) answer;
++        } catch (Throwable t) {
++            FileLog.e(t);
++            return true;
++        }
 +    }
 +
 +    // --- сеть и экран ---
@@ -6921,11 +7634,28 @@ index 77870805..d3b0aa11 100644
          URLSpan[] spans = spannable.getSpans(0, text.length(), URLSpan.class);
          boolean hasUrls = spans != null && spans.length > 0;
          if (entities == null || entities.isEmpty()) {
+diff --git a/TMessagesProj/src/main/java/org/telegram/messenger/MessagesController.java b/TMessagesProj/src/main/java/org/telegram/messenger/MessagesController.java
+index 7a0b35b1..e4146316 100644
+--- a/TMessagesProj/src/main/java/org/telegram/messenger/MessagesController.java
++++ b/TMessagesProj/src/main/java/org/telegram/messenger/MessagesController.java
+@@ -17278,6 +17278,12 @@ public class MessagesController extends BaseController implements NotificationCe
+     }
+ 
+     public boolean pinDialog(long dialogId, boolean pin, TLRPC.InputPeer peer, long taskId) {
++        // Дверь для плагинов: закрепление можно отменить. Спрашиваем только
++        // при живом нажатии — taskId стоит у отложенных задач, которые
++        // доигрываются после перезапуска, и переспрашивать про них незачем.
++        if (taskId == 0 && !org.telegram.margelet.MargeletHooks.pinning(dialogId, pin)) {
++            return false;
++        }
+         TLRPC.Dialog dialog = dialogs_dict.get(dialogId);
+         if (dialog == null || dialog.pinned == pin) {
+             return dialog != null;
 diff --git a/TMessagesProj/src/main/java/org/telegram/messenger/SendMessagesHelper.java b/TMessagesProj/src/main/java/org/telegram/messenger/SendMessagesHelper.java
-index 4a6661d1..a9410d64 100644
+index 4a6661d1..6b45744f 100644
 --- a/TMessagesProj/src/main/java/org/telegram/messenger/SendMessagesHelper.java
 +++ b/TMessagesProj/src/main/java/org/telegram/messenger/SendMessagesHelper.java
-@@ -4257,6 +4257,18 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
+@@ -4257,6 +4257,23 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
      }
  
      public void sendMessage(SendMessageParams sendMessageParams) {
@@ -6934,6 +7664,11 @@ index 4a6661d1..a9410d64 100644
 +        // место, через которое проходит вся отправка, поэтому и стоит оно
 +        // здесь, а не в каждом экране, откуда шлют.
 +        if (sendMessageParams.message != null && org.telegram.margelet.MargeletHooks.hasSend()) {
++            // Отдаём заодно и то, на что отвечают: команда плагина отменяет
++            // эту отправку и шлёт свой ответ, а «на что отвечали» иначе
++            // осталось бы здесь и пропало.
++            org.telegram.margelet.MargeletHooks.rememberReply(
++                    sendMessageParams.peer, sendMessageParams.replyToMsg);
 +            final String hooked = org.telegram.margelet.MargeletHooks.sending(
 +                    sendMessageParams.message, sendMessageParams.peer);
 +            if (hooked == null) {
@@ -7870,7 +8605,7 @@ index 4153ceb2..d1557801 100644
          ssb.setSpan(new ImageSpan(logoDrawable), 0, ssb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
          titles[0] = ssb;
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/LaunchActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/LaunchActivity.java
-index 470be57c..90a53079 100644
+index 470be57c..5cdcb23d 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/LaunchActivity.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/LaunchActivity.java
 @@ -443,6 +443,10 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
@@ -7884,7 +8619,7 @@ index 470be57c..90a53079 100644
          Theme.createCommonChatResources();
          Theme.createDialogsResources(this);
          if (SharedConfig.passcodeHash.length() != 0 && SharedConfig.appLocked) {
-@@ -455,6 +459,25 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
+@@ -455,6 +459,31 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
          frameLayout.setClipToPadding(false);
          frameLayout.setClipChildren(false);
          setContentView(frameLayout);
@@ -7893,12 +8628,18 @@ index 470be57c..90a53079 100644
 +        org.telegram.margelet.MargeletSeizure.attach(frameLayout);
 +        // Пример плагина кладём один раз и выключенным; питон поднимется
 +        // только если человек сам что-то включил.
++        // Движок хуков — до плагинов: плагин может захотеть подменить метод
++        // прямо при запуске. Внутри стоит и проверка согласия, и защита от
++        // повторного падения.
++        org.telegram.margelet.MargeletHookEngine.start();
 +        org.telegram.margelet.MargeletPlugins.preinstallExample();
 +        org.telegram.margelet.MargeletPluginHost.start();
 +        // Список значков перечитывается с гитхаба при каждом запуске: правка в
 +        // репозитории должна доезжать до людей без новой сборки. Ответа никто
 +        // не ждёт — пока он едет, показывается прошлый список.
 +        org.telegram.margelet.MargeletBadge.refresh();
++        org.telegram.messenger.AndroidUtilities.runOnUIThread(
++                org.telegram.margelet.MargeletHookEngine::survived, 8000);
 +        // Проверка обновления форка: узнав про новую версию, показываем
 +        // полоску внизу списка чатов. Молча ничего не качается и не ставится.
 +        if (org.telegram.margelet.MargeletConfig.updatesChecked()) {
@@ -9670,10 +10411,10 @@ index 00000000..fadc6c32
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletPluginsActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletPluginsActivity.java
 new file mode 100644
-index 00000000..dd5e904e
+index 00000000..07f393c2
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletPluginsActivity.java
-@@ -0,0 +1,261 @@
+@@ -0,0 +1,295 @@
 +package org.telegram.ui;
 +
 +import android.content.Context;
@@ -9716,6 +10457,7 @@ index 00000000..dd5e904e
 +    private static final int ID_DOCS = 4;
 +    private static final int ID_FORUM = 5;
 +    private static final int ID_RESTART = 6;
++    private static final int ID_HOOKS = 7;
 +    /** Строки самих плагинов идут отсюда и дальше, по одному номеру на плагин. */
 +    private static final int ID_PLUGIN = 100;
 +
@@ -9758,6 +10500,11 @@ index 00000000..dd5e904e
 +        // Перезапуск прямо здесь: включённый плагин поднимается только на
 +        // старте, а выключенный доживает до него. Раньше человеку приходилось
 +        // закрывать телеграм самому и догадываться, что это вообще нужно.
++        items.add(UItem.asCheck(ID_HOOKS, LocaleController.getString(R.string.MargeletHooks))
++                .setChecked(org.telegram.margelet.MargeletHookEngine.enabled()));
++        items.add(UItem.asShadow(LocaleController.getString(
++                org.telegram.margelet.MargeletHookEngine.brokeLastTime()
++                        ? R.string.MargeletHooksBroke : R.string.MargeletHooksAbout)));
 +        items.add(UItem.asButton(ID_RESTART, LocaleController.getString(R.string.MargeletPluginsRestart)));
 +        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletPluginsRestartAbout)));
 +        items.add(UItem.asButton(ID_INSTALL, LocaleController.getString(R.string.MargeletPluginInstall)));
@@ -9772,6 +10519,8 @@ index 00000000..dd5e904e
 +    protected void onClick(UItem item, View view, int position, float x, float y) {
 +        if (item.id == ID_MASTER) {
 +            toggleMaster();
++        } else if (item.id == ID_HOOKS) {
++            toggleHooks();
 +        } else if (item.id == ID_RESTART) {
 +            MargeletPlugins.restart(getParentActivity());
 +        } else if (item.id == ID_INSTALL) {
@@ -9845,6 +10594,32 @@ index 00000000..dd5e904e
 +            return;
 +        }
 +        toggle(plugin);
++    }
++
++    /**
++     * Хуки включаются с предупреждением и только один раз осознанно.
++     *
++     * Не из вежливости: кривой хук может уронить приложение при запуске, и
++     * тогда выключить его будет негде — настройки внутри того приложения,
++     * которое не открывается. Защита от повторного падения стоит, но узнать
++     * о такой цене человек должен заранее.
++     */
++    private void toggleHooks() {
++        if (org.telegram.margelet.MargeletHookEngine.enabled()) {
++            org.telegram.margelet.MargeletHookEngine.setEnabled(false);
++            listView.adapter.update(true);
++            return;
++        }
++        new AlertDialog.Builder(getContext())
++                .setTitle(LocaleController.getString(R.string.MargeletHooks))
++                .setMessage(LocaleController.getString(R.string.MargeletHooksWarn))
++                .setPositiveButton(LocaleController.getString(R.string.MargeletSeizureEnable), (d, w) -> {
++                    org.telegram.margelet.MargeletHookEngine.setEnabled(true);
++                    listView.adapter.update(true);
++                    MargeletPlugins.restart(getParentActivity());
++                })
++                .setNegativeButton(LocaleController.getString(R.string.Cancel), null)
++                .show();
 +    }
 +
 +    private void toggle(MargeletPlugins.Plugin plugin) {
@@ -20344,7 +21119,7 @@ index 03d0ba33..17f98fa6 100644
      <string name="English">Inglês</string>
      <string name="LanguageNameInEnglish">Portuguese (Brazil)</string>
 diff --git a/TMessagesProj/src/main/res/values-ru/strings.xml b/TMessagesProj/src/main/res/values-ru/strings.xml
-index 24c56292..d64f3b87 100644
+index 24c56292..3872cbb7 100644
 --- a/TMessagesProj/src/main/res/values-ru/strings.xml
 +++ b/TMessagesProj/src/main/res/values-ru/strings.xml
 @@ -1,7 +1,7 @@
@@ -20357,7 +21132,7 @@ index 24c56292..d64f3b87 100644
      <string name="LanguageName">Русский</string>
      <string name="English">Английский</string>
      <string name="LanguageNameInEnglish">Russian</string>
-@@ -263,4 +263,226 @@
+@@ -263,4 +263,230 @@
      <string name="RemindTodayAt">\'Отправить сегодня в\' HH:mm</string>
      <string name="RemindDayAt">\'Отправить\' d MMM \'в\' HH:mm</string>
      <string name="RemindDayYearAt">\'Напомнить\' d MMM yyyy \'в\' HH:mm</string>
@@ -20559,6 +21334,10 @@ index 24c56292..d64f3b87 100644
 +    <string name="MargeletPluginInstallAndRun">Поставить и включить</string>
 +    <string name="MargeletPluginTooOld">Плагину нужен Margy %1$s или новее. У вас %2$s.</string>
 +    <string name="MargeletPluginsRestart">Перезапустить Margy</string>
++    <string name="MargeletHooks">Хуки методов (пока опытное)</string>
++    <string name="MargeletHooksAbout">Позволяет плагинам подменять поведение методов самого приложения, как это делают модули Xposed. По умолчанию выключено: кривой хук может уронить приложение при запуске.</string>
++    <string name="MargeletHooksWarn">Плагин сможет подменить любой метод приложения. Кривой хук способен уронить его прямо при запуске — и тогда выключить это будет негде, потому что настройки внутри того самого приложения.\n\nЗащита есть: если запуск с хуками не дожил до конца, следующий поднимется без них и скажет об этом. Но защита — это сетка, а не обещание.\n\nПриложение сейчас перезапустится.</string>
++    <string name="MargeletHooksBroke">Прошлый запуск с хуками не дожил до конца, поэтому они выключены. Плагин, который это сделал, никуда не делся.</string>
 +    <string name="MargeletPluginsRestartAbout">Плагин поднимается только при запуске приложения, а выключенный доживает до него же: остановить работающий код нечем. Поэтому включение и выключение требуют перезапуска.</string>
 +    <string name="MargeletPluginNoSettings">Настраивать в этом плагине нечего.</string>
 +    <string name="MargeletPluginViewSource">Посмотреть архив</string>
@@ -20601,10 +21380,10 @@ index d4683443..57d10109 100644
      <string name="LanguageNameInEnglish">Ukrainian</string>
 diff --git a/TMessagesProj/src/main/res/values-zh/strings.xml b/TMessagesProj/src/main/res/values-zh/strings.xml
 new file mode 100644
-index 00000000..082023af
+index 00000000..8e8648bc
 --- /dev/null
 +++ b/TMessagesProj/src/main/res/values-zh/strings.xml
-@@ -0,0 +1,225 @@
+@@ -0,0 +1,229 @@
 +<?xml version="1.0" encoding="utf-8"?>
 +<resources>
 +    <string name="MargeletSettings">分支设置</string>
@@ -20805,6 +21584,10 @@ index 00000000..082023af
 +    <string name="MargeletPluginInstallAndRun">安装并启用</string>
 +    <string name="MargeletPluginTooOld">该插件需要 Margy %1$s 或更新版本，你的是 %2$s。</string>
 +    <string name="MargeletPluginsRestart">重启 Margy</string>
++    <string name="MargeletHooks">方法钩子（实验性）</string>
++    <string name="MargeletHooksAbout">允许插件替换应用自身方法的行为，就像 Xposed 模块那样。默认关闭：有问题的钩子可能让应用在启动时崩溃。</string>
++    <string name="MargeletHooksWarn">插件将能够替换应用的任何方法。有问题的钩子可能让应用一启动就崩溃——那时你没有地方去关掉它，因为设置就在这个应用里面。\n\n有一道保险：如果带钩子的那次启动没能活到最后，下一次就会不带钩子启动并告诉你。但保险是网，不是承诺。\n\n应用现在会重启。</string>
++    <string name="MargeletHooksBroke">上一次带钩子的启动没能活到最后，所以钩子已被关闭。造成这件事的插件仍然装着。</string>
 +    <string name="MargeletPluginsRestartAbout">插件只在应用启动时加载，而被关闭的插件会一直运行到下次启动：没有办法停止已在运行的代码。因此开关插件都需要重启。</string>
 +    <string name="MargeletPluginNoSettings">这个插件没有可设置的项目。</string>
 +    <string name="MargeletPluginViewSource">查看压缩包</string>
@@ -20847,7 +21630,7 @@ index cc49d135..a8a51c3a 100644
      <item name="menu_regular" type="id"/>
      <item name="menu_bold" type="id"/>
 diff --git a/TMessagesProj/src/main/res/values/strings.xml b/TMessagesProj/src/main/res/values/strings.xml
-index ffa4d566..91006d6a 100644
+index ffa4d566..fb84e1e8 100644
 --- a/TMessagesProj/src/main/res/values/strings.xml
 +++ b/TMessagesProj/src/main/res/values/strings.xml
 @@ -1,7 +1,7 @@
@@ -20860,7 +21643,7 @@ index ffa4d566..91006d6a 100644
      <string name="LanguageName">English</string>
      <string name="English">English</string>
      <string name="LanguageNameInEnglish">English</string>
-@@ -11221,4 +11221,226 @@
+@@ -11221,4 +11221,230 @@
      <string name="UnsupportedMessageTitle">Unsupported Message</string>
      <string name="UnsupportedMessageMessage">Update Telegram to view this message</string>
      <string name="UnsupportedUpdate">Update</string>
@@ -21062,6 +21845,10 @@ index ffa4d566..91006d6a 100644
 +    <string name="MargeletPluginInstallAndRun">Install and run</string>
 +    <string name="MargeletPluginTooOld">This plugin needs Margy %1$s or newer. You have %2$s.</string>
 +    <string name="MargeletPluginsRestart">Restart Margy</string>
++    <string name="MargeletHooks">Method hooks (experimental)</string>
++    <string name="MargeletHooksAbout">Lets plugins replace the behaviour of the app’s own methods, the way Xposed modules do. Off by default: a bad hook can crash the app on startup.</string>
++    <string name="MargeletHooksWarn">A plugin will be able to replace any method of the app. A bad hook can crash the app right at startup — and then there is nowhere to turn it off, because the settings are inside that app.\n\nThere is a guard: if a launch with hooks does not survive, the next one starts without them and says so. But the guard is a net, not a promise.\n\nThe app will restart now.</string>
++    <string name="MargeletHooksBroke">The last launch with hooks did not survive, so they were turned off. Whatever plugin did it is still installed.</string>
 +    <string name="MargeletPluginsRestartAbout">A plugin starts only when the app starts, and a plugin switched off keeps working until then: there is no way to stop running code. So switching one on or off takes a restart.</string>
 +    <string name="MargeletPluginNoSettings">This plugin has nothing to set up.</string>
 +    <string name="MargeletPluginViewSource">View the archive</string>
@@ -21262,10 +22049,10 @@ HcmV?d00001
 
 diff --git a/TMessagesProj_AppStandalone/src/main/java/org/telegram/margelet/MargeletPython.java b/TMessagesProj_AppStandalone/src/main/java/org/telegram/margelet/MargeletPython.java
 new file mode 100644
-index 00000000..307d5c40
+index 00000000..803de8a8
 --- /dev/null
 +++ b/TMessagesProj_AppStandalone/src/main/java/org/telegram/margelet/MargeletPython.java
-@@ -0,0 +1,64 @@
+@@ -0,0 +1,77 @@
 +package org.telegram.margelet;
 +
 +import android.content.Context;
@@ -21325,6 +22112,19 @@ index 00000000..307d5c40
 +        host.callAttr("settings_changed", pluginId, key, value);
 +    }
 +
++    /** Сообщения удалили. */
++    public static void deleted(int[] ids, long chat) {
++        final PyObject host = Python.getInstance().getModule("margelet_host");
++        host.callAttr("deleted", ids, chat);
++    }
++
++    /** Чат закрепляют. Ответ решает, случится ли это. */
++    public static boolean pinning(long chat, boolean pin) {
++        final PyObject host = Python.getInstance().getModule("margelet_host");
++        final PyObject answer = host.callAttr("pinning", chat, pin);
++        return answer == null || answer.toBoolean();
++    }
++
 +    public static void run(String id, String name, String folder) {
 +        final PyObject host = Python.getInstance().getModule("margelet_host");
 +        host.callAttr("run_plugin", id, name, folder);
@@ -21351,16 +22151,16 @@ index ce63acf6..d703d373 100644
      @Override
 diff --git a/TMessagesProj_AppStandalone/src/main/python/margelet_example.py b/TMessagesProj_AppStandalone/src/main/python/margelet_example.py
 new file mode 100644
-index 00000000..986d1fb1
+index 00000000..14308d17
 --- /dev/null
 +++ b/TMessagesProj_AppStandalone/src/main/python/margelet_example.py
-@@ -0,0 +1,73 @@
+@@ -0,0 +1,135 @@
 +# -*- coding: utf-8 -*-
 +"""Пример плагина Margelet.
 +
-+Показывает всё, что плагину дают: свой экран настроек, четыре события и
-+кнопку в меню чата. Каждая часть выключена по умолчанию — плагин, который
-+сразу лезет в переписку, плохой пример.
++Показывает всё, что плагину дают: свой экран настроек, шесть событий,
++кнопку в меню чата и подмену чужого метода. Каждая часть выключена по
++умолчанию — плагин, который сразу лезет в переписку, плохой пример.
 +
 +Код лежит исходником и читается кем угодно — это условие форума.
 +"""
@@ -21375,6 +22175,13 @@ index 00000000..986d1fb1
 +                        about="Дописывает подпись в конец каждого сообщения, которое ты шлёшь."),
 +        margelet.text("signature", "Подпись", default="🌿"),
 +        margelet.switch("count", "Считать входящие"),
++        margelet.switch("watch_deleted", "Замечать удалённые",
++                        about="Пишет в консоль, сколько сообщений исчезло. Сам текст не сохраняется."),
++        margelet.switch("keep_pins", "Не закреплять каналы",
++                        about="Отменяет закрепление канала. Обычные переписки закрепляются как всегда."),
++        margelet.switch("hook", "Показать подмену метода",
++                        about="Подменяет один безобидный метод приложения и пишет в консоль, что он ответил. "
++                              "Нужны включённые хуки в настройках плагинов."),
 +        margelet.note("Всё это остаётся на телефоне и никуда не уходит."),
 +        margelet.action("Сбросить счёт", forget, danger=True),
 +    )
@@ -21382,8 +22189,13 @@ index 00000000..986d1fb1
 +    margelet.on_chat_opened(opened)
 +    margelet.on_send(sign)
 +    margelet.on_message(count)
++    margelet.on_deleted(vanished)
++    margelet.on_pin(pinning)
 +    margelet.on_settings(changed)
 +    margelet.button("Сколько насчитал", report)
++
++    if margelet.flag("hook"):
++        watch_muted()
 +
 +    margelet.log("привет из плагина", margelet.name)
 +
@@ -21415,6 +22227,56 @@ index 00000000..986d1fb1
 +    margelet.set("counted", int(margelet.get("counted", "0")) + 1)
 +
 +
++def vanished(ids, chat):
++    """Сообщения удалили. Ответ ни на что не влияет: их уже нет.
++
++    Текста здесь нет и быть не может — сообщение к этому времени пропало.
++    Кому нужен текст удалённого, тот должен был запомнить его раньше, в
++    on_message; пример нарочно этого не делает.
++    """
++    if margelet.flag("watch_deleted"):
++        margelet.log("исчезло сообщений:", len(ids), "в", chat)
++
++
++def pinning(chat, pin):
++    """Чат закрепляют. Вернуть False — не закреплять.
++
++    Приложение ждёт ответа, как и на отправке: долгую работу отсюда надо
++    уносить в margelet.background.
++    """
++    if not margelet.flag("keep_pins"):
++        return None
++    if pin and chat < 0:
++        margelet.toast("каналы не закрепляем")
++        return False
++    return None
++
++
++def watch_muted():
++    """Подменить чужой метод и посмотреть, что он ответил.
++
++    Спрашиваем hooks_work() до того, как рассчитывать на подмену: хуки
++    выключены по умолчанию и поднимаются не на каждом андроиде. Плагин, не
++    умеющий обойтись без хука, — сломанный плагин, а не смелый.
++    """
++    if not margelet.hooks_work():
++        margelet.log("хуков нет:", margelet.hooks_why())
++        return
++
++    ok = margelet.hook(
++        "org.telegram.messenger.MessagesController",
++        "isDialogMuted",
++        args=["long", "long"],
++        after=muted,
++    )
++    margelet.log("подмена метода:", "встала" if ok else "не встала")
++
++
++def muted(call):
++    """После вызова. Ответ можно и подменить — здесь только смотрим."""
++    margelet.log("тихий диалог?", call.getResult())
++
++
 +def report(chat):
 +    """Нажали строчку плагина в меню чата."""
 +    margelet.toast("насчитал " + margelet.get("counted", "0"))
@@ -21430,10 +22292,10 @@ index 00000000..986d1fb1
 +    margelet.log("настройка", key, "теперь", value)
 diff --git a/TMessagesProj_AppStandalone/src/main/python/margelet_host.py b/TMessagesProj_AppStandalone/src/main/python/margelet_host.py
 new file mode 100644
-index 00000000..c5c982c4
+index 00000000..f646beeb
 --- /dev/null
 +++ b/TMessagesProj_AppStandalone/src/main/python/margelet_host.py
-@@ -0,0 +1,451 @@
+@@ -0,0 +1,572 @@
 +# -*- coding: utf-8 -*-
 +"""Прослойка между приложением и плагинами Margelet.
 +
@@ -21456,6 +22318,9 @@ index 00000000..c5c982c4
 +
 +_Host = jclass("org.telegram.margelet.MargeletPluginHost")
 +_Hooks = jclass("org.telegram.margelet.MargeletHooks")
++_Engine = jclass("org.telegram.margelet.MargeletHookEngine")
++_Xposed = jclass("de.robv.android.xposed.XposedHelpers")
++_XHook = jclass("de.robv.android.xposed.XC_MethodHook")
 +_Fetch = jclass("org.telegram.margelet.MargeletHooks$FetchCallback")
 +_Android = jclass("org.telegram.messenger.AndroidUtilities")
 +
@@ -21527,6 +22392,8 @@ index 00000000..c5c982c4
 +        self._on_send = []
 +        self._on_message = []
 +        self._on_settings = []
++        self._on_deleted = []
++        self._on_pin = []
 +        self._buttons = {}
 +        self._actions = {}
 +        self._cancel_send = False
@@ -21581,6 +22448,76 @@ index 00000000..c5c982c4
 +
 +    def set(self, key, value):
 +        _Host.set(self.id, str(key), None if value is None else str(value))
++
++    # --- хуки: подмена чужих методов ---
++
++    def hooks_work(self):
++        """Работают ли хуки на этом телефоне.
++
++        Спрашивать стоит до того, как на них рассчитывать: движок правит
++        внутренности исполнителя java, а те у каждой версии андроида свои.
++        Не поднялся — плагин должен уметь обойтись, а не сломаться.
++        """
++        return bool(_Engine.working())
++
++    def hooks_why(self):
++        """Почему не работают, если не работают."""
++        if _Engine.working():
++            return ""
++        if not _Engine.enabled():
++            return "выключены в настройках"
++        return str(_Engine.failure() or "не поднялись")
++
++    def hook(self, where, method, before=None, after=None, args=None):
++        """Подменить чужой метод.
++
++        where  — класс: имя строкой, например "org.telegram.ui.ChatActivity"
++        method — имя метода
++        args   — типы доводов, если метод перегружен: ["int", "java.lang.String"]
++        before — позвать до вызова; может отменить его, вернув значение
++        after  — позвать после; может подменить ответ
++
++        Обработчик получает один довод — param, у него есть:
++            param.args          доводы вызова, их можно менять
++            param.thisObject    у какого объекта позвали
++            param.getResult()   ответ (в after)
++            param.setResult(x)  подменить ответ; в before это ещё и отмена вызова
++
++        Возвращает False, если подменить не вышло, — и тогда причина уже
++        написана в консоли. Молча делать вид, что подменили, нельзя: плагин
++        будет думать, что работает, а он не работает.
++        """
++        if not _Engine.working():
++            self.error("хуки не работают:", self.hooks_why())
++            return False
++
++        outer = self
++
++        class Hook(dynamic_proxy(_XHook)):
++            def beforeHookedMethod(self, param):
++                if before is not None:
++                    try:
++                        before(param)
++                    except Exception:
++                        _Host.log(outer.name, traceback.format_exc(), True)
++
++            def afterHookedMethod(self, param):
++                if after is not None:
++                    try:
++                        after(param)
++                    except Exception:
++                        _Host.log(outer.name, traceback.format_exc(), True)
++
++        try:
++            tail = list(args or []) + [Hook()]
++            ok = _Xposed.findAndHookMethod(str(where), None, str(method), tail)
++            if ok is None:
++                self.error("метод не подменился:", where, method)
++                return False
++            return True
++        except Exception:
++            _Host.log(self.name, traceback.format_exc(), True)
++            return False
 +
 +    def background(self, call):
 +        """Сделать что-то долгое в стороне от экрана.
@@ -21693,6 +22630,29 @@ index 00000000..c5c982c4
 +        key = str(key or title)
 +        self._buttons[key] = call
 +        _Hooks.addButton(self.id, key, str(title))
++
++    def on_deleted(self, call):
++        """Позвать, когда сообщения удалили: call(номера, чат).
++
++        Номера — список, чат — номер канала или ноль для обычной переписки.
++        Само сообщение к этому времени уже пропало: если плагин хочет его
++        сохранить, он должен был запомнить его раньше, в on_message.
++        """
++        self._on_deleted.append(call)
++        _Hooks.wantDeleted()
++
++    def on_pin(self, call):
++        """Позвать, когда чат закрепляют или открепляют: call(чат, закрепляют).
++
++        Вернуть False — не закреплять. Это первая дверь не в переписку, а в
++        сам интерфейс приложения.
++
++        Приложение ждёт ответа, как и на отправке: пока обработчик думает,
++        человек смотрит на нажатую кнопку. Долгую работу отсюда уносить в
++        margelet.background.
++        """
++        self._on_pin.append(call)
++        _Hooks.wantPin()
 +
 +    def on_settings(self, call):
 +        """Позвать, когда человек поменял настройку: call(key, value)."""
@@ -21808,6 +22768,29 @@ index 00000000..c5c982c4
 +                call(text, dialog_id, message_id, out)
 +            except Exception:
 +                _Host.log(margelet.name, traceback.format_exc(), True)
++
++
++def deleted(ids, chat):
++    """Сообщения удалили. Ответ ни на что не влияет: их уже нет."""
++    numbers = [int(i) for i in ids]
++    for margelet in list(_margelets.values()):
++        for call in list(margelet._on_deleted):
++            try:
++                call(numbers, chat)
++            except Exception:
++                _Host.log(margelet.name, traceback.format_exc(), True)
++
++
++def pinning(chat, pin):
++    """Чат закрепляют. Любой обработчик может это отменить, вернув False."""
++    for margelet in list(_margelets.values()):
++        for call in list(margelet._on_pin):
++            try:
++                if call(chat, pin) is False:
++                    return False
++            except Exception:
++                _Host.log(margelet.name, traceback.format_exc(), True)
++    return True
 +
 +
 +def button_clicked(plugin_id, key, fragment):
@@ -31992,7 +32975,7 @@ index 528fd746..8b64b0f8 100644
  }
  repositories {
 diff --git a/gradle.properties b/gradle.properties
-index 83408dc5..01ed6407 100644
+index 83408dc5..66842e1c 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -13,9 +13,9 @@
@@ -32000,7 +32983,7 @@ index 83408dc5..01ed6407 100644
  # org.gradle.parallel=true
  #Sat Mar 12 05:53:50 MSK 2016
 -APP_VERSION_CODE=7031
-+APP_VERSION_CODE=7034
++APP_VERSION_CODE=7036
  APP_VERSION_NAME=12.10.0
 -APP_PACKAGE=org.telegram.messenger
 +APP_PACKAGE=cat.narezany.margelet

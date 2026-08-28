@@ -57,6 +57,19 @@ public class MargeletPython {
         host.callAttr("settings_changed", pluginId, key, value);
     }
 
+    /** Сообщения удалили. */
+    public static void deleted(int[] ids, long chat) {
+        final PyObject host = Python.getInstance().getModule("margelet_host");
+        host.callAttr("deleted", ids, chat);
+    }
+
+    /** Чат закрепляют. Ответ решает, случится ли это. */
+    public static boolean pinning(long chat, boolean pin) {
+        final PyObject host = Python.getInstance().getModule("margelet_host");
+        final PyObject answer = host.callAttr("pinning", chat, pin);
+        return answer == null || answer.toBoolean();
+    }
+
     public static void run(String id, String name, String folder) {
         final PyObject host = Python.getInstance().getModule("margelet_host");
         host.callAttr("run_plugin", id, name, folder);

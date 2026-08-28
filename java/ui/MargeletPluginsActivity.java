@@ -40,6 +40,7 @@ public class MargeletPluginsActivity extends UniversalFragment {
     private static final int ID_DOCS = 4;
     private static final int ID_FORUM = 5;
     private static final int ID_RESTART = 6;
+    private static final int ID_HOOKS = 7;
     /** Строки самих плагинов идут отсюда и дальше, по одному номеру на плагин. */
     private static final int ID_PLUGIN = 100;
 
@@ -82,6 +83,11 @@ public class MargeletPluginsActivity extends UniversalFragment {
         // Перезапуск прямо здесь: включённый плагин поднимается только на
         // старте, а выключенный доживает до него. Раньше человеку приходилось
         // закрывать телеграм самому и догадываться, что это вообще нужно.
+        items.add(UItem.asCheck(ID_HOOKS, LocaleController.getString(R.string.MargeletHooks))
+                .setChecked(org.telegram.margelet.MargeletHookEngine.enabled()));
+        items.add(UItem.asShadow(LocaleController.getString(
+                org.telegram.margelet.MargeletHookEngine.brokeLastTime()
+                        ? R.string.MargeletHooksBroke : R.string.MargeletHooksAbout)));
         items.add(UItem.asButton(ID_RESTART, LocaleController.getString(R.string.MargeletPluginsRestart)));
         items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletPluginsRestartAbout)));
         items.add(UItem.asButton(ID_INSTALL, LocaleController.getString(R.string.MargeletPluginInstall)));
@@ -96,6 +102,8 @@ public class MargeletPluginsActivity extends UniversalFragment {
     protected void onClick(UItem item, View view, int position, float x, float y) {
         if (item.id == ID_MASTER) {
             toggleMaster();
+        } else if (item.id == ID_HOOKS) {
+            toggleHooks();
         } else if (item.id == ID_RESTART) {
             MargeletPlugins.restart(getParentActivity());
         } else if (item.id == ID_INSTALL) {
@@ -169,6 +177,32 @@ public class MargeletPluginsActivity extends UniversalFragment {
             return;
         }
         toggle(plugin);
+    }
+
+    /**
+     * Хуки включаются с предупреждением и только один раз осознанно.
+     *
+     * Не из вежливости: кривой хук может уронить приложение при запуске, и
+     * тогда выключить его будет негде — настройки внутри того приложения,
+     * которое не открывается. Защита от повторного падения стоит, но узнать
+     * о такой цене человек должен заранее.
+     */
+    private void toggleHooks() {
+        if (org.telegram.margelet.MargeletHookEngine.enabled()) {
+            org.telegram.margelet.MargeletHookEngine.setEnabled(false);
+            listView.adapter.update(true);
+            return;
+        }
+        new AlertDialog.Builder(getContext())
+                .setTitle(LocaleController.getString(R.string.MargeletHooks))
+                .setMessage(LocaleController.getString(R.string.MargeletHooksWarn))
+                .setPositiveButton(LocaleController.getString(R.string.MargeletSeizureEnable), (d, w) -> {
+                    org.telegram.margelet.MargeletHookEngine.setEnabled(true);
+                    listView.adapter.update(true);
+                    MargeletPlugins.restart(getParentActivity());
+                })
+                .setNegativeButton(LocaleController.getString(R.string.Cancel), null)
+                .show();
     }
 
     private void toggle(MargeletPlugins.Plugin plugin) {

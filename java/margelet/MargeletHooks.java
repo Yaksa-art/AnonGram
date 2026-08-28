@@ -131,6 +131,26 @@ public class MargeletHooks {
      *
      * @return текст, который надо отправить, или null — не отправлять.
      */
+    /**
+     * На что отвечал человек в отправке, которую плагин отменил.
+     *
+     * Нужно вот зачем. Команда плагина устроена так: обработчик отменяет
+     * отправку и шлёт свой ответ отдельным сообщением. При этом «на что
+     * отвечали» оставалось в отменённом, и «.погода» ответом кому-то давала
+     * ответ в пустоту. Искать это сообщение заново неоткуда и незачем — оно
+     * только что было у нас в руках, надо просто не выбросить.
+     */
+    private static final java.util.HashMap<Long, MessageObject> replyOf = new java.util.HashMap<>();
+
+    /** Запоминает ответ отменяемой отправки. Зовётся из места отправки. */
+    public static void rememberReply(long dialogId, MessageObject replyTo) {
+        if (replyTo == null) {
+            replyOf.remove(dialogId);
+        } else {
+            replyOf.put(dialogId, replyTo);
+        }
+    }
+
     public static String sending(String text, long dialogId) {
         if (!wantsSend || text == null) {
             return text;
@@ -262,13 +282,110 @@ public class MargeletHooks {
         AndroidUtilities.runOnUIThread(() -> {
             try {
                 final int account = org.telegram.messenger.UserConfig.selectedAccount;
-                org.telegram.messenger.SendMessagesHelper.getInstance(account).sendMessage(
-                        org.telegram.messenger.SendMessagesHelper.SendMessageParams.of(text, dialogId));
+                final org.telegram.messenger.SendMessagesHelper.SendMessageParams params =
+                        org.telegram.messenger.SendMessagesHelper.SendMessageParams.of(text, dialogId);
+                // Отвечаем туда же, куда отвечал человек. Ответ берётся один
+                // раз: второе сообщение плагина ответом уже не будет, иначе
+                // плагин, пишущий по будильнику, отвечал бы вечно.
+                params.replyToMsg = replyOf.remove(dialogId);
+                org.telegram.messenger.SendMessagesHelper.getInstance(account).sendMessage(params);
             } catch (Throwable t) {
                 FileLog.e(t);
                 MargeletPluginHost.log("margelet", "не отправилось: " + t, true);
             }
         });
+    }
+
+    // --- удаление сообщений ---
+
+    private static volatile boolean wantsDeleted;
+    private static boolean watchingDeleted;
+
+    public static void wantDeleted() {
+        wantsDeleted = true;
+        watchDeleted();
+    }
+
+    /**
+     * Сообщения удалили — у нас или у собеседника.
+     *
+     * Той самой двери, которой не хватало для «анти-удаления»: плагин узнаёт
+     * номера пропавших сообщений и может сохранить их у себя до того, как они
+     * исчезнут с экрана.
+     */
+    private static void watchDeleted() {
+        AndroidUtilities.runOnUIThread(() -> {
+            if (watchingDeleted) {
+                return;
+            }
+            watchingDeleted = true;
+            final NotificationCenter.NotificationCenterDelegate delegate = (id, acc, args) -> {
+                if (id != NotificationCenter.messagesDeleted || !wantsDeleted
+                        || args == null || args.length < 2) {
+                    return;
+                }
+                try {
+                    @SuppressWarnings("unchecked")
+                    final ArrayList<Integer> ids = (ArrayList<Integer>) args[0];
+                    final long channelId = (Long) args[1];
+                    if (ids == null || ids.isEmpty()) {
+                        return;
+                    }
+                    final int[] plain = new int[ids.size()];
+                    for (int i = 0; i < ids.size(); i++) {
+                        plain[i] = ids.get(i) == null ? 0 : ids.get(i);
+                    }
+                    MargeletPluginHost.post(() -> {
+                        try {
+                            MargeletPluginHost.python("deleted",
+                                    new Class<?>[]{int[].class, long.class}, plain, channelId);
+                        } catch (Throwable t) {
+                            FileLog.e(t);
+                        }
+                    });
+                } catch (Throwable ignored) {
+                }
+            };
+            for (int acc = 0; acc < UserConfig.MAX_ACCOUNT_COUNT; acc++) {
+                NotificationCenter.getInstance(acc)
+                        .addObserver(delegate, NotificationCenter.messagesDeleted);
+            }
+        });
+    }
+
+    // --- закрепление чата ---
+
+    private static volatile boolean wantsPin;
+
+    public static void wantPin() {
+        wantsPin = true;
+    }
+
+    public static boolean hasPin() {
+        return wantsPin;
+    }
+
+    /**
+     * Чат закрепляют или откепляют. Плагин может это отменить.
+     *
+     * Это первая дверь не в переписку, а в сам интерфейс: владелец просил
+     * уметь менять поведение кнопки закрепления. Названная дверь, а не подмена
+     * метода: нажатие приходит сюда, ответ решает, случится ли действие.
+     *
+     * @return false — не закреплять
+     */
+    public static boolean pinning(long dialogId, boolean pin) {
+        if (!wantsPin) {
+            return true;
+        }
+        try {
+            final Object answer = MargeletPluginHost.pythonValue("pinning",
+                    new Class<?>[]{long.class, boolean.class}, dialogId, pin);
+            return !(answer instanceof Boolean) || (Boolean) answer;
+        } catch (Throwable t) {
+            FileLog.e(t);
+            return true;
+        }
     }
 
     // --- сеть и экран ---
