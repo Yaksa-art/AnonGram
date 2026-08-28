@@ -46,6 +46,15 @@ public class MargeletGroup {
     private static boolean resolving;
 
     /**
+     * Чья стена сейчас открыта. Ноль — ничья.
+     *
+     * Пока стена открыта, отправка в группу дописывает её метку сама. Так
+     * человек пишет в обычное поле обычной переписки, ничего не зная про
+     * метки, а мы не подделываем своё поле ввода ради одной служебной строки.
+     */
+    private static long wallPeer;
+
+    /**
      * Где запомнить адрес группы между запусками.
      *
      * Имя в адрес переводит сервер, и делать это при каждом холодном запуске —
@@ -70,6 +79,59 @@ public class MargeletGroup {
          * отличить от сломанного.
          */
         void onMessages(List<MessageObject> messages, String problem);
+    }
+
+    /** Открыли стену этого человека или ушли с неё. */
+    public static void writingTo(long peerId) {
+        wallPeer = peerId;
+    }
+
+    /**
+     * Дописать метку стены к отправляемому.
+     *
+     * Возвращает null, если отправлять нельзя, — в тексте запрещённая ссылка.
+     * Отдельная проверка на отправке нужна потому, что показ чужого мы и так
+     * фильтруем, но пускать своё в группу и молча прятать его на стене было
+     * бы враньём обоим: и написавшему, и читающему.
+     */
+    public static String tagged(String text, long dialogId) {
+        if (wallPeer == 0 || text == null || dialogId != groupId || groupId == 0) {
+            return text;
+        }
+        final String tag = tagWall(wallPeer);
+        if (text.contains(tag)) {
+            return text;    // уже с меткой: повторяться незачем
+        }
+        if (MargeletLinks.firstBad(text, null) != null) {
+            return null;
+        }
+        return tag + "\n" + text;
+    }
+
+    /**
+     * Сказать, почему сообщение не ушло.
+     *
+     * Молча проглотить набранный текст нельзя: человек увидит пустое поле и
+     * решит, что отправил. Отказ должен быть слышен ровно там, где он
+     * случился.
+     */
+    public static void refuse() {
+        AndroidUtilities.runOnUIThread(() -> {
+            try {
+                android.widget.Toast.makeText(
+                        org.telegram.messenger.ApplicationLoader.applicationContext,
+                        org.telegram.messenger.LocaleController.getString(
+                                org.telegram.messenger.R.string.MargeletWallNoLinksShort),
+                        android.widget.Toast.LENGTH_LONG).show();
+            } catch (Throwable t) {
+                FileLog.e(t);
+            }
+        });
+    }
+
+    /** Пишем ли мы сейчас на чью-то стену. */
+    public static boolean writing() {
+        return wallPeer != 0;
     }
 
     private static AccountInstance account() {
