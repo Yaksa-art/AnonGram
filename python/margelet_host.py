@@ -20,6 +20,9 @@ from java.lang import Runnable
 
 _Host = jclass("org.telegram.margelet.MargeletPluginHost")
 _Hooks = jclass("org.telegram.margelet.MargeletHooks")
+_Engine = jclass("org.telegram.margelet.MargeletHookEngine")
+_Xposed = jclass("de.robv.android.xposed.XposedHelpers")
+_XHook = jclass("de.robv.android.xposed.XC_MethodHook")
 _Fetch = jclass("org.telegram.margelet.MargeletHooks$FetchCallback")
 _Android = jclass("org.telegram.messenger.AndroidUtilities")
 
@@ -91,6 +94,8 @@ class Margelet:
         self._on_send = []
         self._on_message = []
         self._on_settings = []
+        self._on_deleted = []
+        self._on_pin = []
         self._buttons = {}
         self._actions = {}
         self._cancel_send = False
@@ -145,6 +150,76 @@ class Margelet:
 
     def set(self, key, value):
         _Host.set(self.id, str(key), None if value is None else str(value))
+
+    # --- хуки: подмена чужих методов ---
+
+    def hooks_work(self):
+        """Работают ли хуки на этом телефоне.
+
+        Спрашивать стоит до того, как на них рассчитывать: движок правит
+        внутренности исполнителя java, а те у каждой версии андроида свои.
+        Не поднялся — плагин должен уметь обойтись, а не сломаться.
+        """
+        return bool(_Engine.working())
+
+    def hooks_why(self):
+        """Почему не работают, если не работают."""
+        if _Engine.working():
+            return ""
+        if not _Engine.enabled():
+            return "выключены в настройках"
+        return str(_Engine.failure() or "не поднялись")
+
+    def hook(self, where, method, before=None, after=None, args=None):
+        """Подменить чужой метод.
+
+        where  — класс: имя строкой, например "org.telegram.ui.ChatActivity"
+        method — имя метода
+        args   — типы доводов, если метод перегружен: ["int", "java.lang.String"]
+        before — позвать до вызова; может отменить его, вернув значение
+        after  — позвать после; может подменить ответ
+
+        Обработчик получает один довод — param, у него есть:
+            param.args          доводы вызова, их можно менять
+            param.thisObject    у какого объекта позвали
+            param.getResult()   ответ (в after)
+            param.setResult(x)  подменить ответ; в before это ещё и отмена вызова
+
+        Возвращает False, если подменить не вышло, — и тогда причина уже
+        написана в консоли. Молча делать вид, что подменили, нельзя: плагин
+        будет думать, что работает, а он не работает.
+        """
+        if not _Engine.working():
+            self.error("хуки не работают:", self.hooks_why())
+            return False
+
+        outer = self
+
+        class Hook(dynamic_proxy(_XHook)):
+            def beforeHookedMethod(self, param):
+                if before is not None:
+                    try:
+                        before(param)
+                    except Exception:
+                        _Host.log(outer.name, traceback.format_exc(), True)
+
+            def afterHookedMethod(self, param):
+                if after is not None:
+                    try:
+                        after(param)
+                    except Exception:
+                        _Host.log(outer.name, traceback.format_exc(), True)
+
+        try:
+            tail = list(args or []) + [Hook()]
+            ok = _Xposed.findAndHookMethod(str(where), None, str(method), tail)
+            if ok is None:
+                self.error("метод не подменился:", where, method)
+                return False
+            return True
+        except Exception:
+            _Host.log(self.name, traceback.format_exc(), True)
+            return False
 
     def background(self, call):
         """Сделать что-то долгое в стороне от экрана.
@@ -257,6 +332,29 @@ class Margelet:
         key = str(key or title)
         self._buttons[key] = call
         _Hooks.addButton(self.id, key, str(title))
+
+    def on_deleted(self, call):
+        """Позвать, когда сообщения удалили: call(номера, чат).
+
+        Номера — список, чат — номер канала или ноль для обычной переписки.
+        Само сообщение к этому времени уже пропало: если плагин хочет его
+        сохранить, он должен был запомнить его раньше, в on_message.
+        """
+        self._on_deleted.append(call)
+        _Hooks.wantDeleted()
+
+    def on_pin(self, call):
+        """Позвать, когда чат закрепляют или открепляют: call(чат, закрепляют).
+
+        Вернуть False — не закреплять. Это первая дверь не в переписку, а в
+        сам интерфейс приложения.
+
+        Приложение ждёт ответа, как и на отправке: пока обработчик думает,
+        человек смотрит на нажатую кнопку. Долгую работу отсюда уносить в
+        margelet.background.
+        """
+        self._on_pin.append(call)
+        _Hooks.wantPin()
 
     def on_settings(self, call):
         """Позвать, когда человек поменял настройку: call(key, value)."""
@@ -372,6 +470,29 @@ def received(text, dialog_id, message_id, out):
                 call(text, dialog_id, message_id, out)
             except Exception:
                 _Host.log(margelet.name, traceback.format_exc(), True)
+
+
+def deleted(ids, chat):
+    """Сообщения удалили. Ответ ни на что не влияет: их уже нет."""
+    numbers = [int(i) for i in ids]
+    for margelet in list(_margelets.values()):
+        for call in list(margelet._on_deleted):
+            try:
+                call(numbers, chat)
+            except Exception:
+                _Host.log(margelet.name, traceback.format_exc(), True)
+
+
+def pinning(chat, pin):
+    """Чат закрепляют. Любой обработчик может это отменить, вернув False."""
+    for margelet in list(_margelets.values()):
+        for call in list(margelet._on_pin):
+            try:
+                if call(chat, pin) is False:
+                    return False
+            except Exception:
+                _Host.log(margelet.name, traceback.format_exc(), True)
+    return True
 
 
 def button_clicked(plugin_id, key, fragment):

@@ -109,15 +109,19 @@ A plugin does not poll the app — the app calls the plugin.
 | `margelet.on_chat_opened(call)` | a chat was opened; gets the chat screen |
 | `margelet.on_send(call)` | a text is being sent, before it goes |
 | `margelet.on_message(call)` | a message arrived |
+| `margelet.on_deleted(call)` | messages were deleted |
+| `margelet.on_pin(call)` | a chat is being pinned or unpinned; can be cancelled |
 | `margelet.button(title, call)` | your own line in the chat menu (the three dots) |
 | `margelet.on_settings(call)` | a setting of this plugin was changed |
 
-There are deliberately few doors, and each one has a name. That is not the same
-as letting a plugin replace any method of the app: replacing arbitrary methods
-means rewriting someone else's code at runtime, it needs a separate library
-that patches machine code, and every Telegram update breaks everything written
-on top of it. A named door survives updates, because we are the ones who keep
-it, not a coincidence of names.
+There are deliberately few doors, and each one has a name. A named door survives
+a Telegram update, because we are the ones who keep it, not a coincidence of
+names: when the insides change, we fix it and your plugin never notices.
+
+You can also replace any other method of the app — see
+[below](#hooking-any-method) — but that is a different promise. More precisely,
+it is the absence of one: a hook rests on someone else's method name, and nobody
+guaranteed us that name.
 
 If you need a door that is not here, [say so on the forum](https://t.me/margeletforum).
 We will add a named one rather than open all of them at once.
@@ -228,6 +232,106 @@ If one plugin's callback throws, the others still get called: each is called
 separately and the broken one gets its traceback in the console.
 
 `print()` goes to the console as well — it is intercepted.
+
+### Deleted messages
+
+```python
+def on_start():
+    margelet.on_deleted(remember)
+
+def remember(ids, chat):
+    margelet.log("deleted", len(ids), "in", chat)
+```
+
+`ids` is a list, `chat` is a channel id or zero for an ordinary chat. The return
+value changes nothing: the messages are already gone.
+
+The message itself is gone by then — you cannot read it from here. If you want
+the text of a deleted message, you had to keep it earlier, in `on_message`.
+There is no "show me what was deleted" door and there will not be one: the app
+learns about the deletion at the same moment you do.
+
+### Pinning
+
+```python
+def on_start():
+    margelet.on_pin(no_channels)
+
+def no_channels(chat, pinning):
+    if pinning and chat < 0:
+        margelet.toast("not pinning channels")
+        return False
+```
+
+Return `False` and the chat stays unpinned. This is the first door that opens
+into the chat list rather than into a conversation.
+
+The app waits for your answer, the way it does on send: while your handler
+thinks, someone is looking at a button they just pressed. Move slow work into
+`margelet.background`.
+
+## Hooking any method
+
+Everything above is a door we opened on purpose. Sometimes the one you need
+isn't there and waiting isn't an option. That's `margelet.hook`: replace any
+method of the app, the way Xposed modules do.
+
+The switch first: **Settings → Margy → Plugins → Method hooks**. Off by default,
+and not out of caution. A bad hook crashes the app at startup — and then there
+is nowhere to turn it off, because the settings live inside the app that won't
+open.
+
+There is a guard: if a launch with hooks does not survive, the next one starts
+without them and says so. But a guard is a net, not a promise, and it is strung
+under you, not under your plugin.
+
+```python
+def on_start():
+    if not margelet.hooks_work():
+        margelet.log("no hooks:", margelet.hooks_why())
+        return
+
+    margelet.hook(
+        "org.telegram.messenger.MessagesController",
+        "isDialogMuted",
+        args=["long", "long"],
+        after=show,
+    )
+
+def show(param):
+    margelet.log("muted?", param.getResult())
+```
+
+| | |
+|---|---|
+| `margelet.hooks_work()` | did hooks come up at all |
+| `margelet.hooks_why()` | why they didn't, if they didn't |
+| `margelet.hook(cls, method, before=, after=, args=)` | replace it |
+
+`args` is only needed when the method is overloaded, and is written as types:
+`"int"`, `"long"`, `"java.lang.String"`. The handler gets one argument, `param`:
+
+| | |
+|---|---|
+| `param.args` | call arguments; changeable in `before` |
+| `param.thisObject` | the object it was called on; `None` for static |
+| `param.getResult()` | what the method returned (in `after`) |
+| `param.setResult(x)` | replace the result; in `before` this also cancels the call |
+
+`margelet.hook` returns `False` when it could not hook, and writes the reason to
+the console. It will not quietly pretend it worked: a plugin that thinks it is
+running is worse than one that plainly isn't.
+
+**What to expect.** Nobody promised us Telegram's method names: a method is
+called one thing today and another tomorrow, and the hook simply stops finding
+it. That's why you ask `hooks_work()` before, not after, and why a plugin should
+cope without its hook instead of falling apart. No root is needed: the
+replacement lives inside this one app and only while it runs. Other apps are out
+of reach.
+
+If a hook turns out to be needed permanently and by many —
+[write to the forum](https://t.me/margeletforum). A hook that catches on becomes
+a named door, and a named door survives updates.
 
 ## A settings screen of your own
 
