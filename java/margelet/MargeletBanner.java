@@ -9,6 +9,7 @@ import org.telegram.messenger.FileLoader;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.ImageLocation;
 import org.telegram.messenger.MessageObject;
+import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.SendMessagesHelper;
 import org.telegram.messenger.UserConfig;
 import org.telegram.tgnet.TLRPC;
@@ -74,12 +75,25 @@ public class MargeletBanner {
             }
             looking.add(userId);
         }
-        MargeletGroup.find(MargeletGroup.TAG_BANNER, 60, messages -> {
+        // Спрашиваем сразу про одного человека: метка у баннеров одна на всех,
+        // и без этого пришлось бы тащить полсотни чужих ради одного своего.
+        // Ответ приходит дважды — от поиска и от истории, — а баннер нужен
+        // один. Берём первый пришедший с картинкой и второй уже не слушаем.
+        final boolean[] handled = new boolean[1];
+        MargeletGroup.find(MargeletGroup.TAG_BANNER, userId, 20, (messages, problem) -> {
+            if (handled[0]) {
+                return;
+            }
+            if (problem != null) {
+                FileLog.e("margy: баннер не искался: " + problem);
+                synchronized (pictures) {
+                    looking.remove(userId);
+                }
+                return;     // не «нет баннера», а «не спросили» — спросим ещё
+            }
             MessageObject mine = null;
             for (MessageObject message : messages) {
-                // Метка одна на всех, поэтому ищем по автору: чей баннер —
-                // решает подпись телеграма, а не текст сообщения.
-                if (MargeletGroup.authorOf(message) == userId && message.getDocument() == null) {
+                if (message.getDocument() == null) {
                     mine = message;
                     break;      // новое сверху, первое совпадение и есть свежее
                 }
@@ -91,6 +105,7 @@ public class MargeletBanner {
                 }
                 return;
             }
+            handled[0] = true;
             if (userId == me()) {
                 ownMessage.put(userId, mine.getId());
             }
@@ -120,22 +135,12 @@ public class MargeletBanner {
                 decode(userId, file, whenReady);
                 return;
             }
-            FileLoader.getInstance(UserConfig.selectedAccount).loadFile(
-                    ImageLocation.getForObject(size, message.photoThumbsObject), message,
-                    null, FileLoader.PRIORITY_LOW, FileLoader.PRELOAD_CACHE_TYPE);
-            // Ждать окончания загрузки здесь нечем и незачем: спросим ещё раз
-            // при следующем открытии профиля, к тому времени файл будет.
-            AndroidUtilities.runOnUIThread(() -> {
-                final File later = FileLoader.getInstance(UserConfig.selectedAccount)
-                        .getPathToAttach(size, true);
-                if (later != null && later.exists()) {
-                    decode(userId, later, whenReady);
-                } else {
-                    synchronized (pictures) {
-                        looking.remove(userId);
-                    }
-                }
-            }, 2500);
+            // Дожидаемся именно окончания загрузки, а не «двух с половиной
+            // секунд». Раньше здесь стоял отложенный взгляд на файл: не успел
+            // скачаться — баннер бросали до следующего открытия профиля.
+            // Картинка приезжала когда угодно, только не тогда, когда её
+            // ждали, и выглядело это так, будто баннеров нет вовсе.
+            waitFor(userId, size, message, whenReady);
         } catch (Throwable t) {
             FileLog.e(t);
             synchronized (pictures) {
@@ -143,6 +148,46 @@ public class MargeletBanner {
                 missing.add(userId);
             }
         }
+    }
+
+    /**
+     * Подписывается на окончание загрузки этого файла и уходит, как только оно
+     * случилось. Отписываемся сразу же: подписка, которую забыли снять,
+     * переживёт и профиль, и сам баннер.
+     */
+    private static void waitFor(long userId, TLRPC.PhotoSize size, MessageObject message,
+                                Runnable whenReady) {
+        final String name = FileLoader.getAttachFileName(size);
+        final NotificationCenter center = NotificationCenter.getInstance(UserConfig.selectedAccount);
+        final NotificationCenter.NotificationCenterDelegate[] holder =
+                new NotificationCenter.NotificationCenterDelegate[1];
+        holder[0] = (id, account, args) -> {
+            if (args.length == 0 || !name.equals(args[0])) {
+                return;
+            }
+            center.removeObserver(holder[0], NotificationCenter.fileLoaded);
+            center.removeObserver(holder[0], NotificationCenter.fileLoadFailed);
+            if (id == NotificationCenter.fileLoadFailed) {
+                synchronized (pictures) {
+                    looking.remove(userId);
+                }
+                return;     // не «нет баннера», а «не скачался» — попробуем ещё
+            }
+            final File ready = FileLoader.getInstance(UserConfig.selectedAccount)
+                    .getPathToAttach(size, true);
+            if (ready != null && ready.exists()) {
+                decode(userId, ready, whenReady);
+            } else {
+                synchronized (pictures) {
+                    looking.remove(userId);
+                }
+            }
+        };
+        center.addObserver(holder[0], NotificationCenter.fileLoaded);
+        center.addObserver(holder[0], NotificationCenter.fileLoadFailed);
+        FileLoader.getInstance(UserConfig.selectedAccount).loadFile(
+                ImageLocation.getForObject(size, message.photoThumbsObject), message,
+                null, FileLoader.PRIORITY_NORMAL, FileLoader.PRELOAD_CACHE_TYPE);
     }
 
     private static void decode(long userId, File file, Runnable whenReady) {
@@ -167,6 +212,30 @@ public class MargeletBanner {
         }
         if (bitmap != null && whenReady != null) {
             AndroidUtilities.runOnUIThread(whenReady);
+        }
+    }
+
+    /** Показать только что выбранную картинку, не дожидаясь сервера. */
+    private static void preview(long userId, Uri image) {
+        try (java.io.InputStream in = org.telegram.messenger.ApplicationLoader
+                .applicationContext.getContentResolver().openInputStream(image)) {
+            if (in == null) {
+                return;
+            }
+            final android.graphics.BitmapFactory.Options options =
+                    new android.graphics.BitmapFactory.Options();
+            options.inSampleSize = 2;
+            final Bitmap bitmap = android.graphics.BitmapFactory.decodeStream(in, null, options);
+            if (bitmap == null) {
+                return;
+            }
+            synchronized (pictures) {
+                pictures.put(userId, bitmap);
+                missing.remove(userId);
+                looking.remove(userId);
+            }
+        } catch (Throwable t) {
+            FileLog.e(t);
         }
     }
 
@@ -211,6 +280,10 @@ public class MargeletBanner {
                 FileLog.e(t);
             }
             forget(id);
+            // Свою картинку показываем немедленно, как это делает и сам
+            // телеграм с отправленным фото: ждать, пока сервер её разберёт и
+            // вернёт поиском, человеку незачем — он её только что выбрал.
+            preview(id, image);
             if (old != null) {
                 // Старое убираем с задержкой: пусть новое сперва уйдёт.
                 AndroidUtilities.runOnUIThread(() -> MargeletGroup.remove(old), 4000);
@@ -222,27 +295,61 @@ public class MargeletBanner {
         });
     }
 
-    /** Убрать свой баннер — то есть удалить своё сообщение из группы. */
-    public static void clear(Runnable done) {
+    /** Чем кончилось удаление. */
+    public interface Removed {
+        /**
+         * @param what {@code REMOVED} — убрали, {@code NOTHING} — нечего было
+         *             убирать, {@code FAILED} — не смогли спросить группу.
+         */
+        void onRemoved(int what);
+    }
+
+    public static final int REMOVED = 1;
+    public static final int NOTHING = 2;
+    public static final int FAILED = 3;
+
+    /**
+     * Убрать свой баннер — то есть удалить своё сообщение из группы.
+     *
+     * Ответ честный, и это не мелочь: раньше здесь всегда говорилось
+     * «баннер удалён», даже когда баннера не было вовсе, а на второе нажатие
+     * повторялось то же самое. Сообщение об успехе, которое печатается всегда,
+     * не сообщает ничего.
+     */
+    public static void clear(Removed done) {
         final long id = me();
-        final Integer old = ownMessage.get(id);
-        if (old != null) {
-            MargeletGroup.remove(old);
-            ownMessage.remove(id);
-        } else {
-            // Номера сообщения не знаем — найдём и удалим.
-            MargeletGroup.find(MargeletGroup.TAG_BANNER, 60, messages -> {
-                for (MessageObject message : messages) {
-                    if (MargeletGroup.authorOf(message) == id) {
-                        MargeletGroup.remove(message.getId());
-                        break;
-                    }
-                }
-            });
+        if (id <= 0) {
+            answer(done, FAILED);
+            return;
         }
-        forget(id);
+        final Integer known = ownMessage.get(id);
+        if (known != null) {
+            MargeletGroup.remove(known);
+            ownMessage.remove(id);
+            forget(id);
+            answer(done, REMOVED);
+            return;
+        }
+        // Номера сообщения не знаем — найдём и удалим. Ответ даём после
+        // поиска, а не до: до него мы попросту не знаем, что сказать.
+        MargeletGroup.find(MargeletGroup.TAG_BANNER, id, 20, (messages, problem) -> {
+            if (problem != null) {
+                answer(done, FAILED);
+                return;
+            }
+            int removed = 0;
+            for (MessageObject message : messages) {
+                MargeletGroup.remove(message.getId());
+                removed++;
+            }
+            forget(id);
+            answer(done, removed > 0 ? REMOVED : NOTHING);
+        });
+    }
+
+    private static void answer(Removed done, int what) {
         if (done != null) {
-            done.run();
+            AndroidUtilities.runOnUIThread(() -> done.onRemoved(what));
         }
     }
 }

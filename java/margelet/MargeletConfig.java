@@ -40,7 +40,7 @@ public class MargeletConfig {
      * 0.99, а не 1.0, нарочно: настоящая единица должна остаться свободной
      * под настоящий выпуск, а пререлиз обязан быть строго меньше её.
      */
-    public static final String APP_VERSION = "0.99";
+    public static final String APP_VERSION = "0.99.1";
 
     /** Как выпуск называется для человека: «Пререлиз 1.0», «Бета 1.1». */
     public static String versionLabel() {
@@ -120,7 +120,7 @@ public class MargeletConfig {
         return base + ".md";
     }
 
-    private static SharedPreferences prefs() {
+    public static SharedPreferences prefs() {
         return ApplicationLoader.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
     }
 

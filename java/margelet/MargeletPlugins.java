@@ -81,6 +81,42 @@ public class MargeletPlugins {
             return new File(folder, "main.py");
         }
 
+        /**
+         * Зовёт ли плагин подмену чужих методов.
+         *
+         * Смотрим в сам код, а не только в манифест: манифест — это заявление
+         * автора, а хуки слишком заметная вещь, чтобы верить на слово. Автор
+         * может забыть их объявить, и тогда человек включит плагин, а тот
+         * молча не заработает.
+         */
+        public boolean usesHooks() {
+            if (permissions.contains("hooks")) {
+                return true;
+            }
+            try {
+                final File main = entry();
+                if (!main.exists() || main.length() > 2 * 1024 * 1024) {
+                    return false;
+                }
+                final byte[] bytes = new byte[(int) main.length()];
+                try (java.io.FileInputStream in = new java.io.FileInputStream(main)) {
+                    int read = 0;
+                    while (read < bytes.length) {
+                        final int step = in.read(bytes, read, bytes.length - read);
+                        if (step < 0) {
+                            break;
+                        }
+                        read += step;
+                    }
+                }
+                final String code = new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
+                return code.contains("margelet.hook(") || code.contains("XposedHelpers")
+                        || code.contains("XC_MethodHook");
+            } catch (Throwable t) {
+                return false;
+            }
+        }
+
         private Bitmap icon;
         private boolean iconRead;
 
@@ -469,6 +505,12 @@ public class MargeletPlugins {
                 text.append("\n— ").append(permissionName(permission));
             }
         }
+        if (plugin.usesHooks()) {
+            // Про хуки говорим отдельной строкой: это не «ещё одно
+            // разрешение», а единственное место, где чужой код лезет в
+            // потроха самого приложения.
+            text.append("\n\n").append(LocaleController.getString(R.string.MargeletPluginUsesHooks));
+        }
         text.append("\n\n").append(LocaleController.getString(R.string.MargeletPluginInstallWarn));
         if (existing != null) {
             text.append("\n\n").append(LocaleController.getString(R.string.MargeletPluginAlreadyRestart));
@@ -504,8 +546,33 @@ public class MargeletPlugins {
                     // выключают, а не здесь.
                     if (startNow[0] && ready != null) {
                         MargeletConfig.setPluginEnabled(ready.id, true);
-                        if (MargeletConfig.pluginsEnabled()) {
+                        // Галочка «включить после установки» означает «пусть
+                        // работает», а не «поставь галочку». Раньше человек
+                        // ставил плагин с этой галочкой, а сама система
+                        // плагинов оставалась выключена — и плагин не делал
+                        // ничего, ничем этого не объясняя. Включаем то, без
+                        // чего просьба невыполнима.
+                        boolean restart = false;
+                        if (!MargeletConfig.pluginsEnabled()) {
+                            MargeletConfig.setPluginsEnabled(true);
+                            MargeletPluginHost.start();
+                        }
+                        if (ready.usesHooks() && !MargeletHookEngine.enabled()) {
+                            // Хуки поднимаются только на старте, поэтому одним
+                            // включением не обойтись — нужен перезапуск.
+                            MargeletHookEngine.setEnabled(true);
+                            restart = true;
+                        }
+                        if (!restart) {
                             MargeletPluginHost.launch(ready);
+                        } else {
+                            AndroidUtilities.runOnUIThread(() -> new AlertDialog.Builder(context)
+                                    .setTitle(ready.name)
+                                    .setMessage(LocaleController.getString(R.string.MargeletPluginHooksOn))
+                                    .setPositiveButton(LocaleController.getString(R.string.MargeletPluginsRestart),
+                                            (dd, ww) -> restart(context))
+                                    .setNegativeButton(LocaleController.getString(R.string.MargeletLater), null)
+                                    .show(), 200);
                         }
                     }
                     if (whenInstalled != null) {

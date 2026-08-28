@@ -8,6 +8,7 @@ import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.SendMessagesHelper;
 import org.telegram.messenger.UserConfig;
 import org.telegram.tgnet.ConnectionsManager;
+import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
 
 import java.util.ArrayList;
@@ -44,13 +45,31 @@ public class MargeletGroup {
     private static long groupId;
     private static boolean resolving;
 
+    /**
+     * Где запомнить адрес группы между запусками.
+     *
+     * Имя в адрес переводит сервер, и делать это при каждом холодном запуске —
+     * лишняя поездка перед первым же баннером. Адрес публичной группы не
+     * меняется, помнить его можно сколько угодно.
+     */
+    private static final String KEY_GROUP = "margy_group_id";
+    /** Кто ждёт адрес группы, пока он выясняется. */
+    private static final List<Peer> waiting = new ArrayList<>();
+
     public interface Peer {
         void onPeer(long dialogId);
     }
 
     public interface Messages {
-        /** Найденное, новое сверху. Пустой список — не нашли или не смогли. */
-        void onMessages(List<MessageObject> messages);
+        /**
+         * Найденное, новое сверху.
+         *
+         * {@code problem} — причина неудачи или null, если всё прошло. Пустой
+         * список и неудача выглядят одинаково, если про причину не спросить, а
+         * это ровно та разница, из-за которой пустой экран стены нельзя было
+         * отличить от сломанного.
+         */
+        void onMessages(List<MessageObject> messages, String problem);
     }
 
     private static AccountInstance account() {
@@ -65,31 +84,54 @@ public class MargeletGroup {
      * впустую, от чего мы уходили в плагинах.
      */
     public static void resolve(Peer done) {
+        if (groupId == 0) {
+            groupId = MargeletConfig.prefs().getLong(KEY_GROUP, 0);
+        }
         if (groupId != 0) {
             done.onPeer(groupId);
             return;
         }
-        if (resolving) {
-            return;
+        synchronized (waiting) {
+            waiting.add(done);
+            if (resolving) {
+                // Уже выясняем. Раньше здесь стоял тихий return, и второй
+                // спросивший не получал ответа вовсе: открытый профиль
+                // забирал ответ себе, а стена ждала его вечно и показывала
+                // пустоту. Теперь ждут все и ответ получают все.
+                return;
+            }
+            resolving = true;
         }
-        resolving = true;
         AndroidUtilities.runOnUIThread(() -> {
             try {
-                account().getMessagesController().getUserNameResolver().resolve(USERNAME, id -> {
-                    resolving = false;
-                    if (id != null && id != 0) {
-                        groupId = id;
-                        done.onPeer(groupId);
-                    } else {
-                        done.onPeer(0);
-                    }
-                });
+                account().getMessagesController().getUserNameResolver().resolve(USERNAME,
+                        id -> answer(id == null ? 0 : id));
             } catch (Throwable t) {
                 FileLog.e(t);
-                resolving = false;
-                done.onPeer(0);
+                answer(0);
             }
         });
+    }
+
+    /** Раздать выясненный адрес всем, кто его ждал. */
+    private static void answer(long id) {
+        final List<Peer> ready;
+        synchronized (waiting) {
+            resolving = false;
+            if (id != 0) {
+                groupId = id;
+                MargeletConfig.prefs().edit().putLong(KEY_GROUP, id).apply();
+            }
+            ready = new ArrayList<>(waiting);
+            waiting.clear();
+        }
+        for (Peer peer : ready) {
+            try {
+                peer.onPeer(id);
+            } catch (Throwable t) {
+                FileLog.e(t);
+            }
+        }
     }
 
     /**
@@ -100,39 +142,182 @@ public class MargeletGroup {
      * тегом целиком, значит совпадение точное, а не «где-то встретилось».
      */
     public static void find(String tag, int limit, Messages done) {
+        find(tag, 0, limit, done);
+    }
+
+    /**
+     * Ищет в группе сообщения с этой меткой, при желании — только от одного
+     * человека.
+     *
+     * Ищет сервер, а не телефон: своими силами пришлось бы выкачать всю
+     * группу. Но на сервер одного полагаться нельзя — его поиск разбивает
+     * слова по подчёркиваниям, и метка вида {@code #margy_wall_123} для него
+     * не одно слово, а три. Поэтому найденное мы ещё и перепроверяем сами, а
+     * если поиск не вернул ничего — дочитываем свежую историю группы руками.
+     *
+     * {@code from} — чьи сообщения нужны, ноль значит чьи угодно. Для баннера
+     * это важно: метка у баннеров одна на всех, и без этого пришлось бы
+     * тащить чужие и отбирать свой.
+     */
+    public static void find(String tag, long from, int limit, Messages done) {
         resolve(dialogId -> {
             if (dialogId == 0) {
-                done.onMessages(new ArrayList<>());
+                done.onMessages(new ArrayList<>(), "группа не нашлась");
                 return;
             }
-            final TLRPC.TL_messages_search req = new TLRPC.TL_messages_search();
-            req.peer = account().getMessagesController().getInputPeer(dialogId);
-            if (req.peer == null) {
-                done.onMessages(new ArrayList<>());
+            final MessagesController controller = account().getMessagesController();
+            final TLRPC.InputPeer peer = controller.getInputPeer(dialogId);
+            if (peer == null) {
+                done.onMessages(new ArrayList<>(), "группа не открывается");
                 return;
             }
-            req.q = tag;
-            req.limit = limit;
-            req.filter = new TLRPC.TL_inputMessagesFilterEmpty();
-            account().getConnectionsManager().sendRequest(req, (response, error) ->
-                    AndroidUtilities.runOnUIThread(() -> {
-                        final List<MessageObject> out = new ArrayList<>();
-                        if (error == null && response instanceof TLRPC.messages_Messages) {
-                            final TLRPC.messages_Messages res = (TLRPC.messages_Messages) response;
-                            account().getMessagesController().putUsers(res.users, false);
-                            account().getMessagesController().putChats(res.chats, false);
-                            for (TLRPC.Message message : res.messages) {
-                                if (message == null) {
-                                    continue;
-                                }
-                                out.add(new MessageObject(UserConfig.selectedAccount, message, true, true));
-                            }
-                        } else if (error != null) {
-                            FileLog.e("margy: поиск в группе не вышел: " + error.text);
-                        }
-                        done.onMessages(out);
-                    }));
+            // Два запроса разом, а не один за другим.
+            //
+            // Поиск на сервере знает всю группу, но свежее сообщение попадает в
+            // него не сразу: пока сервер его разберёт, только что написанного
+            // на стене нет. Чтение истории видит свежее мгновенно, но дальше
+            // сотни сообщений не заглядывает. Порознь каждый способ даёт либо
+            // «нового не видно», либо «старого не видно»; последовательно —
+            // складывает обе задержки. Вместе они закрывают друг друга, и
+            // ответ приходит за время самого быстрого из них.
+            final Wait wait = new Wait(2, done);
+            search(peer, tag, from, limit, wait);
+            history(peer, tag, from, limit, wait);
         });
+    }
+
+    /**
+     * Складывает ответы двух запросов в один.
+     *
+     * Отдаём найденное, как только пришёл первый непустой ответ, — и потом ещё
+     * раз, когда придёт второй, если он что-то добавил. Ждать оба ради полноты
+     * значило бы ждать медленный там, где быстрый уже всё принёс.
+     */
+    private static class Wait {
+        private final Messages done;
+        private final List<MessageObject> all = new ArrayList<>();
+        private final java.util.HashSet<Integer> seen = new java.util.HashSet<>();
+        private int left;
+        private String problem;
+
+        Wait(int count, Messages done) {
+            this.left = count;
+            this.done = done;
+        }
+
+        void add(List<MessageObject> found, String why) {
+            left--;
+            if (why != null) {
+                problem = why;
+            }
+            boolean fresh = false;
+            for (MessageObject message : found) {
+                if (seen.add(message.getId())) {
+                    all.add(message);
+                    fresh = true;
+                }
+            }
+            if (fresh) {
+                // Новое сверху: номер сообщения растёт со временем.
+                java.util.Collections.sort(all, (a, b) -> b.getId() - a.getId());
+            }
+            if (fresh || left == 0) {
+                done.onMessages(new ArrayList<>(all), all.isEmpty() ? problem : null);
+            }
+        }
+    }
+
+    /** Поиск на сервере: знает всё, но свежее видит с задержкой. */
+    private static void search(TLRPC.InputPeer peer, String tag, long from, int limit, Wait wait) {
+        final TLRPC.TL_messages_search req = new TLRPC.TL_messages_search();
+        req.peer = peer;
+        if (from != 0) {
+            req.from_id = account().getMessagesController().getInputPeer(from);
+        }
+        req.q = tag;
+        req.limit = limit;
+        req.filter = new TLRPC.TL_inputMessagesFilterEmpty();
+        account().getConnectionsManager().sendRequest(req, (response, error) ->
+                AndroidUtilities.runOnUIThread(() -> {
+                    if (error != null) {
+                        FileLog.e("margy: поиск в группе не вышел: " + error.text);
+                        wait.add(new ArrayList<>(), error.text);
+                        return;
+                    }
+                    wait.add(collect(response, tag, from), null);
+                }));
+    }
+
+    /** Свежая история: видит только что написанное, но недалеко вглубь. */
+    private static void history(TLRPC.InputPeer peer, String tag, long from, int limit, Wait wait) {
+        final TLRPC.TL_messages_getHistory req = new TLRPC.TL_messages_getHistory();
+        req.peer = peer;
+        req.limit = Math.max(limit, 100);
+        account().getConnectionsManager().sendRequest(req, (response, error) ->
+                AndroidUtilities.runOnUIThread(() -> {
+                    if (error != null) {
+                        FileLog.e("margy: история группы не пришла: " + error.text);
+                        wait.add(new ArrayList<>(), error.text);
+                        return;
+                    }
+                    wait.add(collect(response, tag, from), null);
+                }));
+    }
+
+    /**
+     * Отбирает из ответа то, что нам действительно подходит.
+     *
+     * Проверка метки здесь, а не только на сервере, потому что серверный поиск
+     * приблизительный: на {@code #margy_wall_5} он охотно вернёт и
+     * {@code #margy_wall_7}. Стена чужого человека, показанная у себя, была бы
+     * хуже пустой стены.
+     */
+    private static List<MessageObject> collect(TLObject response, String tag, long from) {
+        final List<MessageObject> out = new ArrayList<>();
+        if (!(response instanceof TLRPC.messages_Messages)) {
+            return out;
+        }
+        final TLRPC.messages_Messages res = (TLRPC.messages_Messages) response;
+        account().getMessagesController().putUsers(res.users, false);
+        account().getMessagesController().putChats(res.chats, false);
+        for (TLRPC.Message message : res.messages) {
+            if (message == null || !hasTag(message, tag)) {
+                continue;
+            }
+            final MessageObject object =
+                    new MessageObject(UserConfig.selectedAccount, message, true, true);
+            if (from != 0 && authorOf(object) != from) {
+                continue;
+            }
+            out.add(object);
+        }
+        return out;
+    }
+
+    /**
+     * Стоит ли в сообщении ровно эта метка.
+     *
+     * Ровно — значит следом не идёт ни буквы, ни цифры, ни подчёркивания:
+     * иначе {@code #margy_wall_5} совпал бы с {@code #margy_wall_55}.
+     */
+    private static boolean hasTag(TLRPC.Message message, String tag) {
+        final String text = message.message;
+        if (text == null) {
+            return false;
+        }
+        int at = text.indexOf(tag);
+        while (at >= 0) {
+            final int end = at + tag.length();
+            if (end >= text.length()) {
+                return true;
+            }
+            final char next = text.charAt(end);
+            if (!Character.isLetterOrDigit(next) && next != '_') {
+                return true;
+            }
+            at = text.indexOf(tag, at + 1);
+        }
+        return false;
     }
 
     /**

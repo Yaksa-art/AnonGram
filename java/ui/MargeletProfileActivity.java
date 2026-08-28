@@ -77,8 +77,19 @@ public class MargeletProfileActivity extends UniversalFragment {
         if (item.id == ID_BANNER) {
             pick();
         } else if (item.id == ID_BANNER_OFF) {
-            MargeletBanner.clear(() -> BulletinFactory.of(this).createSimpleBulletin(R.raw.info,
-                    LocaleController.getString(R.string.MargeletBannerRemoved)).show());
+            MargeletBanner.clear(what -> {
+                listView.adapter.update(true);
+                if (what == MargeletBanner.REMOVED) {
+                    BulletinFactory.of(this).createSimpleBulletin(R.raw.info,
+                            LocaleController.getString(R.string.MargeletBannerRemoved)).show();
+                } else if (what == MargeletBanner.NOTHING) {
+                    BulletinFactory.of(this).createSimpleBulletin(R.raw.info,
+                            LocaleController.getString(R.string.MargeletBannerNone)).show();
+                } else {
+                    BulletinFactory.of(this).createSimpleBulletin(R.raw.error,
+                            LocaleController.getString(R.string.MargeletGroupUnreachable)).show();
+                }
+            });
         } else if (item.id == ID_BANNERS_SHOW) {
             MargeletConfig.setBannersEnabled(!MargeletConfig.bannersEnabled());
             listView.adapter.update(true);

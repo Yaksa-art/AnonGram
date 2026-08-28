@@ -21,6 +21,24 @@ public class MargeletStrings {
             " Premium", " Stars", " Business", " Wallet", " Passport", " Ads", " API", " FAQ"
     };
 
+    /**
+     * Наши собственные строки не переименовываем.
+     *
+     * Они уже написаны так, как надо, и слово «Telegram» в них стоит там, где
+     * речь именно о телеграме. Английское «Margy (formerly Margelet) is a
+     * Telegram fork» подмена превращала в «is a Margy fork» — то есть форк
+     * самого себя. Русский текст уцелел случайно: там «форк телеграма» с
+     * маленькой буквы и кириллицей.
+     *
+     * Признак свой/чужой — ключ ресурса: все наши начинаются с Margelet.
+     */
+    public static String rename(String key, String value) {
+        if (key != null && key.startsWith("Margelet")) {
+            return value;
+        }
+        return rename(value);
+    }
+
     public static String rename(String value) {
         if (value == null || value.indexOf(NAME) < 0) {
             return value;
