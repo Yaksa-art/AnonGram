@@ -318,49 +318,6 @@ opened through `margelet.ui`, or nothing opens.
 Errors like these are visible only in the console: Settings → Margelet →
 Plugins → Console. It has both the line and the reason.
 
-## Dynamic Java Method Hooks (MargeletHook & Xposed API)
-
-In addition to standard plugin events, a powerful method hook engine is available to intercept and modify any internal Telegram client methods.
-
-### Intercepting Methods with Decorators
-
-```python
-# Call before method execution (inspect arguments or cancel execution)
-@margelet.before_method("org.telegram.messenger.SendMessagesHelper", "sendMessage")
-def before_send(param):
-    margelet.log("Sending message, arguments count:", len(param.args))
-
-# Call after method execution (inspect and alter return values)
-@margelet.after_method("org.telegram.messenger.MessagesController", "getUser")
-def after_get_user(param):
-    user = param.getResult()
-    margelet.log("User received:", user)
-```
-
-| Method | Description |
-|---|---|
-| `@margelet.before_method(class_name, method_name)` | Intercept method before execution |
-| `@margelet.after_method(class_name, method_name)` | Intercept method after execution |
-| `param.args` | Array of method arguments |
-| `param.thisObject` | Instance object (`this`) on which the method was called |
-| `param.setResult(val)` | Override return value (calling this in `before` prevents the original method from running) |
-| `param.getResult()` | Read the returned value of the original method |
-
-### Xposed API Compatibility
-
-For Xposed module developers, standard `XposedHelpers` are supported:
-
-```python
-from de.robv.android.xposed import XposedHelpers
-
-# Read and write private fields
-current_account = XposedHelpers.getIntField(obj, "currentAccount")
-XposedHelpers.setBooleanField(obj, "deleted", True)
-
-# Invoke private methods directly
-result = XposedHelpers.callMethod(obj, "privateMethodName", arg1, arg2)
-```
-
 ## What else is available
 
 The Python here is the real thing, with access to the app's Java classes:

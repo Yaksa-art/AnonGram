@@ -22,8 +22,6 @@ _Host = jclass("org.telegram.margelet.MargeletPluginHost")
 _Hooks = jclass("org.telegram.margelet.MargeletHooks")
 _Fetch = jclass("org.telegram.margelet.MargeletHooks$FetchCallback")
 _Android = jclass("org.telegram.messenger.AndroidUtilities")
-_MargeletHook = jclass("org.telegram.margelet.hook.MargeletHook")
-_IHookCallback = jclass("org.telegram.margelet.hook.IHookCallback")
 
 # Ответ, по которому приложение понимает «не отправляй это сообщение».
 # Такой же строки нет в MargeletHooks.CANCEL по случайности: она там же и
@@ -92,7 +90,6 @@ class Margelet:
         self._on_chat_opened = []
         self._on_send = []
         self._on_message = []
-        self._on_deleted = []
         self._on_settings = []
         self._buttons = {}
         self._actions = {}
@@ -255,11 +252,6 @@ class Margelet:
         self._on_message.append(call)
         _Hooks.wantMessage()
 
-    def on_deleted(self, call):
-        """Позвать, когда собеседник или сервер удалил сообщение: call(message_id, channel_id)."""
-        self._on_deleted.append(call)
-        _Hooks.wantMessage()
-
     def button(self, title, call, key=None):
         """Своя строчка в меню чата (три точки). Нажали — зовём call(fragment)."""
         key = str(key or title)
@@ -269,68 +261,6 @@ class Margelet:
     def on_settings(self, call):
         """Позвать, когда человек поменял настройку: call(key, value)."""
         self._on_settings.append(call)
-
-    # --- Динамические хуки Java-методов (MargeletHook Engine) ---
-
-    def hook(self, target_class, method_name, before=None, after=None, priority=50):
-        """Хук Java-метода через MargeletHook Engine.
-
-        :param target_class: имя класса (строка) или Java-класс
-        :param method_name: имя метода
-        :param before: callback(param) перед выполнением метода
-        :param after: callback(param) после выполнения метода
-        """
-        name = self.name
-        plugin_id = self.id
-
-        if isinstance(target_class, str):
-            clazz = _MargeletHook.findClass(target_class, None)
-        else:
-            clazz = target_class
-
-        if clazz is None:
-            _Host.log(name, f"Класс {target_class} не найден для хука {method_name}", True)
-            return None
-
-        method = _MargeletHook.findMethod(clazz, str(method_name), None)
-        if method is None:
-            _Host.log(name, f"Метод {method_name} не найден в {target_class}", True)
-            return None
-
-        class _PyHookCallback(dynamic_proxy(_IHookCallback)):
-            def beforeHookedMethod(self, param):
-                if before is not None:
-                    try:
-                        before(param)
-                    except Exception:
-                        _Host.log(name, traceback.format_exc(), True)
-
-            def afterHookedMethod(self, param):
-                if after is not None:
-                    try:
-                        after(param)
-                    except Exception:
-                        _Host.log(name, traceback.format_exc(), True)
-
-        return _MargeletHook.hookMethod(plugin_id, method, _PyHookCallback())
-
-    def before_method(self, target_class, method_name, priority=50):
-        """Декоратор для вызова перед методом."""
-        def decorator(func):
-            self.hook(target_class, method_name, before=func, priority=priority)
-            return func
-        return decorator
-
-    def after_method(self, target_class, method_name, priority=50):
-        """Декоратор для вызова после метода."""
-        def decorator(func):
-            self.hook(target_class, method_name, after=func, priority=priority)
-            return func
-        return decorator
-
-    def hook_method(self, target_class, method_name, priority=50):
-        """Декоратор для перехвата метода (по умолчанию before)."""
-        return self.before_method(target_class, method_name, priority)
 
     # --- из чего собрать свой экран настроек ---
 
@@ -440,16 +370,6 @@ def received(text, dialog_id, message_id, out):
         for call in list(margelet._on_message):
             try:
                 call(text, dialog_id, message_id, out)
-            except Exception:
-                _Host.log(margelet.name, traceback.format_exc(), True)
-
-
-def deleted(message_id, channel_id):
-    """Удалено сообщение."""
-    for margelet in list(_margelets.values()):
-        for call in list(margelet._on_deleted):
-            try:
-                call(message_id, channel_id)
             except Exception:
                 _Host.log(margelet.name, traceback.format_exc(), True)
 

@@ -319,49 +319,6 @@ titles = jarray(CharSequence)(["Первое", "Второе"])
 Ошибки такого рода видны только в консоли: Настройки → Margelet → Плагины →
 Консоль. Там будет и строка, и причина.
 
-## Динамические хуки Java-методов (MargeletHook & Xposed API)
-
-В дополнение к стандартным событиям плагинов доступен мощный движок хуков для перехвата любых внутренних методов клиента.
-
-### Перехват методов через декораторы
-
-```python
-# Вызов перед методом (можно читать аргументы или отменять выполнение)
-@margelet.before_method("org.telegram.messenger.SendMessagesHelper", "sendMessage")
-def before_send(param):
-    margelet.log("Отправка сообщения, аргументов:", len(param.args))
-
-# Вызов после метода (можно читать и подменять результат)
-@margelet.after_method("org.telegram.messenger.MessagesController", "getUser")
-def after_get_user(param):
-    user = param.getResult()
-    margelet.log("Получен пользователь:", user)
-```
-
-| Метод | Описание |
-|---|---|
-| `@margelet.before_method(class_name, method_name)` | Перехват метода до его выполнения |
-| `@margelet.after_method(class_name, method_name)` | Перехват метода после его выполнения |
-| `param.args` | Массив переданных в метод аргументов |
-| `param.thisObject` | Объект класса (`this`), у которого вызван метод |
-| `param.setResult(val)` | Подменить возвращаемое значение (при вызове в `before` отменяет оригинальный метод) |
-| `param.getResult()` | Прочитать возвращённое оригинальным методом значение |
-
-### Совместимость с Xposed API
-
-Для авторов Xposed-модулей доступен классический `XposedHelpers`:
-
-```python
-from de.robv.android.xposed import XposedHelpers
-
-# Чтение и запись приватных полей
-current_account = XposedHelpers.getIntField(obj, "currentAccount")
-XposedHelpers.setBooleanField(obj, "deleted", True)
-
-# Вызов любых приватных методов
-result = XposedHelpers.callMethod(obj, "privateMethodName", arg1, arg2)
-```
-
 ## Что доступно кроме этого
 
 Питон здесь настоящий, с доступом к java-классам приложения:
