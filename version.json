@@ -1,7 +1,7 @@
 {
-  "version": "0.99",
+  "version": "0.99.1",
   "apk": "https://github.com/narezany/margelet/raw/apk/margelet.apk",
-  "about": "Pre-release 1.0. Margelet is now Margy. A wall on your profile, profile banners, and plugins that can hook any method of the app.",
-  "about_ru": "Пререлиз 1.0. Margelet теперь Margy. Стена в профиле, баннеры и плагины, которым доступен любой метод приложения.",
-  "about_zh": "预发布 1.0。Margelet 现在叫 Margy。个人资料里的留言墙、横幅，以及能替换应用任意方法的插件。"
+  "about": "Pre-release 1.0.1. The wall now sits in every profile and is drawn with the app's own chat bubbles. Banners no longer arrive late. Plugins got a store tab.",
+  "about_ru": "Пререлиз 1.0.1. Стена теперь в каждом профиле и нарисована ячейками самой переписки. Баннеры больше не приезжают с задержкой. У плагинов появилась вкладка магазина.",
+  "about_zh": "预发布 1.0.1。留言墙现在出现在每个人的资料里，并用应用自己的聊天气泡绘制。横幅不再姗姗来迟。插件多了一个商店标签页。"
 }
