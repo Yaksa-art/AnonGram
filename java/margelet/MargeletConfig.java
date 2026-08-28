@@ -17,7 +17,7 @@ public class MargeletConfig {
     public static final int INPUT_LINES_DEFAULT = 6;
     public static final float INPUT_TEXT_SIZE_DEFAULT = 18f;
 
-    public static final String APP_NAME = "Margy";
+    public static final String APP_NAME = "Margelet";
 
     /**
      * Номер этой сборки. По нему клиент понимает, что на гитхабе лежит версия
@@ -27,26 +27,7 @@ public class MargeletConfig {
      * Забыть про него значит выпустить сборку, которая всю жизнь будет
      * предлагать обновиться сама на себя.
      */
-    /**
-     * Версия для сравнения. Только числа через точку — по ней решается, что
-     * новее, а что старее.
-     *
-     * Показывается человеку не она, а {@link #versionLabel()}. Развести эти
-     * два значения пришлось потому, что выпуск называется «Пререлиз 1.0», а
-     * такую строку сравнить нельзя: разбор по точкам споткнётся о слово и
-     * молча вернёт ноль. Один раз мы уже выпустили трижды подряд то, что ни
-     * разу не выполнялось, — второй раз наступать на такое не будем.
-     *
-     * 0.99, а не 1.0, нарочно: настоящая единица должна остаться свободной
-     * под настоящий выпуск, а пререлиз обязан быть строго меньше её.
-     */
-    public static final String APP_VERSION = "0.99";
-
-    /** Как выпуск называется для человека: «Пререлиз 1.0», «Бета 1.1». */
-    public static String versionLabel() {
-        return org.telegram.messenger.LocaleController.getString(
-                org.telegram.messenger.R.string.MargeletVersionLabel);
-    }
+    public static final String APP_VERSION = "0.3.6";
 
     /**
      * Как часто спрашивать гитхаб про новую версию, в минутах. Ноль — не

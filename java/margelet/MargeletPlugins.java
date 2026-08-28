@@ -434,29 +434,7 @@ public class MargeletPlugins {
         final boolean[] keep = { false };
         final Runnable[] show = new Runnable[1];
         final SpannableStringBuilder text = new SpannableStringBuilder();
-        // Автор. Если он назвался юзернеймом — по нему можно нажать и попасть
-        // в его профиль. Человек, ставящий чужой код себе в переписку, вправе
-        // сперва посмотреть, кто это, не выходя из окна и не переписывая имя
-        // руками.
-        final String by = LocaleController.formatString(R.string.MargeletPluginBy, plugin.author);
-        final int at = plugin.author != null && plugin.author.startsWith("@") ? by.indexOf(plugin.author) : -1;
-        text.append(by);
-        if (at >= 0) {
-            final String username = plugin.author.substring(1);
-            text.setSpan(new android.text.style.ClickableSpan() {
-                @Override
-                public void onClick(android.view.View widget) {
-                    org.telegram.messenger.browser.Browser.openUrl(context, "https://t.me/" + username);
-                }
-            }, at, at + plugin.author.length(), SpannableStringBuilder.SPAN_EXCLUSIVE_EXCLUSIVE);
-        }
-        text.append("\n\n");
-        // Описание из манифеста. Раньше его тут не было вовсе: человек видел
-        // имя, версию и список разрешений, но не то, что плагин делает, —
-        // то есть решал, пускать ли внутрь код, не зная зачем он.
-        if (plugin.description != null && plugin.description.length() > 0) {
-            text.append(plugin.description).append("\n\n");
-        }
+        text.append(LocaleController.formatString(R.string.MargeletPluginBy, plugin.author)).append("\n\n");
         if (existing != null) {
             text.append(LocaleController.formatString(R.string.MargeletPluginAlready, existing.version))
                     .append("\n\n");

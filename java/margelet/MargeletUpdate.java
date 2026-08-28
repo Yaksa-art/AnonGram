@@ -63,17 +63,6 @@ public class MargeletUpdate {
         public String about() {
             return MargeletRemote.localized(json, "about", "");
         }
-
-        /**
-         * Как выпуск называется для человека: «Пререлиз 1.0», «Бета 1.1».
-         *
-         * Отдельно от version, потому что version сравнивается числами. Нет
-         * метки — показываем само число, так было всегда и хуже не станет.
-         */
-        public String label() {
-            final String value = MargeletRemote.localized(json, "label", "");
-            return value == null || value.isEmpty() ? version : value;
-        }
     }
 
     private static SharedPreferences prefs() {

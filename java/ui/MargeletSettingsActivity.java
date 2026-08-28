@@ -52,9 +52,7 @@ public class MargeletSettingsActivity extends UniversalFragment {
 
     @Override
     protected CharSequence getTitle() {
-        // Имя берём из одного места на всё приложение: зашитое здесь
-        // пережило переименование и осталось старым.
-        return org.telegram.margelet.MargeletConfig.APP_NAME;
+        return "Margelet";
     }
 
     @Override

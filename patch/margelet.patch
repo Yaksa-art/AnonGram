@@ -734,10 +734,10 @@ index 00000000..a775cdbc
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
 new file mode 100644
-index 00000000..2ac9da8a
+index 00000000..96f2841e
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
-@@ -0,0 +1,428 @@
+@@ -0,0 +1,409 @@
 +package org.telegram.margelet;
 +
 +import android.content.Context;
@@ -757,7 +757,7 @@ index 00000000..2ac9da8a
 +    public static final int INPUT_LINES_DEFAULT = 6;
 +    public static final float INPUT_TEXT_SIZE_DEFAULT = 18f;
 +
-+    public static final String APP_NAME = "Margy";
++    public static final String APP_NAME = "Margelet";
 +
 +    /**
 +     * Номер этой сборки. По нему клиент понимает, что на гитхабе лежит версия
@@ -767,26 +767,7 @@ index 00000000..2ac9da8a
 +     * Забыть про него значит выпустить сборку, которая всю жизнь будет
 +     * предлагать обновиться сама на себя.
 +     */
-+    /**
-+     * Версия для сравнения. Только числа через точку — по ней решается, что
-+     * новее, а что старее.
-+     *
-+     * Показывается человеку не она, а {@link #versionLabel()}. Развести эти
-+     * два значения пришлось потому, что выпуск называется «Пререлиз 1.0», а
-+     * такую строку сравнить нельзя: разбор по точкам споткнётся о слово и
-+     * молча вернёт ноль. Один раз мы уже выпустили трижды подряд то, что ни
-+     * разу не выполнялось, — второй раз наступать на такое не будем.
-+     *
-+     * 0.99, а не 1.0, нарочно: настоящая единица должна остаться свободной
-+     * под настоящий выпуск, а пререлиз обязан быть строго меньше её.
-+     */
-+    public static final String APP_VERSION = "0.99";
-+
-+    /** Как выпуск называется для человека: «Пререлиз 1.0», «Бета 1.1». */
-+    public static String versionLabel() {
-+        return org.telegram.messenger.LocaleController.getString(
-+                org.telegram.messenger.R.string.MargeletVersionLabel);
-+    }
++    public static final String APP_VERSION = "0.3.6";
 +
 +    /**
 +     * Как часто спрашивать гитхаб про новую версию, в минутах. Ноль — не
@@ -2026,234 +2007,6 @@ index 00000000..33ff716b
 +        }
 +    }
 +}
-diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletGroup.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletGroup.java
-new file mode 100644
-index 00000000..e57639eb
---- /dev/null
-+++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletGroup.java
-@@ -0,0 +1,222 @@
-+package org.telegram.margelet;
-+
-+import org.telegram.messenger.AccountInstance;
-+import org.telegram.messenger.AndroidUtilities;
-+import org.telegram.messenger.FileLog;
-+import org.telegram.messenger.MessageObject;
-+import org.telegram.messenger.MessagesController;
-+import org.telegram.messenger.SendMessagesHelper;
-+import org.telegram.messenger.UserConfig;
-+import org.telegram.tgnet.ConnectionsManager;
-+import org.telegram.tgnet.TLRPC;
-+
-+import java.util.ArrayList;
-+import java.util.List;
-+
-+/**
-+ * Общая кладовая форка: публичная группа вместо своего сервера.
-+ *
-+ * Здесь живут баннеры профилей и стены. Своего сервера нет нарочно, и не
-+ * только из-за денег. Сервер не может проверить, что человек — это он: у него
-+ * нет способа спросить телеграм. Пришлось бы закреплять номер за тем, кто
-+ * пришёл первым, и честно писать, что чужой номер можно занять.
-+ *
-+ * В группе этой задачи нет вовсе. Сообщение уже подписано телеграмом: пришло
-+ * от аккаунта — значит от него. Подделать нельзя, проверять нечего. Владелец
-+ * это и предложил, и решение оказалось лучше моего.
-+ *
-+ * Своё сообщение человек удаляет сам, средствами телеграма, — значит «убрать
-+ * баннер» работает без единой строчки на нашей стороне.
-+ */
-+public class MargeletGroup {
-+
-+    /** Где всё лежит. Публичная группа, читать может кто угодно. */
-+    public static final String USERNAME = "margy_underground";
-+
-+    /** Метка баннера. Одна на всех: чей баннер — видно по автору сообщения. */
-+    public static final String TAG_BANNER = "#margy_banner";
-+
-+    /** Метка стены. Номер — того, О КОМ пишут, а не того, кто пишет. */
-+    public static String tagWall(long peerId) {
-+        return "#margy_wall_" + peerId;
-+    }
-+
-+    private static long groupId;
-+    private static boolean resolving;
-+
-+    public interface Peer {
-+        void onPeer(long dialogId);
-+    }
-+
-+    public interface Messages {
-+        /** Найденное, новое сверху. Пустой список — не нашли или не смогли. */
-+        void onMessages(List<MessageObject> messages);
-+    }
-+
-+    private static AccountInstance account() {
-+        return AccountInstance.getInstance(UserConfig.selectedAccount);
-+    }
-+
-+    /**
-+     * Находит группу по имени. Ответ приходит в главный поток.
-+     *
-+     * Найденное запоминаем: имя в адрес переводится запросом к серверу, и
-+     * делать его на каждый открытый профиль — то же самое, что опрашивать
-+     * впустую, от чего мы уходили в плагинах.
-+     */
-+    public static void resolve(Peer done) {
-+        if (groupId != 0) {
-+            done.onPeer(groupId);
-+            return;
-+        }
-+        if (resolving) {
-+            return;
-+        }
-+        resolving = true;
-+        AndroidUtilities.runOnUIThread(() -> {
-+            try {
-+                account().getMessagesController().getUserNameResolver().resolve(USERNAME, id -> {
-+                    resolving = false;
-+                    if (id != null && id != 0) {
-+                        groupId = id;
-+                        done.onPeer(groupId);
-+                    } else {
-+                        done.onPeer(0);
-+                    }
-+                });
-+            } catch (Throwable t) {
-+                FileLog.e(t);
-+                resolving = false;
-+                done.onPeer(0);
-+            }
-+        });
-+    }
-+
-+    /**
-+     * Ищет в группе сообщения с этой меткой.
-+     *
-+     * Ищет сервер, а не телефон: своими силами пришлось бы выкачать всю
-+     * группу. Метка с подчёркиваниями телеграму подходит — он считает её одним
-+     * тегом целиком, значит совпадение точное, а не «где-то встретилось».
-+     */
-+    public static void find(String tag, int limit, Messages done) {
-+        resolve(dialogId -> {
-+            if (dialogId == 0) {
-+                done.onMessages(new ArrayList<>());
-+                return;
-+            }
-+            final TLRPC.TL_messages_search req = new TLRPC.TL_messages_search();
-+            req.peer = account().getMessagesController().getInputPeer(dialogId);
-+            if (req.peer == null) {
-+                done.onMessages(new ArrayList<>());
-+                return;
-+            }
-+            req.q = tag;
-+            req.limit = limit;
-+            req.filter = new TLRPC.TL_inputMessagesFilterEmpty();
-+            account().getConnectionsManager().sendRequest(req, (response, error) ->
-+                    AndroidUtilities.runOnUIThread(() -> {
-+                        final List<MessageObject> out = new ArrayList<>();
-+                        if (error == null && response instanceof TLRPC.messages_Messages) {
-+                            final TLRPC.messages_Messages res = (TLRPC.messages_Messages) response;
-+                            account().getMessagesController().putUsers(res.users, false);
-+                            account().getMessagesController().putChats(res.chats, false);
-+                            for (TLRPC.Message message : res.messages) {
-+                                if (message == null) {
-+                                    continue;
-+                                }
-+                                out.add(new MessageObject(UserConfig.selectedAccount, message, true, true));
-+                            }
-+                        } else if (error != null) {
-+                            FileLog.e("margy: поиск в группе не вышел: " + error.text);
-+                        }
-+                        done.onMessages(out);
-+                    }));
-+        });
-+    }
-+
-+    /**
-+     * Пишет в группу от имени человека.
-+     *
-+     * Именно от имени человека, а не от бота: на этом и держится вся затея.
-+     * Подпись под сообщением ставит телеграм, и она же отвечает на вопрос,
-+     * чей это баннер и кто написал на стене.
-+     */
-+    public static void post(String text, Runnable done) {
-+        resolve(dialogId -> {
-+            if (dialogId == 0) {
-+                if (done != null) {
-+                    done.run();
-+                }
-+                return;
-+            }
-+            try {
-+                final SendMessagesHelper.SendMessageParams params =
-+                        SendMessagesHelper.SendMessageParams.of(text, dialogId);
-+                account().getSendMessagesHelper().sendMessage(params);
-+            } catch (Throwable t) {
-+                FileLog.e(t);
-+            }
-+            if (done != null) {
-+                done.run();
-+            }
-+        });
-+    }
-+
-+    /** Убрать своё сообщение из группы. Чужие удалять нечем — и не надо. */
-+    public static void remove(int messageId) {
-+        resolve(dialogId -> {
-+            if (dialogId == 0 || messageId == 0) {
-+                return;
-+            }
-+            try {
-+                final ArrayList<Integer> ids = new ArrayList<>();
-+                ids.add(messageId);
-+                // Ноль в конце — обычный режим переписки, тот же, каким
-+                // телеграм удаляет сообщения из своего же экрана чата.
-+                account().getMessagesController().deleteMessages(ids, null, null, dialogId,
-+                        0, true, 0);
-+            } catch (Throwable t) {
-+                FileLog.e(t);
-+            }
-+        });
-+    }
-+
-+    /** Тот ли это человек, чьё сообщение мы смотрим. */
-+    public static long authorOf(MessageObject message) {
-+        if (message == null || message.messageOwner == null) {
-+            return 0;
-+        }
-+        try {
-+            return MessageObject.getFromChatId(message.messageOwner);
-+        } catch (Throwable t) {
-+            return 0;
-+        }
-+    }
-+
-+    /**
-+     * Пропускаем ли это сообщение на показ.
-+     *
-+     * Проверка стоит на показе, а не только на отправке, и это не
-+     * перестраховка: написать в группу можно обычным телеграмом, мимо нашего
-+     * приложения. Тогда сообщение в группе останется, а на стене его не будет.
-+     */
-+    public static boolean showable(MessageObject message) {
-+        if (message == null || message.messageOwner == null) {
-+            return false;
-+        }
-+        final CharSequence text = message.messageOwner.message;
-+        final List<String> hidden = new ArrayList<>();
-+        try {
-+            if (message.messageOwner.entities != null) {
-+                for (TLRPC.MessageEntity entity : message.messageOwner.entities) {
-+                    if (entity instanceof TLRPC.TL_messageEntityTextUrl) {
-+                        hidden.add(((TLRPC.TL_messageEntityTextUrl) entity).url);
-+                    }
-+                }
-+            }
-+        } catch (Throwable ignored) {
-+        }
-+        return MargeletLinks.clean(text, hidden);
-+    }
-+}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletHooks.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletHooks.java
 new file mode 100644
 index 00000000..06ecbc8b
@@ -2672,192 +2425,6 @@ index 00000000..06ecbc8b
 +                FileLog.e(t);
 +            }
 +        });
-+    }
-+}
-diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletLinks.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletLinks.java
-new file mode 100644
-index 00000000..43524f9a
---- /dev/null
-+++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletLinks.java
-@@ -0,0 +1,180 @@
-+package org.telegram.margelet;
-+
-+import java.util.ArrayList;
-+import java.util.List;
-+import java.util.Locale;
-+
-+/**
-+ * Какие ссылки пускаем в стену и в баннеры, а какие нет.
-+ *
-+ * Разрешено ровно шесть мест: телеграм, ютуб, твиттер, реддит, вконтакте,
-+ * ватсап. Всё остальное — сообщение не уходит и не показывается. Правило
-+ * грубое нарочно: стена задумана как место, где о человеке говорят другие, и
-+ * первое, что туда понесут, — ссылки на развод.
-+ *
-+ * Две тонкости, без которых правило обходится одним движением, и обе учтены:
-+ *
-+ * Первая. В телеграме видимый текст ссылки и её адрес — разные вещи. Написать
-+ * «youtube.com», а вести на что угодно, может кто угодно. Поэтому проверяется
-+ * не только текст, но и адрес под ним, отдельным вызовом.
-+ *
-+ * Вторая. «youtube.com.scam.ru» — это не ютуб, это scam.ru. Сравнение «конец
-+ * адреса совпадает» без границы по точке само становится дырой, поэтому
-+ * совпадение засчитывается либо целиком, либо по точке слева.
-+ *
-+ * Чего это не умеет — сказано прямо, чтобы на него не рассчитывали сверх
-+ * меры: «пиши мне @кто-то» пройдёт, потому что телеграм разрешён, а «зайди на
-+ * скам точка ру» словами не поймает ни один такой список. Это работа для
-+ * бота-чистильщика и для бана, а не для проверки текста.
-+ */
-+public class MargeletLinks {
-+
-+    /** Разрешённые места. Сравнение идёт по концу имени, с границей по точке. */
-+    private static final String[] ALLOWED = {
-+            "t.me", "telegram.me", "telegram.org", "telegram.dog",
-+            "youtube.com", "youtu.be",
-+            "twitter.com", "x.com",
-+            "reddit.com", "redd.it",
-+            "vk.com", "vk.ru", "vk.me",
-+            "whatsapp.com", "wa.me",
-+    };
-+
-+    /**
-+     * Похоже ли это слово на адрес.
-+     *
-+     * Схему не требуем: «scam.ru/дай-денег» — такая же ссылка, как и с
-+     * «https://» впереди, и телеграм её тоже сделает нажимаемой. Требовать
-+     * схему значило бы ловить только вежливых.
-+     */
-+    private static boolean looksLikeUrl(String word) {
-+        final String lower = word.toLowerCase(Locale.ROOT);
-+        if (lower.startsWith("http://") || lower.startsWith("https://") || lower.startsWith("tg://")) {
-+            return true;
-+        }
-+        final int dot = lower.indexOf('.');
-+        if (dot <= 0 || dot == lower.length() - 1) {
-+            return false;
-+        }
-+        // Что-то вроде «имя.зона», где зона — буквы. «3.14» и «конец.» мимо.
-+        final String tail = lower.substring(dot + 1);
-+        int letters = 0;
-+        while (letters < tail.length() && Character.isLetter(tail.charAt(letters))) {
-+            letters++;
-+        }
-+        return letters >= 2;
-+    }
-+
-+    /** Имя хозяина адреса: без схемы, без пути, без порта и без «www.». */
-+    static String hostOf(String raw) {
-+        String value = raw.trim().toLowerCase(Locale.ROOT);
-+        final int scheme = value.indexOf("://");
-+        if (scheme >= 0) {
-+            value = value.substring(scheme + 3);
-+        }
-+        final int at = value.indexOf('@');
-+        if (at >= 0) {
-+            // «user@host» — хозяин тот, что справа, и обманывать этим не дадим.
-+            value = value.substring(at + 1);
-+        }
-+        int end = value.length();
-+        for (int i = 0; i < value.length(); i++) {
-+            final char c = value.charAt(i);
-+            if (c == '/' || c == '?' || c == '#' || c == ':') {
-+                end = i;
-+                break;
-+            }
-+        }
-+        value = value.substring(0, end);
-+        if (value.startsWith("www.")) {
-+            value = value.substring(4);
-+        }
-+        while (value.endsWith(".")) {
-+            value = value.substring(0, value.length() - 1);
-+        }
-+        return value;
-+    }
-+
-+    /** Разрешено ли это место. Совпадение целиком или по точке слева. */
-+    public static boolean allowed(String url) {
-+        final String host = hostOf(url);
-+        if (host.isEmpty()) {
-+            return true;        // не адрес — не наше дело
-+        }
-+        for (String good : ALLOWED) {
-+            if (host.equals(good) || host.endsWith("." + good)) {
-+                return true;
-+            }
-+        }
-+        return false;
-+    }
-+
-+    /** Все слова текста, похожие на адреса. */
-+    public static List<String> urlsIn(CharSequence text) {
-+        final List<String> found = new ArrayList<>();
-+        if (text == null) {
-+            return found;
-+        }
-+        final String value = text.toString();
-+        int i = 0;
-+        while (i < value.length()) {
-+            while (i < value.length() && Character.isWhitespace(value.charAt(i))) {
-+                i++;
-+            }
-+            final int start = i;
-+            while (i < value.length() && !Character.isWhitespace(value.charAt(i))) {
-+                i++;
-+            }
-+            if (i > start) {
-+                // Знаки в конце слова к адресу не относятся: «зайди на vk.com,»
-+                String word = value.substring(start, i);
-+                while (word.length() > 0 && ",.;:!?)»\"'".indexOf(word.charAt(word.length() - 1)) >= 0) {
-+                    word = word.substring(0, word.length() - 1);
-+                }
-+                if (looksLikeUrl(word)) {
-+                    found.add(word);
-+                }
-+            }
-+        }
-+        return found;
-+    }
-+
-+    /**
-+     * Можно ли пускать это сообщение.
-+     *
-+     * @param text  видимый текст
-+     * @param links адреса, спрятанные под текстом: в телеграме это разные вещи,
-+     *              и проверять только видимое — значит не проверять ничего
-+     */
-+    public static boolean clean(CharSequence text, List<String> links) {
-+        for (String url : urlsIn(text)) {
-+            if (!allowed(url)) {
-+                return false;
-+            }
-+        }
-+        if (links != null) {
-+            for (String url : links) {
-+                if (url != null && !allowed(url)) {
-+                    return false;
-+                }
-+            }
-+        }
-+        return true;
-+    }
-+
-+    /** Первый запрещённый адрес — чтобы сказать человеку, что именно не так. */
-+    public static String firstBad(CharSequence text, List<String> links) {
-+        for (String url : urlsIn(text)) {
-+            if (!allowed(url)) {
-+                return hostOf(url);
-+            }
-+        }
-+        if (links != null) {
-+            for (String url : links) {
-+                if (url != null && !allowed(url)) {
-+                    return hostOf(url);
-+                }
-+            }
-+        }
-+        return null;
 +    }
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletMarkup.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletMarkup.java
@@ -4177,10 +3744,10 @@ index 00000000..cfc704d6
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletPlugins.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletPlugins.java
 new file mode 100644
-index 00000000..8047f8c2
+index 00000000..cf7482e0
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletPlugins.java
-@@ -0,0 +1,645 @@
+@@ -0,0 +1,623 @@
 +package org.telegram.margelet;
 +
 +import android.content.Context;
@@ -4617,29 +4184,7 @@ index 00000000..8047f8c2
 +        final boolean[] keep = { false };
 +        final Runnable[] show = new Runnable[1];
 +        final SpannableStringBuilder text = new SpannableStringBuilder();
-+        // Автор. Если он назвался юзернеймом — по нему можно нажать и попасть
-+        // в его профиль. Человек, ставящий чужой код себе в переписку, вправе
-+        // сперва посмотреть, кто это, не выходя из окна и не переписывая имя
-+        // руками.
-+        final String by = LocaleController.formatString(R.string.MargeletPluginBy, plugin.author);
-+        final int at = plugin.author != null && plugin.author.startsWith("@") ? by.indexOf(plugin.author) : -1;
-+        text.append(by);
-+        if (at >= 0) {
-+            final String username = plugin.author.substring(1);
-+            text.setSpan(new android.text.style.ClickableSpan() {
-+                @Override
-+                public void onClick(android.view.View widget) {
-+                    org.telegram.messenger.browser.Browser.openUrl(context, "https://t.me/" + username);
-+                }
-+            }, at, at + plugin.author.length(), SpannableStringBuilder.SPAN_EXCLUSIVE_EXCLUSIVE);
-+        }
-+        text.append("\n\n");
-+        // Описание из манифеста. Раньше его тут не было вовсе: человек видел
-+        // имя, версию и список разрешений, но не то, что плагин делает, —
-+        // то есть решал, пускать ли внутрь код, не зная зачем он.
-+        if (plugin.description != null && plugin.description.length() > 0) {
-+            text.append(plugin.description).append("\n\n");
-+        }
++        text.append(LocaleController.formatString(R.string.MargeletPluginBy, plugin.author)).append("\n\n");
 +        if (existing != null) {
 +            text.append(LocaleController.formatString(R.string.MargeletPluginAlready, existing.version))
 +                    .append("\n\n");
@@ -6005,10 +5550,10 @@ index 00000000..dd5e0a34
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletUpdate.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletUpdate.java
 new file mode 100644
-index 00000000..2d6de6b2
+index 00000000..e19f4958
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletUpdate.java
-@@ -0,0 +1,334 @@
+@@ -0,0 +1,323 @@
 +package org.telegram.margelet;
 +
 +import android.app.Activity;
@@ -6073,17 +5618,6 @@ index 00000000..2d6de6b2
 +        /** Что нового — строкой на языке приложения. Может быть пустым. */
 +        public String about() {
 +            return MargeletRemote.localized(json, "about", "");
-+        }
-+
-+        /**
-+         * Как выпуск называется для человека: «Пререлиз 1.0», «Бета 1.1».
-+         *
-+         * Отдельно от version, потому что version сравнивается числами. Нет
-+         * метки — показываем само число, так было всегда и хуже не станет.
-+         */
-+        public String label() {
-+            final String value = MargeletRemote.localized(json, "label", "");
-+            return value == null || value.isEmpty() ? version : value;
 +        }
 +    }
 +
@@ -9734,10 +9268,10 @@ index 00000000..397f3a69
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletSettingsActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletSettingsActivity.java
 new file mode 100644
-index 00000000..9e8b1795
+index 00000000..50943e22
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletSettingsActivity.java
-@@ -0,0 +1,204 @@
+@@ -0,0 +1,202 @@
 +package org.telegram.ui;
 +
 +import android.view.Gravity;
@@ -9792,9 +9326,7 @@ index 00000000..9e8b1795
 +
 +    @Override
 +    protected CharSequence getTitle() {
-+        // Имя берём из одного места на всё приложение: зашитое здесь
-+        // пережило переименование и осталось старым.
-+        return org.telegram.margelet.MargeletConfig.APP_NAME;
++        return "Margelet";
 +    }
 +
 +    @Override
@@ -10597,7 +10129,7 @@ index 00000000..935fb432
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletUpdatesActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletUpdatesActivity.java
 new file mode 100644
-index 00000000..82162ac5
+index 00000000..6afd87f2
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletUpdatesActivity.java
 @@ -0,0 +1,170 @@
@@ -10667,7 +10199,7 @@ index 00000000..82162ac5
 +        // Показываем и свой номер, и версию телеграма, на которой собрано:
 +        // без второго числа непонятно, из какого исходника выросла сборка.
 +        items.add(UItem.asShadow(LocaleController.formatString(R.string.MargeletUpdatesCurrent,
-+                MargeletConfig.versionLabel())
++                MargeletConfig.APP_VERSION)
 +                + "\n"
 +                + LocaleController.formatString(R.string.MargeletUpdatesBased,
 +                        BuildVars.BUILD_VERSION_STRING)));
@@ -10725,7 +10257,7 @@ index 00000000..82162ac5
 +            text.append(about);
 +        }
 +        final AlertDialog.Builder builder = new AlertDialog.Builder(getContext())
-+                .setTitle(LocaleController.formatString(R.string.MargeletUpdatesFound, info.label()))
++                .setTitle(LocaleController.formatString(R.string.MargeletUpdatesFound, info.version))
 +                .setMessage(text.length() > 0 ? text.toString()
 +                        : LocaleController.getString(R.string.MargeletUpdatesAbout))
 +                .setNegativeButton(LocaleController.getString(R.string.MargeletLater), null);
@@ -10772,7 +10304,7 @@ index 00000000..82162ac5
 +    }
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java
-index 40634647..6c589f87 100644
+index 40634647..6cb2ad45 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java
 @@ -626,6 +626,21 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
@@ -11033,7 +10565,7 @@ index 40634647..6c589f87 100644
                      } else if (position == dataRow) {
                          textCell.setTextAndIcon(LocaleController.getString(R.string.DataSettings), R.drawable.msg2_data, true);
 +                    } else if (position == margeletRow) {
-+                        textCell.setTextAndIcon(org.telegram.margelet.MargeletConfig.APP_NAME, R.drawable.msg2_animations, true);
++                        textCell.setTextAndIcon("Margelet", R.drawable.msg2_animations, true);
                      } else if (position == chatRow) {
                          textCell.setTextAndIcon(LocaleController.getString(R.string.ChatSettings), R.drawable.msg2_discussion, true);
                      } else if (position == filtersRow) {
@@ -11079,7 +10611,7 @@ index 40634647..6c589f87 100644
                  return VIEW_TYPE_SHADOW;
              } else if (position >= membersStartRow && position < membersEndRow) {
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/SettingsActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/SettingsActivity.java
-index cbfb369a..b9de3d85 100644
+index cbfb369a..3a8ec785 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/SettingsActivity.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/SettingsActivity.java
 @@ -536,11 +536,11 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
@@ -11096,19 +10628,18 @@ index cbfb369a..b9de3d85 100644
          }
          subtitleView.setText(sb);
  
-@@ -688,6 +688,11 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
+@@ -688,6 +688,10 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
              items.add(UItem.asShadow(null));
          }
  
 +        // Свой раздел стоит первым — так просил владелец. Номер строки взят
 +        // с запасом от чужих: телеграм нумерует их подряд, и если однажды у
 +        // них появится одиннадцатая, наша тысяча первая с ней не столкнётся.
-+        items.add(SettingCell.Factory.of(1001, IconBackgroundColors.GREEN.top, IconBackgroundColors.GREEN.bottom, R.drawable.settings_features, org.telegram.margelet.MargeletConfig.APP_NAME,
-+                getString(R.string.MargeletSettings)));
++        items.add(SettingCell.Factory.of(1001, IconBackgroundColors.GREEN.top, IconBackgroundColors.GREEN.bottom, R.drawable.settings_features, "Margelet", "Настройки форка"));
          items.add(SettingCell.Factory.of(1, IconBackgroundColors.BLUE.top, IconBackgroundColors.BLUE.bottom, R.drawable.settings_account, getString(R.string.SettingsAccount), getString(R.string.SettingsAccountInfo)));
          items.add(SettingCell.Factory.of(2, IconBackgroundColors.ORANGE.top, IconBackgroundColors.ORANGE.bottom, R.drawable.settings_chat, getString(R.string.SettingsChat), getString(R.string.SettingsChatInfo)));
          items.add(SettingCell.Factory.of(3, IconBackgroundColors.GREEN.top, IconBackgroundColors.GREEN.bottom, R.drawable.settings_privacy, getString(R.string.SettingsPrivacySecurity), getString(R.string.SettingsPrivacySecurityInfo)));
-@@ -836,6 +841,9 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
+@@ -836,6 +840,9 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
              case 10:
                  presentSettingFragment(new LanguageSelectActivity());
                  break;
@@ -19488,7 +19019,7 @@ index 03d0ba33..17f98fa6 100644
      <string name="English">Inglês</string>
      <string name="LanguageNameInEnglish">Portuguese (Brazil)</string>
 diff --git a/TMessagesProj/src/main/res/values-ru/strings.xml b/TMessagesProj/src/main/res/values-ru/strings.xml
-index 24c56292..8effaca9 100644
+index 24c56292..5fece35b 100644
 --- a/TMessagesProj/src/main/res/values-ru/strings.xml
 +++ b/TMessagesProj/src/main/res/values-ru/strings.xml
 @@ -1,7 +1,7 @@
@@ -19496,12 +19027,12 @@ index 24c56292..8effaca9 100644
  <resources>
 -    <string name="AppName">Telegram</string>
 -    <string name="AppNameBeta">Telegram Beta</string>
-+    <string name="AppName">Margy</string>
-+    <string name="AppNameBeta">Margy</string>
++    <string name="AppName">Margelet</string>
++    <string name="AppNameBeta">Margelet</string>
      <string name="LanguageName">Русский</string>
      <string name="English">Английский</string>
      <string name="LanguageNameInEnglish">Russian</string>
-@@ -263,4 +263,202 @@
+@@ -263,4 +263,201 @@
      <string name="RemindTodayAt">\'Отправить сегодня в\' HH:mm</string>
      <string name="RemindDayAt">\'Отправить\' d MMM \'в\' HH:mm</string>
      <string name="RemindDayYearAt">\'Напомнить\' d MMM yyyy \'в\' HH:mm</string>
@@ -19522,7 +19053,6 @@ index 24c56292..8effaca9 100644
 +    <string name="MargeletUpdatesOff">Никогда</string>
 +    <string name="MargeletUpdatesAbout">Приложение спрашивает гитхаб, не вышла ли версия новее и не изменился ли список значков. Новую версию предлагает полоской внизу списка чатов; само ничего не качает и не ставит.</string>
 +    <string name="MargeletUpdatesNow">Проверить сейчас</string>
-+    <string name="MargeletVersionLabel">Пререлиз 1.0</string>
 +    <string name="MargeletUpdatesDownload">Скачать и установить</string>
 +    <string name="MargeletUpdatesInstall">Установить</string>
 +    <string name="MargeletUpdatesFailed">Не удалось скачать обновление</string>
@@ -19572,8 +19102,8 @@ index 24c56292..8effaca9 100644
 +    <string name="MargeletIconSand">Песочная</string>
 +    <string name="MargeletIconSea">Морская</string>
 +    <string name="MargeletIconRose">Розовая</string>
-+    <string name="MargeletCatAddYours">Хочешь свою кошку в Margy? Напиши @narezany</string>
-+    <string name="MargeletCatAskText">Привет! Хочу добавить свою кошку в Margy. Описание: </string>
++    <string name="MargeletCatAddYours">Хочешь свою кошку в Margelet? Напиши @narezany</string>
++    <string name="MargeletCatAskText">Привет! Хочу добавить свою кошку в Margelet. Описание: </string>
 +    <string name="MargeletCatAskTail"> — фото прикладываю.</string>
 +    <string name="MargeletCatOne">грецкий орех</string>
 +    <string name="MargeletCatTwo">ыжвдвдыбабв😡😡😡</string>
@@ -19594,18 +19124,18 @@ index 24c56292..8effaca9 100644
 +    <string name="MargeletProfilesInfo">Что ещё показывать в профиле</string>
 +    <string name="MargeletShowIds">Показывать айди</string>
 +    <string name="MargeletShowIdsAbout">Строка с числовым айди в профилях людей, ботов, групп и каналов. Нажатие копирует.</string>
-+    <string name="MargeletBadgeTitle">Создатель Margy</string>
-+    <string name="MargeletBadgeAbout">Нарезанный сделал Margy, поэтому у него такой значок.</string>
++    <string name="MargeletBadgeTitle">Создатель Margelet</string>
++    <string name="MargeletBadgeAbout">Нарезанный сделал Margelet, поэтому у него такой значок.</string>
 +    <string name="MargeletBadgeFriendTitle">Лучший друг нареза</string>
 +    <string name="MargeletBadgeFriendAbout">Лучший друг Нарезанного. Отсюда и значок.</string>
-+    <string name="MargeletBadgeChannelTitle">Канал Margy</string>
-+    <string name="MargeletBadgeChannelAbout">Единственный официальный канал Margy.</string>
-+    <string name="MargeletBadgeForumTitle">Форум Margy</string>
-+    <string name="MargeletBadgeForumAbout">Единственный официальный форум Margy.</string>
-+    <string name="MargeletBadgeRow">Значок Margy</string>
-+    <string name="MargeletBadgeCatTitle">Кот в Margy</string>
++    <string name="MargeletBadgeChannelTitle">Канал Margelet</string>
++    <string name="MargeletBadgeChannelAbout">Единственный официальный канал Margelet.</string>
++    <string name="MargeletBadgeForumTitle">Форум Margelet</string>
++    <string name="MargeletBadgeForumAbout">Единственный официальный форум Margelet.</string>
++    <string name="MargeletBadgeRow">Значок Margelet</string>
++    <string name="MargeletBadgeCatTitle">Кот в Margelet</string>
 +    <string name="MargeletBadgeCatAbout">Кот этого человека живёт в приложении.</string>
-+    <string name="MargeletBadges">Значки Margy</string>
++    <string name="MargeletBadges">Значки Margelet</string>
 +    <string name="MargeletBadgesAbout">Значки у имён в профилях и в списке чатов.</string>
 +    <string name="MargeletCatFrom">Кот от %1$s</string>
 +    <string name="MargeletMarkupSize">Размер</string>
@@ -19620,13 +19150,13 @@ index 24c56292..8effaca9 100644
 +    <string name="MargeletMarkdownInfo">Что превращать в оформление при отправке</string>
 +    <string name="MargeletMarkdownQuote">Цитата</string>
 +    <string name="MargeletMarkdownQuoteCollapsed">Свёрнутая цитата</string>
-+    <string name="MargeletMarkdownAbout">Выключенный вид остаётся в тексте как есть.\n\nЗначки для подчёркивания и цитат придуманы форком, но само оформление настоящее и уходит на сервер: его видят все, а не только Margy.</string>
++    <string name="MargeletMarkdownAbout">Выключенный вид остаётся в тексте как есть.\n\nЗначки для подчёркивания и цитат придуманы форком, но само оформление настоящее и уходит на сервер: его видят все, а не только Margelet.</string>
 +    <string name="MargeletBadgeGallery">Все значки</string>
 +    <string name="MargeletBadgeGalleryInfo">Посмотреть, какие бывают</string>
 +    <string name="MargeletFreeEmoji">Премиум-значки без премиума</string>
-+    <string name="MargeletFreeEmojiAbout">Ставить платные значки в свои сообщения. Их увидят только в Margy: сервер такую пометку у не-премиума не пропускает, остальным придёт запасной символ.</string>
++    <string name="MargeletFreeEmojiAbout">Ставить платные значки в свои сообщения. Их увидят только в Margelet: сервер такую пометку у не-премиума не пропускает, остальным придёт запасной символ.</string>
 +    <string name="MargeletEmojiWarnTitle">Премиум-значки</string>
-+    <string name="MargeletEmojiWarnText">Премиума у вас от этого не появится. Значок увидят только в Margy, всем остальным придёт обычный запасной символ.</string>
++    <string name="MargeletEmojiWarnText">Премиума у вас от этого не появится. Значок увидят только в Margelet, всем остальным придёт обычный запасной символ.</string>
 +    <string name="MargeletMarkup">Оформление</string>
 +    <string name="MargeletMarkupInfo">Своё оформление текста</string>
 +    <string name="MargeletMarkupAbout">Что показывать в чужих сообщениях. Отправлять можно в любом случае.</string>
@@ -19634,19 +19164,19 @@ index 24c56292..8effaca9 100644
 +    <string name="MargeletWatermarkSend">Ставить ватермарку</string>
 +    <string name="MargeletWatermarkSendAbout">Ставится только на сообщения со своим оформлением форка — размером, затемнением, радугой, кнопкой. На обычные сообщения и на жирный с курсивом не ставится.\n\nВыглядит так:\n&lt;! Message looks better with @margeletter! &gt;</string>
 +    <string name="MargeletWatermarkAskTitle">Просьба</string>
-+    <string name="MargeletWatermarkAskText">Margy — начинающий проект, и узнают о нём в основном по этой строке. Автор просит её оставить.\n\nНо это ваше сообщение и ваше решение.</string>
++    <string name="MargeletWatermarkAskText">Margelet — начинающий проект, и узнают о нём в основном по этой строке. Автор просит её оставить.\n\nНо это ваше сообщение и ваше решение.</string>
 +    <string name="MargeletWatermarkKeep">Оставлю</string>
 +    <string name="MargeletWatermarkOff">Всё равно выключить</string>
-+    <string name="MargeletStickers">Стикеры Margy</string>
++    <string name="MargeletStickers">Стикеры Margelet</string>
 +    <string name="MargeletStickersAdd">Добавить набор</string>
 +    <string name="MargeletStickersAbout">Откроет набор в телеграме, дальше добавляется как любой другой.</string>
 +    <string name="MargeletWatermarksAbout">Строка со ссылкой на форк в конце оформленных сообщений. Её видят те, у кого форка нет.</string>
 +    <string name="MargeletCopyFormatted">Копировать с оформлением</string>
 +    <string name="MargeletCopyFormattedAbout">Пункт в меню сообщения. Обычное копирование кладёт голый текст, этот — с жирным, курсивом, ссылками и нашим оформлением.</string>
 +    <string name="MargeletAboutTitle">Что это</string>
-+    <string name="MargeletAboutText">Margy (ранее Margelet) — форк телеграма с кучей своего: оформление текста, теги у музыки, режим стримера, удалённые подарки и прочее.\n\nСделал @narezany.\n\nИ да: никогда не нажимай на название на главном экране и никогда не долби по кнопке «Чаты».</string>
++    <string name="MargeletAboutText">Margelet — форк телеграма с кучей своего: оформление текста, теги у музыки, режим стримера, удалённые подарки и прочее.\n\nСделал @narezany.\n\nИ да: никогда не нажимай на название на главном экране и никогда не долби по кнопке «Чаты».</string>
 +    <string name="MargeletMarkupWarnTitle">Своё оформление</string>
-+    <string name="MargeletMarkupWarnText">Это оформление понимает только Margy. У остальных текст придёт обычным, без него, плюс строка со ссылкой на форк в начале сообщения.</string>
++    <string name="MargeletMarkupWarnText">Это оформление понимает только Margelet. У остальных текст придёт обычным, без него, плюс строка со ссылкой на форк в начале сообщения.</string>
 +    <string name="MargeletDonate">Донат</string>
 +    <string name="MargeletDonateInfo">Если хочется поддержать форк</string>
 +    <string name="MargeletDonateYoomoney">ЮMoney</string>
@@ -19677,8 +19207,8 @@ index 24c56292..8effaca9 100644
 +    <string name="MargeletPluginAlreadyRestart">Та версия, что уже работает, доработает до перезапуска приложения.</string>
 +    <string name="MargeletPluginUpdateOk">Заменить</string>
 +    <string name="MargeletPluginInstallAndRun">Поставить и включить</string>
-+    <string name="MargeletPluginTooOld">Плагину нужен Margy %1$s или новее. У вас %2$s.</string>
-+    <string name="MargeletPluginsRestart">Перезапустить Margy</string>
++    <string name="MargeletPluginTooOld">Плагину нужен Margelet %1$s или новее. У вас %2$s.</string>
++    <string name="MargeletPluginsRestart">Перезапустить Margelet</string>
 +    <string name="MargeletPluginsRestartAbout">Плагин поднимается только при запуске приложения, а выключенный доживает до него же: остановить работающий код нечем. Поэтому включение и выключение требуют перезапуска.</string>
 +    <string name="MargeletPluginNoSettings">Настраивать в этом плагине нечего.</string>
 +    <string name="MargeletPluginViewSource">Посмотреть архив</string>
@@ -19721,10 +19251,10 @@ index d4683443..57d10109 100644
      <string name="LanguageNameInEnglish">Ukrainian</string>
 diff --git a/TMessagesProj/src/main/res/values-zh/strings.xml b/TMessagesProj/src/main/res/values-zh/strings.xml
 new file mode 100644
-index 00000000..a4ce2b75
+index 00000000..c40463b9
 --- /dev/null
 +++ b/TMessagesProj/src/main/res/values-zh/strings.xml
-@@ -0,0 +1,201 @@
+@@ -0,0 +1,200 @@
 +<?xml version="1.0" encoding="utf-8"?>
 +<resources>
 +    <string name="MargeletSettings">分支设置</string>
@@ -19744,7 +19274,6 @@ index 00000000..a4ce2b75
 +    <string name="MargeletUpdatesOff">从不</string>
 +    <string name="MargeletUpdatesAbout">应用会去 GitHub 问有没有更新的版本、徽章列表有没有变化。新版本会在聊天列表底部用一条横幅提示；应用不会自行下载或安装。</string>
 +    <string name="MargeletUpdatesNow">立即检查</string>
-+    <string name="MargeletVersionLabel">预发布 1.0</string>
 +    <string name="MargeletUpdatesDownload">下载并安装</string>
 +    <string name="MargeletUpdatesInstall">安装</string>
 +    <string name="MargeletUpdatesFailed">无法下载更新</string>
@@ -19794,8 +19323,8 @@ index 00000000..a4ce2b75
 +    <string name="MargeletIconSand">沙色</string>
 +    <string name="MargeletIconSea">海色</string>
 +    <string name="MargeletIconRose">玫瑰色</string>
-+    <string name="MargeletCatAddYours">想让自己的猫进 Margy？写给 @narezany</string>
-+    <string name="MargeletCatAskText">你好！我想把我的猫加进 Margy。描述： </string>
++    <string name="MargeletCatAddYours">想让自己的猫进 Margelet？写给 @narezany</string>
++    <string name="MargeletCatAskText">你好！我想把我的猫加进 Margelet。描述： </string>
 +    <string name="MargeletCatAskTail"> —— 照片附上。</string>
 +    <string name="MargeletCatOne">核桃</string>
 +    <string name="MargeletCatTwo">ыжвдвдыбабв😡😡😡</string>
@@ -19816,18 +19345,18 @@ index 00000000..a4ce2b75
 +    <string name="MargeletProfilesInfo">资料页上还显示些什么</string>
 +    <string name="MargeletShowIds">显示 ID</string>
 +    <string name="MargeletShowIdsAbout">在人、机器人、群组和频道的资料里加一行数字 id。点一下复制。</string>
-+    <string name="MargeletBadgeTitle">Margy 作者</string>
-+    <string name="MargeletBadgeAbout">Margy 是 narezany 做的，所以徽章归他。</string>
++    <string name="MargeletBadgeTitle">Margelet 作者</string>
++    <string name="MargeletBadgeAbout">Margelet 是 narezany 做的，所以徽章归他。</string>
 +    <string name="MargeletBadgeFriendTitle">narezany 最好的朋友</string>
 +    <string name="MargeletBadgeFriendAbout">narezany 最好的朋友。徽章由此而来。</string>
-+    <string name="MargeletBadgeChannelTitle">Margy 频道</string>
-+    <string name="MargeletBadgeChannelAbout">唯一的官方 Margy 频道。</string>
-+    <string name="MargeletBadgeForumTitle">Margy 论坛</string>
-+    <string name="MargeletBadgeForumAbout">唯一的官方 Margy 论坛。</string>
-+    <string name="MargeletBadgeRow">Margy 徽章</string>
-+    <string name="MargeletBadgeCatTitle">一只进了 Margy 的猫</string>
++    <string name="MargeletBadgeChannelTitle">Margelet 频道</string>
++    <string name="MargeletBadgeChannelAbout">唯一的官方 Margelet 频道。</string>
++    <string name="MargeletBadgeForumTitle">Margelet 论坛</string>
++    <string name="MargeletBadgeForumAbout">唯一的官方 Margelet 论坛。</string>
++    <string name="MargeletBadgeRow">Margelet 徽章</string>
++    <string name="MargeletBadgeCatTitle">一只进了 Margelet 的猫</string>
 +    <string name="MargeletBadgeCatAbout">这个人的猫住在应用里。</string>
-+    <string name="MargeletBadges">Margy 徽章</string>
++    <string name="MargeletBadges">Margelet 徽章</string>
 +    <string name="MargeletBadgesAbout">资料页和聊天列表里名字旁边的徽章。</string>
 +    <string name="MargeletCatFrom">%1$s 的猫</string>
 +    <string name="MargeletMarkupSize">字号</string>
@@ -19842,13 +19371,13 @@ index 00000000..a4ce2b75
 +    <string name="MargeletMarkdownInfo">发送时哪些写法会变成格式</string>
 +    <string name="MargeletMarkdownQuote">引用</string>
 +    <string name="MargeletMarkdownQuoteCollapsed">折叠的引用</string>
-+    <string name="MargeletMarkdownAbout">关掉的那一种会照你打的原样留在文本里。\n\n下划线和引用的简写是本分支自己的，但格式本身是真的，会发到服务器：所有人都看得见，不只是 Margy。</string>
++    <string name="MargeletMarkdownAbout">关掉的那一种会照你打的原样留在文本里。\n\n下划线和引用的简写是本分支自己的，但格式本身是真的，会发到服务器：所有人都看得见，不只是 Margelet。</string>
 +    <string name="MargeletBadgeGallery">所有徽章</string>
 +    <string name="MargeletBadgeGalleryInfo">看看都有些什么</string>
 +    <string name="MargeletFreeEmoji">没有会员也能用会员表情</string>
-+    <string name="MargeletFreeEmojiAbout">把付费表情放进你的消息。只有 Margy 会显示它们：服务器不接受非会员账号的这个标记，其他人看到的是替代字符。</string>
++    <string name="MargeletFreeEmojiAbout">把付费表情放进你的消息。只有 Margelet 会显示它们：服务器不接受非会员账号的这个标记，其他人看到的是替代字符。</string>
 +    <string name="MargeletEmojiWarnTitle">会员表情</string>
-+    <string name="MargeletEmojiWarnText">这不会给你会员。只有 Margy 会显示这些表情，别人看到的是普通的替代字符。</string>
++    <string name="MargeletEmojiWarnText">这不会给你会员。只有 Margelet 会显示这些表情，别人看到的是普通的替代字符。</string>
 +    <string name="MargeletMarkup">格式</string>
 +    <string name="MargeletMarkupInfo">本分支的文本格式</string>
 +    <string name="MargeletMarkupAbout">别人的消息里显示哪些。发送始终允许。</string>
@@ -19856,19 +19385,19 @@ index 00000000..a4ce2b75
 +    <string name="MargeletWatermarkSend">加上水印</string>
 +    <string name="MargeletWatermarkSendAbout">只加在用了本分支自有格式的消息上——字号、变暗、彩虹、按钮。普通消息，以及 Telegram 自己的粗体斜体，不会加。\n\n它长这样：\n&lt;! Message looks better with @margeletter! &gt;</string>
 +    <string name="MargeletWatermarkAskTitle">一个请求</string>
-+    <string name="MargeletWatermarkAskText">Margy 是个年轻的项目，大家多半是通过那行字才知道它的。作者请你留着。\n\n但这是你的消息，你说了算。</string>
++    <string name="MargeletWatermarkAskText">Margelet 是个年轻的项目，大家多半是通过那行字才知道它的。作者请你留着。\n\n但这是你的消息，你说了算。</string>
 +    <string name="MargeletWatermarkKeep">我留着</string>
 +    <string name="MargeletWatermarkOff">还是关掉</string>
-+    <string name="MargeletStickers">Margy 贴纸</string>
++    <string name="MargeletStickers">Margelet 贴纸</string>
 +    <string name="MargeletStickersAdd">添加贴纸包</string>
 +    <string name="MargeletStickersAbout">会在 Telegram 里打开这个贴纸包，之后就和别的包一样添加。</string>
 +    <string name="MargeletWatermarksAbout">带格式的消息末尾那行指向本分支的字。没装本分支的人会看到它。</string>
 +    <string name="MargeletCopyFormatted">带格式复制</string>
 +    <string name="MargeletCopyFormattedAbout">消息菜单里的一项。普通复制给的是纯文本，这个会保留粗体、斜体、链接和我们自己的格式。</string>
 +    <string name="MargeletAboutTitle">这是什么</string>
-+    <string name="MargeletAboutText">Margy（原 Margelet）是一个 Telegram 分支，塞了一堆自己的东西：文本格式、音乐标签、主播模式、下架的礼物等等。\n\n作者 @narezany。\n\n还有：千万别点主界面上的标题，也别猛戳“聊天”按钮。</string>
++    <string name="MargeletAboutText">Margelet 是一个 Telegram 分支，塞了一堆自己的东西：文本格式、音乐标签、主播模式、下架的礼物等等。\n\n作者 @narezany。\n\n还有：千万别点主界面上的标题，也别猛戳“聊天”按钮。</string>
 +    <string name="MargeletMarkupWarnTitle">自有格式</string>
-+    <string name="MargeletMarkupWarnText">这种格式只有 Margy 认得。其他人收到的是没有格式的纯文本，外加消息开头一行指向本分支的字。</string>
++    <string name="MargeletMarkupWarnText">这种格式只有 Margelet 认得。其他人收到的是没有格式的纯文本，外加消息开头一行指向本分支的字。</string>
 +    <string name="MargeletDonate">捐赠</string>
 +    <string name="MargeletDonateInfo">如果想支持这个分支</string>
 +    <string name="MargeletDonateYoomoney">YooMoney</string>
@@ -19899,8 +19428,8 @@ index 00000000..a4ce2b75
 +    <string name="MargeletPluginAlreadyRestart">已在运行的那一份会继续运行，直到应用重启。</string>
 +    <string name="MargeletPluginUpdateOk">替换</string>
 +    <string name="MargeletPluginInstallAndRun">安装并启用</string>
-+    <string name="MargeletPluginTooOld">该插件需要 Margy %1$s 或更新版本，你的是 %2$s。</string>
-+    <string name="MargeletPluginsRestart">重启 Margy</string>
++    <string name="MargeletPluginTooOld">该插件需要 Margelet %1$s 或更新版本，你的是 %2$s。</string>
++    <string name="MargeletPluginsRestart">重启 Margelet</string>
 +    <string name="MargeletPluginsRestartAbout">插件只在应用启动时加载，而被关闭的插件会一直运行到下次启动：没有办法停止已在运行的代码。因此开关插件都需要重启。</string>
 +    <string name="MargeletPluginNoSettings">这个插件没有可设置的项目。</string>
 +    <string name="MargeletPluginViewSource">查看压缩包</string>
@@ -19943,7 +19472,7 @@ index cc49d135..a8a51c3a 100644
      <item name="menu_regular" type="id"/>
      <item name="menu_bold" type="id"/>
 diff --git a/TMessagesProj/src/main/res/values/strings.xml b/TMessagesProj/src/main/res/values/strings.xml
-index ffa4d566..b8f5da5c 100644
+index ffa4d566..37342d60 100644
 --- a/TMessagesProj/src/main/res/values/strings.xml
 +++ b/TMessagesProj/src/main/res/values/strings.xml
 @@ -1,7 +1,7 @@
@@ -19951,12 +19480,12 @@ index ffa4d566..b8f5da5c 100644
  <resources>
 -    <string name="AppName">Telegram</string>
 -    <string name="AppNameBeta">Telegram Beta</string>
-+    <string name="AppName">Margy</string>
-+    <string name="AppNameBeta">Margy</string>
++    <string name="AppName">Margelet</string>
++    <string name="AppNameBeta">Margelet</string>
      <string name="LanguageName">English</string>
      <string name="English">English</string>
      <string name="LanguageNameInEnglish">English</string>
-@@ -11221,4 +11221,202 @@
+@@ -11221,4 +11221,201 @@
      <string name="UnsupportedMessageTitle">Unsupported Message</string>
      <string name="UnsupportedMessageMessage">Update Telegram to view this message</string>
      <string name="UnsupportedUpdate">Update</string>
@@ -19977,7 +19506,6 @@ index ffa4d566..b8f5da5c 100644
 +    <string name="MargeletUpdatesOff">Never</string>
 +    <string name="MargeletUpdatesAbout">The app asks GitHub whether a newer version is out and whether the badge list has changed. A new version is offered in a bar at the bottom of the chat list; nothing is downloaded or installed on its own.</string>
 +    <string name="MargeletUpdatesNow">Check now</string>
-+    <string name="MargeletVersionLabel">Prerelease 1.0</string>
 +    <string name="MargeletUpdatesDownload">Download and install</string>
 +    <string name="MargeletUpdatesInstall">Install</string>
 +    <string name="MargeletUpdatesFailed">Could not download the update</string>
@@ -20027,8 +19555,8 @@ index ffa4d566..b8f5da5c 100644
 +    <string name="MargeletIconSand">Sand</string>
 +    <string name="MargeletIconSea">Sea</string>
 +    <string name="MargeletIconRose">Rose</string>
-+    <string name="MargeletCatAddYours">Want your cat in Margy? Write to @narezany</string>
-+    <string name="MargeletCatAskText">Hi! I want to add my cat to Margy. Description: </string>
++    <string name="MargeletCatAddYours">Want your cat in Margelet? Write to @narezany</string>
++    <string name="MargeletCatAskText">Hi! I want to add my cat to Margelet. Description: </string>
 +    <string name="MargeletCatAskTail"> — photo attached.</string>
 +    <string name="MargeletCatOne">walnut</string>
 +    <string name="MargeletCatTwo">ыжвдвдыбабв😡😡😡</string>
@@ -20049,18 +19577,18 @@ index ffa4d566..b8f5da5c 100644
 +    <string name="MargeletProfilesInfo">What else to show on a profile page</string>
 +    <string name="MargeletShowIds">Show ID</string>
 +    <string name="MargeletShowIdsAbout">A line with the numeric id in profiles of people, bots, groups and channels. Tap to copy.</string>
-+    <string name="MargeletBadgeTitle">Margy creator</string>
-+    <string name="MargeletBadgeAbout">Narezany made Margy, that is why the badge is his.</string>
++    <string name="MargeletBadgeTitle">Margelet creator</string>
++    <string name="MargeletBadgeAbout">Narezany made Margelet, that is why the badge is his.</string>
 +    <string name="MargeletBadgeFriendTitle">Narezany\'s best friend</string>
 +    <string name="MargeletBadgeFriendAbout">Narezany\'s best friend. Hence the badge.</string>
-+    <string name="MargeletBadgeChannelTitle">Margy channel</string>
-+    <string name="MargeletBadgeChannelAbout">The one official Margy channel.</string>
-+    <string name="MargeletBadgeForumTitle">Margy forum</string>
-+    <string name="MargeletBadgeForumAbout">The one official Margy forum.</string>
-+    <string name="MargeletBadgeRow">Margy badge</string>
-+    <string name="MargeletBadgeCatTitle">A cat in Margy</string>
++    <string name="MargeletBadgeChannelTitle">Margelet channel</string>
++    <string name="MargeletBadgeChannelAbout">The one official Margelet channel.</string>
++    <string name="MargeletBadgeForumTitle">Margelet forum</string>
++    <string name="MargeletBadgeForumAbout">The one official Margelet forum.</string>
++    <string name="MargeletBadgeRow">Margelet badge</string>
++    <string name="MargeletBadgeCatTitle">A cat in Margelet</string>
 +    <string name="MargeletBadgeCatAbout">This person\u0027s cat lives in the app.</string>
-+    <string name="MargeletBadges">Margy badges</string>
++    <string name="MargeletBadges">Margelet badges</string>
 +    <string name="MargeletBadgesAbout">Badges next to names in profiles and in the chat list.</string>
 +    <string name="MargeletCatFrom">Cat from %1$s</string>
 +    <string name="MargeletMarkupSize">Size</string>
@@ -20075,13 +19603,13 @@ index ffa4d566..b8f5da5c 100644
 +    <string name="MargeletMarkdownInfo">What turns into formatting when sending</string>
 +    <string name="MargeletMarkdownQuote">Quote</string>
 +    <string name="MargeletMarkdownQuoteCollapsed">Collapsed quote</string>
-+    <string name="MargeletMarkdownAbout">A type you turn off stays in the text as typed.\n\nThe shortcuts for underline and quotes are the fork\u0027s own, but the formatting itself is real and goes to the server: everyone sees it, not only Margy.</string>
++    <string name="MargeletMarkdownAbout">A type you turn off stays in the text as typed.\n\nThe shortcuts for underline and quotes are the fork\u0027s own, but the formatting itself is real and goes to the server: everyone sees it, not only Margelet.</string>
 +    <string name="MargeletBadgeGallery">All badges</string>
 +    <string name="MargeletBadgeGalleryInfo">See what there is</string>
 +    <string name="MargeletFreeEmoji">Premium emoji without Premium</string>
-+    <string name="MargeletFreeEmojiAbout">Put paid emoji into your messages. Only Margy shows them: the server does not accept that marker from a non-Premium account, so everyone else gets the fallback character.</string>
++    <string name="MargeletFreeEmojiAbout">Put paid emoji into your messages. Only Margelet shows them: the server does not accept that marker from a non-Premium account, so everyone else gets the fallback character.</string>
 +    <string name="MargeletEmojiWarnTitle">Premium emoji</string>
-+    <string name="MargeletEmojiWarnText">This does not give you Premium. Only Margy will show the emoji, everyone else gets the plain fallback character.</string>
++    <string name="MargeletEmojiWarnText">This does not give you Premium. Only Margelet will show the emoji, everyone else gets the plain fallback character.</string>
 +    <string name="MargeletMarkup">Formatting</string>
 +    <string name="MargeletMarkupInfo">Text formatting of the fork</string>
 +    <string name="MargeletMarkupAbout">What to show in other people\u0027s messages. Sending is always allowed.</string>
@@ -20089,19 +19617,19 @@ index ffa4d566..b8f5da5c 100644
 +    <string name="MargeletWatermarkSend">Add the watermark</string>
 +    <string name="MargeletWatermarkSendAbout">Added only to messages that use the fork\u0027s own formatting — size, dim, rainbow, a button. Plain messages and Telegram\u0027s own bold or italics do not get it.\n\nIt looks like this:\n&lt;! Message looks better with @margeletter! &gt;</string>
 +    <string name="MargeletWatermarkAskTitle">A request</string>
-+    <string name="MargeletWatermarkAskText">Margy is a young project, and that line is mostly how people hear about it. The author asks you to keep it.\n\nBut it is your message and your call.</string>
++    <string name="MargeletWatermarkAskText">Margelet is a young project, and that line is mostly how people hear about it. The author asks you to keep it.\n\nBut it is your message and your call.</string>
 +    <string name="MargeletWatermarkKeep">I will keep it</string>
 +    <string name="MargeletWatermarkOff">Turn it off anyway</string>
-+    <string name="MargeletStickers">Margy stickers</string>
++    <string name="MargeletStickers">Margelet stickers</string>
 +    <string name="MargeletStickersAdd">Add the pack</string>
 +    <string name="MargeletStickersAbout">Opens the pack in Telegram, then it is added like any other.</string>
 +    <string name="MargeletWatermarksAbout">The line linking to the fork at the end of formatted messages. People without the fork see it.</string>
 +    <string name="MargeletCopyFormatted">Copy with formatting</string>
 +    <string name="MargeletCopyFormattedAbout">An item in the message menu. A plain copy gives bare text, this one keeps bold, italics, links and our own formatting.</string>
 +    <string name="MargeletAboutTitle">What this is</string>
-+    <string name="MargeletAboutText">Margy (formerly Margelet) is a Telegram fork with a pile of its own: text formatting, music tags, streamer mode, delisted gifts and more.\n\nMade by @narezany.\n\nAlso: never tap the title on the main screen, and never spam the Chats button.</string>
++    <string name="MargeletAboutText">Margelet is a Telegram fork with a pile of its own: text formatting, music tags, streamer mode, delisted gifts and more.\n\nMade by @narezany.\n\nAlso: never tap the title on the main screen, and never spam the Chats button.</string>
 +    <string name="MargeletMarkupWarnTitle">Custom formatting</string>
-+    <string name="MargeletMarkupWarnText">Only Margy understands this formatting. Everyone else gets plain text without it, plus a line linking to the fork at the start of the message.</string>
++    <string name="MargeletMarkupWarnText">Only Margelet understands this formatting. Everyone else gets plain text without it, plus a line linking to the fork at the start of the message.</string>
 +    <string name="MargeletDonate">Donate</string>
 +    <string name="MargeletDonateInfo">If you feel like supporting the fork</string>
 +    <string name="MargeletDonateYoomoney">YooMoney</string>
@@ -20132,8 +19660,8 @@ index ffa4d566..b8f5da5c 100644
 +    <string name="MargeletPluginAlreadyRestart">The version already running keeps running until the app is restarted.</string>
 +    <string name="MargeletPluginUpdateOk">Replace</string>
 +    <string name="MargeletPluginInstallAndRun">Install and run</string>
-+    <string name="MargeletPluginTooOld">This plugin needs Margy %1$s or newer. You have %2$s.</string>
-+    <string name="MargeletPluginsRestart">Restart Margy</string>
++    <string name="MargeletPluginTooOld">This plugin needs Margelet %1$s or newer. You have %2$s.</string>
++    <string name="MargeletPluginsRestart">Restart Margelet</string>
 +    <string name="MargeletPluginsRestartAbout">A plugin starts only when the app starts, and a plugin switched off keeps working until then: there is no way to stop running code. So switching one on or off takes a restart.</string>
 +    <string name="MargeletPluginNoSettings">This plugin has nothing to set up.</string>
 +    <string name="MargeletPluginViewSource">View the archive</string>
@@ -31064,7 +30592,7 @@ index 528fd746..8b64b0f8 100644
  }
  repositories {
 diff --git a/gradle.properties b/gradle.properties
-index 83408dc5..01ed6407 100644
+index 83408dc5..7d9a7c79 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -13,9 +13,9 @@
@@ -31072,7 +30600,7 @@ index 83408dc5..01ed6407 100644
  # org.gradle.parallel=true
  #Sat Mar 12 05:53:50 MSK 2016
 -APP_VERSION_CODE=7031
-+APP_VERSION_CODE=7034
++APP_VERSION_CODE=7033
  APP_VERSION_NAME=12.10.0
 -APP_PACKAGE=org.telegram.messenger
 +APP_PACKAGE=cat.narezany.margelet

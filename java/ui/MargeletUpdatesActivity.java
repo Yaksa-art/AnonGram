@@ -64,7 +64,7 @@ public class MargeletUpdatesActivity extends UniversalFragment {
         // Показываем и свой номер, и версию телеграма, на которой собрано:
         // без второго числа непонятно, из какого исходника выросла сборка.
         items.add(UItem.asShadow(LocaleController.formatString(R.string.MargeletUpdatesCurrent,
-                MargeletConfig.versionLabel())
+                MargeletConfig.APP_VERSION)
                 + "\n"
                 + LocaleController.formatString(R.string.MargeletUpdatesBased,
                         BuildVars.BUILD_VERSION_STRING)));
@@ -122,7 +122,7 @@ public class MargeletUpdatesActivity extends UniversalFragment {
             text.append(about);
         }
         final AlertDialog.Builder builder = new AlertDialog.Builder(getContext())
-                .setTitle(LocaleController.formatString(R.string.MargeletUpdatesFound, info.label()))
+                .setTitle(LocaleController.formatString(R.string.MargeletUpdatesFound, info.version))
                 .setMessage(text.length() > 0 ? text.toString()
                         : LocaleController.getString(R.string.MargeletUpdatesAbout))
                 .setNegativeButton(LocaleController.getString(R.string.MargeletLater), null);
