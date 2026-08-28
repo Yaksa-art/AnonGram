@@ -450,6 +450,260 @@ index 00000000..d0eb7b3c
 +        }
 +    }
 +}
+diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletBanner.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletBanner.java
+new file mode 100644
+index 00000000..26ac629f
+--- /dev/null
++++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletBanner.java
+@@ -0,0 +1,248 @@
++package org.telegram.margelet;
++
++import android.graphics.Bitmap;
++import android.net.Uri;
++
++import org.telegram.messenger.AccountInstance;
++import org.telegram.messenger.AndroidUtilities;
++import org.telegram.messenger.FileLoader;
++import org.telegram.messenger.FileLog;
++import org.telegram.messenger.ImageLocation;
++import org.telegram.messenger.MessageObject;
++import org.telegram.messenger.SendMessagesHelper;
++import org.telegram.messenger.UserConfig;
++import org.telegram.tgnet.TLRPC;
++
++import java.io.File;
++import java.util.ArrayList;
++import java.util.HashMap;
++import java.util.HashSet;
++import java.util.List;
++import java.util.Set;
++
++/**
++ * Баннер профиля — картинка за аватаркой.
++ *
++ * Лежит не у нас, а в общей группе: человек отправляет туда фотографию с
++ * меткой, и она становится его баннером. Чей баннер — видно по тому, кто
++ * отправил, а подпись под сообщением ставит телеграм. Подделать нельзя, и
++ * проверять нам нечего.
++ *
++ * Сменить баннер — это отправить новый и удалить старый. Удалить — просто
++ * удалить своё сообщение. Обе вещи человек может сделать и руками, прямо в
++ * группе, без нашего приложения: мы не владеем его баннером, мы его только
++ * показываем.
++ */
++public class MargeletBanner {
++
++    /** Найденное держим в памяти: профиль перерисовывается часто, баннер редко. */
++    private static final HashMap<Long, Bitmap> pictures = new HashMap<>();
++    private static final HashMap<Long, Integer> ownMessage = new HashMap<>();
++    private static final Set<Long> looking = new HashSet<>();
++    private static final Set<Long> missing = new HashSet<>();
++
++    private static AccountInstance account() {
++        return AccountInstance.getInstance(UserConfig.selectedAccount);
++    }
++
++    private static long me() {
++        try {
++            return UserConfig.getInstance(UserConfig.selectedAccount).getClientUserId();
++        } catch (Throwable t) {
++            return 0;
++        }
++    }
++
++    /**
++     * Баннер этого человека, если он уже у нас есть.
++     *
++     * Зовётся из отрисовки, поэтому ничего не ждёт и ничего не качает: нет —
++     * рисуем как раньше, а картинку тем временем принесут и позовут
++     * {@code whenReady}.
++     */
++    public static Bitmap of(long userId, Runnable whenReady) {
++        if (userId <= 0 || !MargeletConfig.bannersEnabled()) {
++            return null;
++        }
++        synchronized (pictures) {
++            final Bitmap ready = pictures.get(userId);
++            if (ready != null) {
++                return ready;
++            }
++            if (missing.contains(userId) || looking.contains(userId)) {
++                return null;
++            }
++            looking.add(userId);
++        }
++        MargeletGroup.find(MargeletGroup.TAG_BANNER, 60, messages -> {
++            MessageObject mine = null;
++            for (MessageObject message : messages) {
++                // Метка одна на всех, поэтому ищем по автору: чей баннер —
++                // решает подпись телеграма, а не текст сообщения.
++                if (MargeletGroup.authorOf(message) == userId && message.getDocument() == null) {
++                    mine = message;
++                    break;      // новое сверху, первое совпадение и есть свежее
++                }
++            }
++            if (mine == null) {
++                synchronized (pictures) {
++                    looking.remove(userId);
++                    missing.add(userId);
++                }
++                return;
++            }
++            if (userId == me()) {
++                ownMessage.put(userId, mine.getId());
++            }
++            load(userId, mine, whenReady);
++        });
++        return null;
++    }
++
++    /**
++     * Забирает саму картинку. Файл может быть уже скачан — телеграм хранит
++     * скачанное у себя, и второй раз в сеть за ним не пойдёт.
++     */
++    private static void load(long userId, MessageObject message, Runnable whenReady) {
++        try {
++            final TLRPC.PhotoSize size = FileLoader.getClosestPhotoSizeWithSize(
++                    message.photoThumbs, 1280, false, null, true);
++            if (size == null) {
++                synchronized (pictures) {
++                    looking.remove(userId);
++                    missing.add(userId);
++                }
++                return;
++            }
++            final File file = FileLoader.getInstance(UserConfig.selectedAccount)
++                    .getPathToAttach(size, true);
++            if (file != null && file.exists()) {
++                decode(userId, file, whenReady);
++                return;
++            }
++            FileLoader.getInstance(UserConfig.selectedAccount).loadFile(
++                    ImageLocation.getForObject(size, message.photoThumbsObject), message,
++                    null, FileLoader.PRIORITY_LOW, FileLoader.PRELOAD_CACHE_TYPE);
++            // Ждать окончания загрузки здесь нечем и незачем: спросим ещё раз
++            // при следующем открытии профиля, к тому времени файл будет.
++            AndroidUtilities.runOnUIThread(() -> {
++                final File later = FileLoader.getInstance(UserConfig.selectedAccount)
++                        .getPathToAttach(size, true);
++                if (later != null && later.exists()) {
++                    decode(userId, later, whenReady);
++                } else {
++                    synchronized (pictures) {
++                        looking.remove(userId);
++                    }
++                }
++            }, 2500);
++        } catch (Throwable t) {
++            FileLog.e(t);
++            synchronized (pictures) {
++                looking.remove(userId);
++                missing.add(userId);
++            }
++        }
++    }
++
++    private static void decode(long userId, File file, Runnable whenReady) {
++        Bitmap bitmap = null;
++        try {
++            final android.graphics.BitmapFactory.Options options =
++                    new android.graphics.BitmapFactory.Options();
++            // Баннер рисуется полосой в пару сотен точек высотой. Держать в
++            // памяти полноразмерную фотографию ради этого незачем.
++            options.inSampleSize = 2;
++            bitmap = android.graphics.BitmapFactory.decodeFile(file.getAbsolutePath(), options);
++        } catch (Throwable t) {
++            FileLog.e(t);
++        }
++        synchronized (pictures) {
++            looking.remove(userId);
++            if (bitmap != null) {
++                pictures.put(userId, bitmap);
++            } else {
++                missing.add(userId);
++            }
++        }
++        if (bitmap != null && whenReady != null) {
++            AndroidUtilities.runOnUIThread(whenReady);
++        }
++    }
++
++    /** Забыть скачанное: свой баннер поменяли — старый показывать нельзя. */
++    public static void forget(long userId) {
++        synchronized (pictures) {
++            pictures.remove(userId);
++            missing.remove(userId);
++            looking.remove(userId);
++        }
++    }
++
++    /**
++     * Поставить себе баннер: отправить картинку в группу с меткой, а прошлую
++     * убрать.
++     *
++     * Порядок именно такой — сначала отправляем, потом удаляем старое. Наоборот
++     * было бы хуже: если отправка не пройдёт, человек останется вообще без
++     * баннера, хотя ничего не просил удалять.
++     */
++    public static void set(Uri image, Runnable done) {
++        final long id = me();
++        if (id <= 0 || image == null) {
++            if (done != null) {
++                done.run();
++            }
++            return;
++        }
++        MargeletGroup.resolve(dialogId -> {
++            if (dialogId == 0) {
++                if (done != null) {
++                    done.run();
++                }
++                return;
++            }
++            final Integer old = ownMessage.get(id);
++            try {
++                SendMessagesHelper.prepareSendingPhoto(account(), null, image, dialogId,
++                        null, null, null, MargeletGroup.TAG_BANNER, null, null, null, 0,
++                        null, true, 0, 0, null);
++            } catch (Throwable t) {
++                FileLog.e(t);
++            }
++            forget(id);
++            if (old != null) {
++                // Старое убираем с задержкой: пусть новое сперва уйдёт.
++                AndroidUtilities.runOnUIThread(() -> MargeletGroup.remove(old), 4000);
++                ownMessage.remove(id);
++            }
++            if (done != null) {
++                done.run();
++            }
++        });
++    }
++
++    /** Убрать свой баннер — то есть удалить своё сообщение из группы. */
++    public static void clear(Runnable done) {
++        final long id = me();
++        final Integer old = ownMessage.get(id);
++        if (old != null) {
++            MargeletGroup.remove(old);
++            ownMessage.remove(id);
++        } else {
++            // Номера сообщения не знаем — найдём и удалим.
++            MargeletGroup.find(MargeletGroup.TAG_BANNER, 60, messages -> {
++                for (MessageObject message : messages) {
++                    if (MargeletGroup.authorOf(message) == id) {
++                        MargeletGroup.remove(message.getId());
++                        break;
++                    }
++                }
++            });
++        }
++        forget(id);
++        if (done != null) {
++            done.run();
++        }
++    }
++}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletCats.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletCats.java
 new file mode 100644
 index 00000000..3c8132c5
@@ -734,10 +988,10 @@ index 00000000..a775cdbc
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
 new file mode 100644
-index 00000000..2ac9da8a
+index 00000000..13a8627e
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
-@@ -0,0 +1,428 @@
+@@ -0,0 +1,446 @@
 +package org.telegram.margelet;
 +
 +import android.content.Context;
@@ -972,6 +1226,24 @@ index 00000000..2ac9da8a
 +     * Дописывать ли строку со ссылкой на форк в свои оформленные сообщения.
 +     * По умолчанию да: форк живёт тем, что о нём узнают.
 +     */
++    /** Показывать баннеры за аватарками. */
++    public static boolean bannersEnabled() {
++        return prefs().getBoolean("profile_banners", true);
++    }
++
++    public static void setBannersEnabled(boolean on) {
++        prefs().edit().putBoolean("profile_banners", on).apply();
++    }
++
++    /** Показывать стены в профилях. */
++    public static boolean wallEnabled() {
++        return prefs().getBoolean("profile_wall", true);
++    }
++
++    public static void setWallEnabled(boolean on) {
++        prefs().edit().putBoolean("profile_wall", on).apply();
++    }
++
 +    public static boolean watermarkOnSend() {
 +        return prefs().getBoolean("watermark_send", false);
 +    }
@@ -9663,6 +9935,148 @@ index 00000000..dd5e904e
 +        }
 +    }
 +}
+diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletProfileActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletProfileActivity.java
+new file mode 100644
+index 00000000..b99fa8a9
+--- /dev/null
++++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletProfileActivity.java
+@@ -0,0 +1,136 @@
++package org.telegram.ui;
++
++import android.content.Context;
++import android.content.Intent;
++import android.net.Uri;
++import android.view.View;
++
++import org.telegram.margelet.MargeletBanner;
++import org.telegram.margelet.MargeletConfig;
++import org.telegram.margelet.MargeletGroup;
++import org.telegram.messenger.LocaleController;
++import org.telegram.messenger.R;
++import org.telegram.messenger.UserConfig;
++import org.telegram.messenger.browser.Browser;
++import org.telegram.ui.ActionBar.AlertDialog;
++import org.telegram.ui.Components.BulletinFactory;
++import org.telegram.ui.Components.UItem;
++import org.telegram.ui.Components.UniversalAdapter;
++import org.telegram.ui.Components.UniversalFragment;
++
++import java.util.ArrayList;
++
++/**
++ * Ветка «Профиль»: баннер за аватаркой и стены.
++ *
++ * Обе вещи живут в общей группе, а не у нас на сервере, и это стоит сказать
++ * человеку прямо на экране, а не спрятать: то, что он сюда положит, увидят
++ * все, включая тех, у кого форка нет.
++ */
++public class MargeletProfileActivity extends UniversalFragment {
++
++    private static final int ID_BANNER = 1;
++    private static final int ID_BANNER_OFF = 2;
++    private static final int ID_BANNERS_SHOW = 3;
++    private static final int ID_WALL_SHOW = 4;
++    private static final int ID_MY_WALL = 5;
++    private static final int ID_GROUP = 6;
++
++    private static final int PICK_BANNER = 4833;
++
++    @Override
++    protected CharSequence getTitle() {
++        return LocaleController.getString(R.string.MargeletProfileTitle);
++    }
++
++    @Override
++    public View createView(Context context) {
++        final View view = super.createView(context);
++        listView.setSections();
++        return view;
++    }
++
++    @Override
++    protected void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
++        items.add(UItem.asHeader(LocaleController.getString(R.string.MargeletBannerHeader)));
++        items.add(UItem.asButton(ID_BANNER, LocaleController.getString(R.string.MargeletBannerPick)));
++        items.add(UItem.asButton(ID_BANNER_OFF, LocaleController.getString(R.string.MargeletBannerRemove)));
++        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletBannerAbout)));
++
++        items.add(UItem.asCheck(ID_BANNERS_SHOW, LocaleController.getString(R.string.MargeletBannerShow))
++                .setChecked(MargeletConfig.bannersEnabled()));
++        items.add(UItem.asShadow(null));
++
++        items.add(UItem.asHeader(LocaleController.getString(R.string.MargeletWall)));
++        items.add(UItem.asButton(ID_MY_WALL, LocaleController.getString(R.string.MargeletWallOpenMine)));
++        items.add(UItem.asCheck(ID_WALL_SHOW, LocaleController.getString(R.string.MargeletWallShow))
++                .setChecked(MargeletConfig.wallEnabled()));
++        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletWallAbout)));
++
++        items.add(UItem.asButton(ID_GROUP, LocaleController.getString(R.string.MargeletProfileGroup),
++                "@" + MargeletGroup.USERNAME));
++        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletProfileGroupAbout)));
++    }
++
++    @Override
++    protected void onClick(UItem item, View view, int position, float x, float y) {
++        if (item.id == ID_BANNER) {
++            pick();
++        } else if (item.id == ID_BANNER_OFF) {
++            MargeletBanner.clear(() -> BulletinFactory.of(this).createSimpleBulletin(R.raw.info,
++                    LocaleController.getString(R.string.MargeletBannerRemoved)).show());
++        } else if (item.id == ID_BANNERS_SHOW) {
++            MargeletConfig.setBannersEnabled(!MargeletConfig.bannersEnabled());
++            listView.adapter.update(true);
++        } else if (item.id == ID_WALL_SHOW) {
++            MargeletConfig.setWallEnabled(!MargeletConfig.wallEnabled());
++            listView.adapter.update(true);
++        } else if (item.id == ID_MY_WALL) {
++            final long me = UserConfig.getInstance(currentAccount).getClientUserId();
++            presentFragment(new MargeletWallActivity(me,
++                    LocaleController.getString(R.string.MargeletWallMine)));
++        } else if (item.id == ID_GROUP) {
++            Browser.openUrl(getContext(), "https://t.me/" + MargeletGroup.USERNAME);
++        }
++    }
++
++    @Override
++    protected boolean onLongClick(UItem item, View view, int position, float x, float y) {
++        return false;
++    }
++
++    private void pick() {
++        // Предупреждаем до выбора, а не после отправки: баннер уходит в общую
++        // группу, и оттуда его видно всем, даже тем, у кого форка нет. Человек
++        // должен знать это раньше, чем выберет фотографию.
++        new AlertDialog.Builder(getContext())
++                .setTitle(LocaleController.getString(R.string.MargeletBannerHeader))
++                .setMessage(LocaleController.getString(R.string.MargeletBannerWarn))
++                .setPositiveButton(LocaleController.getString(R.string.MargeletBannerPick), (d, w) -> {
++                    final Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
++                    intent.setType("image/*");
++                    intent.addCategory(Intent.CATEGORY_OPENABLE);
++                    try {
++                        startActivityForResult(intent, PICK_BANNER);
++                    } catch (Exception ignored) {
++                    }
++                })
++                .setNegativeButton(LocaleController.getString(R.string.Cancel), null)
++                .show();
++    }
++
++    @Override
++    public void onActivityResultFragment(int requestCode, int resultCode, Intent data) {
++        if (requestCode != PICK_BANNER || data == null || data.getData() == null) {
++            return;
++        }
++        final Uri uri = data.getData();
++        MargeletBanner.set(uri, () -> {
++            if (getContext() == null) {
++                return;
++            }
++            BulletinFactory.of(this).createSimpleBulletin(R.raw.info,
++                    LocaleController.getString(R.string.MargeletBannerSaved)).show();
++        });
++    }
++}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletProfilesActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletProfilesActivity.java
 new file mode 100644
 index 00000000..397f3a69
@@ -9734,10 +10148,10 @@ index 00000000..397f3a69
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletSettingsActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletSettingsActivity.java
 new file mode 100644
-index 00000000..9e8b1795
+index 00000000..9687d409
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletSettingsActivity.java
-@@ -0,0 +1,204 @@
+@@ -0,0 +1,211 @@
 +package org.telegram.ui;
 +
 +import android.view.Gravity;
@@ -9786,6 +10200,7 @@ index 00000000..9e8b1795
 +    private static final int ID_STICKERS = 14;
 +    private static final int ID_PLUGINS = 15;
 +    private static final int ID_FEEDBACK = 18;
++    private static final int ID_MY_PROFILE = 19;
 +
 +    /** Объёмный значок в шапке. Пользы ноль, и в этом вся мысль. */
 +    private FrameLayout header;
@@ -9843,6 +10258,10 @@ index 00000000..9e8b1795
 +                IconBackgroundColors.CYAN.top, IconBackgroundColors.CYAN.bottom,
 +                R.drawable.settings_devices, LocaleController.getString(R.string.MargeletUpdates),
 +                LocaleController.getString(R.string.MargeletUpdatesInfo)));
++        items.add(SettingsActivity.SettingCell.Factory.of(ID_MY_PROFILE,
++                IconBackgroundColors.CYAN.top, IconBackgroundColors.CYAN.bottom,
++                R.drawable.msg_openprofile, LocaleController.getString(R.string.MargeletProfileTitle),
++                LocaleController.getString(R.string.MargeletProfileInfo)));
 +        items.add(SettingsActivity.SettingCell.Factory.of(ID_PLUGINS,
 +                IconBackgroundColors.BLUE_ALT.top, IconBackgroundColors.BLUE_ALT.bottom,
 +                R.drawable.settings_devices, LocaleController.getString(R.string.MargeletPlugins),
@@ -9929,6 +10348,8 @@ index 00000000..9e8b1795
 +            presentFragment(new MargeletConveniencesActivity());
 +        } else if (item.id == ID_SOURCE) {
 +            Browser.openUrl(getContext(), MargeletConfig.SOURCE_URL);
++        } else if (item.id == ID_MY_PROFILE) {
++            presentFragment(new MargeletProfileActivity());
 +        } else if (item.id == ID_FEEDBACK) {
 +            Browser.openUrl(getContext(), MargeletConfig.FEEDBACK_URL);
 +        } else if (item.id == ID_FORUM) {
@@ -10771,11 +11192,365 @@ index 00000000..82162ac5
 +        return false;
 +    }
 +}
+diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletWallActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletWallActivity.java
+new file mode 100644
+index 00000000..33c1f306
+--- /dev/null
++++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletWallActivity.java
+@@ -0,0 +1,339 @@
++package org.telegram.ui;
++
++import static org.telegram.messenger.AndroidUtilities.dp;
++
++import android.content.Context;
++import android.graphics.Canvas;
++import android.text.TextUtils;
++import android.util.TypedValue;
++import android.view.Gravity;
++import android.view.View;
++import android.view.ViewGroup;
++import android.widget.FrameLayout;
++import android.widget.ImageView;
++import android.widget.LinearLayout;
++import android.widget.TextView;
++
++import androidx.recyclerview.widget.LinearLayoutManager;
++import androidx.recyclerview.widget.RecyclerView;
++
++import org.telegram.margelet.MargeletGroup;
++import org.telegram.margelet.MargeletLinks;
++import org.telegram.messenger.AndroidUtilities;
++import org.telegram.messenger.LocaleController;
++import org.telegram.messenger.MessageObject;
++import org.telegram.messenger.MessagesController;
++import org.telegram.messenger.R;
++import org.telegram.messenger.UserConfig;
++import org.telegram.messenger.UserObject;
++import org.telegram.messenger.browser.Browser;
++import org.telegram.tgnet.TLRPC;
++import org.telegram.ui.ActionBar.ActionBar;
++import org.telegram.ui.ActionBar.BaseFragment;
++import org.telegram.ui.ActionBar.Theme;
++import org.telegram.ui.Components.AvatarDrawable;
++import org.telegram.ui.Components.BackupImageView;
++import org.telegram.ui.Components.BulletinFactory;
++import org.telegram.ui.Components.ChatAvatarContainer;
++import org.telegram.ui.Components.EditTextBoldCursor;
++import org.telegram.ui.Components.LayoutHelper;
++import org.telegram.ui.Components.RecyclerListView;
++
++import java.util.ArrayList;
++import java.util.List;
++
++/**
++ * Стена: что о человеке написали другие.
++ *
++ * Дуров стену убрал, здесь она возвращается — и не как страница, которую
++ * хозяин правит под себя. Смысл ровно в обратном: написанное про тебя ты
++ * снять не можешь. Поэтому стена и работает против разводил — обманутый
++ * пишет, обманщик не стирает, а видят все.
++ *
++ * Живёт всё в общей группе: каждое сообщение стены — обычное сообщение с
++ * меткой, содержащей номер того, О КОМ пишут. Подпись под сообщением ставит
++ * телеграм, значит автор отзыва подделке не поддаётся.
++ *
++ * Реакции показываем как есть: это и есть суд толпы. Наговор минусуют, и
++ * читающий видит не только обвинение, но и то, поверили ли ему.
++ *
++ * Своё сообщение автор может удалить сам, средствами телеграма. Чужое — нет,
++ * и это не недоделка, а условие задачи.
++ */
++public class MargeletWallActivity extends BaseFragment {
++
++    private final long peerId;
++    private final String peerName;
++
++    private RecyclerListView listView;
++    private Adapter adapter;
++    private TextView emptyView;
++    private EditTextBoldCursor input;
++    private final List<MessageObject> messages = new ArrayList<>();
++    private boolean loading;
++
++    public MargeletWallActivity(long peerId, String peerName) {
++        this.peerId = peerId;
++        this.peerName = peerName == null ? "" : peerName;
++    }
++
++    @Override
++    public View createView(Context context) {
++        actionBar.setBackButtonImage(R.drawable.ic_ab_back);
++        actionBar.setAllowOverlayTitle(false);
++        actionBar.setActionBarMenuOnItemClick(new ActionBar.ActionBarMenuOnItemClick() {
++            @Override
++            public void onItemClick(int id) {
++                if (id == -1) {
++                    finishFragment();
++                }
++            }
++        });
++
++        // Заголовок с аватаркой того, чья стена: тем же видом, каким телеграм
++        // подписывает переписку. Человек должен понимать, у кого он в гостях,
++        // без чтения текста.
++        final ChatAvatarContainer avatarContainer = new ChatAvatarContainer(context, this, false);
++        avatarContainer.setOccupyStatusBar(!AndroidUtilities.isTablet());
++        actionBar.addView(avatarContainer, 0, LayoutHelper.createFrame(
++                LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT,
++                Gravity.TOP | Gravity.LEFT, !AndroidUtilities.isTablet() ? 56 : 80, 0, 40, 0));
++        avatarContainer.setTitle(LocaleController.formatString(R.string.MargeletWallOf, peerName));
++        avatarContainer.setSubtitle(LocaleController.getString(R.string.MargeletWallSubtitle));
++        try {
++            final TLRPC.User user = getMessagesController().getUser(peerId);
++            if (user != null) {
++                avatarContainer.setUserAvatar(user);
++            }
++        } catch (Throwable ignored) {
++        }
++
++        final FrameLayout root = new FrameLayout(context);
++        root.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundGray));
++        fragmentView = root;
++
++        listView = new RecyclerListView(context);
++        listView.setLayoutManager(new LinearLayoutManager(context));
++        listView.setVerticalScrollBarEnabled(false);
++        listView.setClipToPadding(false);
++        listView.setPadding(0, dp(8), 0, dp(8));
++        adapter = new Adapter();
++        listView.setAdapter(adapter);
++        root.addView(listView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT,
++                LayoutHelper.MATCH_PARENT, Gravity.TOP, 0, 0, 0, 56));
++
++        emptyView = new TextView(context);
++        emptyView.setGravity(Gravity.CENTER);
++        emptyView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
++        emptyView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText2));
++        emptyView.setPadding(dp(32), 0, dp(32), 0);
++        emptyView.setText(LocaleController.getString(R.string.MargeletWallEmpty));
++        emptyView.setVisibility(View.GONE);
++        root.addView(emptyView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT,
++                LayoutHelper.MATCH_PARENT, Gravity.TOP, 0, 0, 0, 56));
++
++        root.addView(compose(context), LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT,
++                56, Gravity.BOTTOM));
++
++        load();
++        return root;
++    }
++
++    /** Поле ввода и кнопка отправки. */
++    private View compose(Context context) {
++        final FrameLayout box = new FrameLayout(context);
++        box.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
++
++        input = new EditTextBoldCursor(context);
++        input.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
++        input.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
++        input.setHintColor(Theme.getColor(Theme.key_windowBackgroundWhiteHintText));
++        input.setHintText(LocaleController.getString(R.string.MargeletWallHint));
++        input.setBackground(null);
++        input.setMaxLines(3);
++        box.addView(input, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT,
++                LayoutHelper.WRAP_CONTENT, Gravity.CENTER_VERTICAL, 16, 0, 56, 0));
++
++        final ImageView send = new ImageView(context);
++        send.setScaleType(ImageView.ScaleType.CENTER);
++        send.setImageResource(R.drawable.attach_send);
++        send.setColorFilter(new android.graphics.PorterDuffColorFilter(
++                Theme.getColor(Theme.key_chats_actionBackground),
++                android.graphics.PorterDuff.Mode.SRC_IN));
++        send.setOnClickListener(v -> send());
++        box.addView(send, LayoutHelper.createFrame(48, 48, Gravity.RIGHT | Gravity.CENTER_VERTICAL));
++        return box;
++    }
++
++    private void load() {
++        if (loading) {
++            return;
++        }
++        loading = true;
++        MargeletGroup.find(MargeletGroup.tagWall(peerId), 100, found -> {
++            loading = false;
++            messages.clear();
++            for (MessageObject message : found) {
++                // Проверка на показе, а не только при отправке: написать в
++                // группу можно и обычным телеграмом, мимо нашего приложения.
++                if (MargeletGroup.showable(message)) {
++                    messages.add(message);
++                }
++            }
++            if (adapter != null) {
++                adapter.notifyDataSetChanged();
++            }
++            if (emptyView != null) {
++                emptyView.setVisibility(messages.isEmpty() ? View.VISIBLE : View.GONE);
++            }
++        });
++    }
++
++    private void send() {
++        final String text = input.getText().toString().trim();
++        if (text.isEmpty()) {
++            return;
++        }
++        final String bad = MargeletLinks.firstBad(text, null);
++        if (bad != null) {
++            BulletinFactory.of(this).createSimpleBulletin(R.raw.error,
++                    LocaleController.formatString(R.string.MargeletWallNoLinks, bad)).show();
++            return;
++        }
++        input.setText("");
++        // Метка первой строкой: так её видно и в самой группе, и человеку
++        // понятно, куда ушло его сообщение.
++        MargeletGroup.post(MargeletGroup.tagWall(peerId) + "\n" + text, () ->
++                AndroidUtilities.runOnUIThread(this::load, 1200));
++    }
++
++    /** Одна запись на стене. */
++    private class Cell extends FrameLayout {
++        private final BackupImageView avatar;
++        private final TextView name;
++        private final TextView body;
++        private final TextView date;
++        private final TextView reactions;
++        private final AvatarDrawable avatarDrawable = new AvatarDrawable();
++
++        Cell(Context context) {
++            super(context);
++            setPadding(dp(12), dp(8), dp(12), dp(8));
++
++            final FrameLayout card = new FrameLayout(context);
++            card.setBackground(Theme.createRoundRectDrawable(dp(12),
++                    Theme.getColor(Theme.key_windowBackgroundWhite)));
++            addView(card, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT,
++                    LayoutHelper.WRAP_CONTENT));
++
++            avatar = new BackupImageView(context);
++            avatar.setRoundRadius(dp(16));
++            card.addView(avatar, LayoutHelper.createFrame(32, 32, Gravity.TOP | Gravity.LEFT, 12, 12, 0, 0));
++
++            name = new TextView(context);
++            name.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
++            name.setTypeface(AndroidUtilities.bold());
++            name.setSingleLine(true);
++            name.setEllipsize(TextUtils.TruncateAt.END);
++            name.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlueHeader));
++            card.addView(name, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT,
++                    LayoutHelper.WRAP_CONTENT, Gravity.TOP | Gravity.LEFT, 54, 12, 60, 0));
++
++            date = new TextView(context);
++            date.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 12);
++            date.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText2));
++            card.addView(date, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT,
++                    LayoutHelper.WRAP_CONTENT, Gravity.TOP | Gravity.RIGHT, 0, 13, 12, 0));
++
++            body = new TextView(context);
++            body.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
++            body.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
++            card.addView(body, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT,
++                    LayoutHelper.WRAP_CONTENT, Gravity.TOP | Gravity.LEFT, 54, 32, 12, 0));
++
++            reactions = new TextView(context);
++            reactions.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
++            reactions.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText2));
++            card.addView(reactions, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT,
++                    LayoutHelper.WRAP_CONTENT, Gravity.TOP | Gravity.LEFT, 54, 0, 12, 12));
++        }
++
++        void set(MessageObject message) {
++            final long author = MargeletGroup.authorOf(message);
++            final TLRPC.User user = getMessagesController().getUser(author);
++            final String title = user != null ? UserObject.getUserName(user)
++                    : LocaleController.getString(R.string.MargeletWallSomeone);
++            name.setText(title);
++            if (user != null) {
++                avatarDrawable.setInfo(currentAccount, user);
++                avatar.setForUserOrChat(user, avatarDrawable);
++            } else {
++                avatar.setImageDrawable(avatarDrawable);
++            }
++            // Метку из текста убираем: она служебная, читать её человеку незачем.
++            String text = message.messageOwner != null && message.messageOwner.message != null
++                    ? message.messageOwner.message : "";
++            final String tag = MargeletGroup.tagWall(peerId);
++            if (text.startsWith(tag)) {
++                text = text.substring(tag.length()).trim();
++            }
++            body.setText(text);
++            date.setText(LocaleController.formatDateAudio(message.messageOwner.date, true));
++            reactions.setText(reactionsOf(message));
++            reactions.setVisibility(reactions.getText().length() > 0 ? VISIBLE : GONE);
++            // Нажатие открывает само сообщение в группе: там работает всё, что
++            // умеет телеграм, — ответить, поставить реакцию, пожаловаться. Своей
++            // половины телеграма мы не пишем.
++            setOnClickListener(v -> Browser.openUrl(getContext(),
++                    "https://t.me/" + MargeletGroup.USERNAME + "/" + message.getId()));
++        }
++
++        /** Реакции строкой. Это и есть ответ читателей на написанное. */
++        private String reactionsOf(MessageObject message) {
++            try {
++                if (message.messageOwner == null || message.messageOwner.reactions == null
++                        || message.messageOwner.reactions.results == null) {
++                    return "";
++                }
++                final StringBuilder out = new StringBuilder();
++                for (TLRPC.ReactionCount count : message.messageOwner.reactions.results) {
++                    if (count.reaction instanceof TLRPC.TL_reactionEmoji) {
++                        if (out.length() > 0) {
++                            out.append("   ");
++                        }
++                        out.append(((TLRPC.TL_reactionEmoji) count.reaction).emoticon)
++                                .append(' ').append(count.count);
++                    }
++                }
++                return out.toString();
++            } catch (Throwable t) {
++                return "";
++            }
++        }
++    }
++
++    private class Adapter extends RecyclerListView.SelectionAdapter {
++        @Override
++        public boolean isEnabled(RecyclerView.ViewHolder holder) {
++            return true;
++        }
++
++        @Override
++        public RecyclerView.ViewHolder onCreateViewHolder(ViewGroup parent, int viewType) {
++            final Cell cell = new Cell(parent.getContext());
++            cell.setLayoutParams(new RecyclerView.LayoutParams(
++                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
++            return new RecyclerListView.Holder(cell);
++        }
++
++        @Override
++        public void onBindViewHolder(RecyclerView.ViewHolder holder, int position) {
++            ((Cell) holder.itemView).set(messages.get(position));
++        }
++
++        @Override
++        public int getItemCount() {
++            return messages.size();
++        }
++    }
++}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java
-index 40634647..6c589f87 100644
+index 40634647..3a5eccba 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java
-@@ -626,6 +626,21 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -595,6 +595,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+     private final static int edit_color = 40;
+     private final static int edit_profile = 41;
+     private final static int copy_link_profile = 42;
++    /** Стена форка. Номер подальше от телеграмовских, чтобы не столкнуться. */
++    private final static int margelet_wall = 900;
+     private final static int set_username = 43;
+     private final static int bot_privacy = 44;
+     private final static int delete_group = 45;
+@@ -626,6 +628,21 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
      private int settingsSectionRow2;
      private int notificationRow;
      private int languageRow;
@@ -10797,7 +11572,73 @@ index 40634647..6c589f87 100644
      private int privacyRow;
      private int dataRow;
      private int chatRow;
-@@ -4536,6 +4551,15 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -1347,6 +1364,46 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+             }
+         }
+ 
++        private android.graphics.Paint margeletScrim;
++
++        /**
++         * Баннер человека поверх заливки, но под всем остальным.
++         *
++         * Рисуем здесь, потому что это ровно то место, где телеграм закрашивает
++         * верх профиля цветом. Картинку вписываем по большей стороне и
++         * обрезаем: баннеры приходят какие угодно, а место под них всегда одной
++         * формы.
++         *
++         * Сверху — затемнение. Без него белое имя и белые значки теряются на
++         * светлой картинке, и выглядеть это будет виной того, кто поставил
++         * баннер, хотя виноваты мы.
++         */
++        private void drawMargeletBanner(Canvas canvas, int y1) {
++            if (y1 <= 0 || userId == 0) {
++                return;
++            }
++            final android.graphics.Bitmap banner =
++                    org.telegram.margelet.MargeletBanner.of(userId, this::invalidate);
++            if (banner == null || banner.isRecycled()) {
++                return;
++            }
++            final int width = getMeasuredWidth();
++            final float scale = Math.max((float) width / banner.getWidth(),
++                    (float) y1 / banner.getHeight());
++            canvas.save();
++            canvas.clipRect(0, 0, width, y1);
++            canvas.translate((width - banner.getWidth() * scale) / 2f,
++                    (y1 - banner.getHeight() * scale) / 2f);
++            canvas.scale(scale, scale);
++            canvas.drawBitmap(banner, 0, 0, null);
++            canvas.restore();
++            if (margeletScrim == null) {
++                margeletScrim = new android.graphics.Paint();
++                margeletScrim.setColor(0x55000000);
++            }
++            canvas.drawRect(0, 0, width, y1, margeletScrim);
++        }
++
+         @Override
+         protected void onDraw(Canvas canvas) {
+             final int height = ActionBar.getCurrentActionBarHeight() + (actionBar.getOccupyStatusBar() ? AndroidUtilities.statusBarHeight : 0);
+@@ -1365,6 +1422,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+                     backgroundPaint.setAlpha((int) (0xFF * progressToGradient));
+                     canvas.drawRect(0, 0, getMeasuredWidth(), y1, backgroundPaint);
+                 }
++                drawMargeletBanner(canvas, y1);
+                 if (hasEmoji) {
+                     final float loadedScale = emojiLoadedT.set(isEmojiLoaded());
+                     boolean shoudIgnore = openAnimationInProgress && playProfileAnimation == 2;
+@@ -2815,6 +2873,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+ //                        return;
+ //                    }
+                     presentFragment(new PeerColorActivity(0).startOnProfile().setOnApplied(ProfileActivity.this));
++                } else if (id == margelet_wall) {
++                    final TLRPC.User wallUser = getMessagesController().getUser(userId);
++                    presentFragment(new MargeletWallActivity(userId,
++                            wallUser != null ? UserObject.getUserName(wallUser) : ""));
+                 } else if (id == copy_link_profile) {
+                     TLRPC.User user = getMessagesController().getUser(userId);
+                     AndroidUtilities.addToClipboard(getMessagesController().linkPrefix + "/" + UserObject.getPublicUsername(user));
+@@ -4536,6 +4598,15 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                  presentFragment(new PrivacySettingsActivity().setCurrentPassword(currentPassword));
              } else if (position == dataRow) {
                  presentFragment(new DataSettingsActivity());
@@ -10813,7 +11654,7 @@ index 40634647..6c589f87 100644
              } else if (position == chatRow) {
                  presentFragment(new ThemeActivity(ThemeActivity.THEME_TYPE_BASIC));
              } else if (position == filtersRow) {
-@@ -10469,6 +10493,11 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -10469,6 +10540,11 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
          settingsSectionRow2 = -1;
          notificationRow = -1;
          languageRow = -1;
@@ -10825,7 +11666,7 @@ index 40634647..6c589f87 100644
          premiumRow = -1;
          starsRow = -1;
          tonRow = -1;
-@@ -10638,6 +10667,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -10638,6 +10714,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                  }
  
                  settingsSectionRow2 = rowCount++;
@@ -10833,7 +11674,7 @@ index 40634647..6c589f87 100644
                  chatRow = rowCount++;
                  privacyRow = rowCount++;
                  notificationRow = rowCount++;
-@@ -10733,9 +10763,22 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -10733,9 +10810,22 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                  if (isBot && user != null && user.bot_has_main_app) {
                      botAppRow = rowCount++;
                  }
@@ -10856,7 +11697,7 @@ index 40634647..6c589f87 100644
                  if (user != null && user.linked_community_id != 0) {
                      linkedCommunityRow = rowCount++;
                      linkedCommunityDividerRow = rowCount++;
-@@ -10885,9 +10928,19 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -10885,9 +10975,19 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                  }
                  notificationsRow = rowCount++;
              }
@@ -10876,7 +11717,7 @@ index 40634647..6c589f87 100644
  
              if (currentChat != null && currentChat.linked_community_id != 0) {
                  linkedCommunityRow = rowCount++;
-@@ -11420,7 +11473,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -11420,7 +11520,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                      nameTextView[a].setRightDrawable2(titleTextView.getRightDrawable2());
                  } else if (a == 0 && user.id != getUserConfig().getClientUserId() && !MessagesController.isSupportUser(user) && user.phone != null && user.phone.length() != 0 && getContactsController().contactsDict.get(user.id) == null &&
                          (getContactsController().contactsDict.size() != 0 || !getContactsController().isLoadingContacts())) {
@@ -10885,7 +11726,7 @@ index 40634647..6c589f87 100644
                  } else {
                      nameTextView[a].setText(newString);
                  }
-@@ -11459,9 +11512,23 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -11459,9 +11559,23 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                      } else if (getMessagesController().isDialogMuted(dialogId != 0 ? dialogId : userId, topicId)) {
                          nameTextView[a].setRightDrawable2(getThemedDrawable(Theme.key_drawable_muteIconDrawable));
                          nameTextViewRightDrawable2ContentDescription = LocaleController.getString(R.string.NotificationsMuted);
@@ -10909,7 +11750,7 @@ index 40634647..6c589f87 100644
                      }
                      if (user != null/* && !getMessagesController().premiumFeaturesBlocked()*/ && !MessagesController.isSupportUser(user) && DialogObject.getEmojiStatusDocumentId(user.emoji_status) != 0) {
                          rightIconIsStatus = true;
-@@ -11482,8 +11549,18 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -11482,8 +11596,18 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                          nameTextView[a].setRightDrawable2(getScamDrawable(user.scam ? 0 : 1));
                      } else if (user.verified) {
                          nameTextView[a].setRightDrawable2(getVerifiedCrossfadeDrawable(a));
@@ -10928,7 +11769,7 @@ index 40634647..6c589f87 100644
                      }
                      if (/*!getMessagesController().premiumFeaturesBlocked() && */user != null && !MessagesController.isSupportUser(user) && DialogObject.getEmojiStatusDocumentId(user.emoji_status) != 0) {
                          rightIconIsStatus = true;
-@@ -11775,6 +11852,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -11775,6 +11899,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                      } else if (chat.verified) {
                          nameTextView[a].setRightDrawable2(getVerifiedCrossfadeDrawable(a));
                          nameTextViewRightDrawableContentDescription = LocaleController.getString(R.string.AccDescrVerified);
@@ -10942,7 +11783,7 @@ index 40634647..6c589f87 100644
                      } else {
                          nameTextView[a].setRightDrawable2(null);
                          nameTextViewRightDrawableContentDescription = null;
-@@ -11805,6 +11889,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -11805,6 +11936,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                          nameTextView[a].setRightDrawable2(getVerifiedCrossfadeDrawable(a));
                      } else if (getMessagesController().isDialogMuted(-chatId, topicId)) {
                          nameTextView[a].setRightDrawable2(getThemedDrawable(Theme.key_drawable_muteIconDrawable));
@@ -10953,7 +11794,22 @@ index 40634647..6c589f87 100644
                      } else {
                          nameTextView[a].setRightDrawable2(null);
                      }
-@@ -13456,7 +13544,24 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -12115,6 +12250,14 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+                 if (myProfile) {
+                     setUsernameItem = otherItem.addSubItem(set_username, R.drawable.menu_username_change, getString(R.string.ProfileUsernameEdit));
+                     linkItem = otherItem.addSubItem(copy_link_profile, R.drawable.msg_link2, getString(R.string.ProfileCopyLink));
++                    if (org.telegram.margelet.MargeletConfig.wallEnabled()) {
++                        // Стена есть у каждого и без спроса: она задумана как
++                        // место, где о человеке говорят другие, и «включить
++                        // себе стену» означало бы, что разводилы её просто не
++                        // включат.
++                        otherItem.addSubItem(margelet_wall, R.drawable.msg_discussion,
++                                getString(R.string.MargeletWall));
++                    }
+                     updateItemsUsername();
+                 }
+                 selfUser = true;
+@@ -13456,7 +13599,24 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                      TextDetailCell detailCell = (TextDetailCell) holder.itemView;
                      boolean containsQr = false;
                      boolean containsGift = false;
@@ -10979,7 +11835,7 @@ index 40634647..6c589f87 100644
                          TLRPC.UserFull userFull = getMessagesController().getUserFull(userId);
                          if (userFull != null && userFull.birthday != null) {
                              final boolean today = BirthdayController.isToday(userFull);
-@@ -13491,7 +13596,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -13491,7 +13651,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                              text = PhoneFormat.getInstance().format("+" + vcardPhone);
                              phoneNumber = vcardPhone;
                          } else if (user != null && !TextUtils.isEmpty(user.phone)) {
@@ -10988,7 +11844,7 @@ index 40634647..6c589f87 100644
                              phoneNumber = user.phone;
                          } else {
                              text = LocaleController.getString(R.string.PhoneHidden);
-@@ -13585,7 +13690,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -13585,7 +13745,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                          TLRPC.User user = UserConfig.getInstance(currentAccount).getCurrentUser();
                          String value;
                          if (user != null && user.phone != null && user.phone.length() != 0) {
@@ -10997,7 +11853,7 @@ index 40634647..6c589f87 100644
                          } else {
                              value = LocaleController.getString(R.string.NumberUnknown);
                          }
-@@ -13610,13 +13715,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -13610,13 +13770,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                              if (username == null || TextUtils.isEmpty(username)) {
                                  text = LocaleController.getString(R.string.UsernameEmpty);
                              } else {
@@ -11013,7 +11869,7 @@ index 40634647..6c589f87 100644
                              } else {
                                  text = LocaleController.getString(R.string.UsernameEmpty);
                              }
-@@ -13624,7 +13729,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -13624,7 +13784,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                          detailCell.setTextAndValue(text, value, true);
                          detailCell.setContentDescriptionValueFirst(true);
                      }
@@ -11028,7 +11884,7 @@ index 40634647..6c589f87 100644
                          Drawable drawable = ContextCompat.getDrawable(detailCell.getContext(), R.drawable.msg_input_gift);
                          drawable.setColorFilter(new PorterDuffColorFilter(dontApplyPeerColor(getThemedColor(Theme.key_switch2TrackChecked), false), PorterDuff.Mode.MULTIPLY));
                          if (UserObject.areGiftsDisabled(userInfo)) {
-@@ -13839,6 +13950,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -13839,6 +14005,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                          textCell.setTextAndIcon(LocaleController.getString(R.string.PrivacySettings), R.drawable.msg2_secret, true);
                      } else if (position == dataRow) {
                          textCell.setTextAndIcon(LocaleController.getString(R.string.DataSettings), R.drawable.msg2_data, true);
@@ -11037,7 +11893,7 @@ index 40634647..6c589f87 100644
                      } else if (position == chatRow) {
                          textCell.setTextAndIcon(LocaleController.getString(R.string.ChatSettings), R.drawable.msg2_discussion, true);
                      } else if (position == filtersRow) {
-@@ -14286,7 +14399,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -14286,7 +14454,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                          position == clearLogsRow || position == switchBackendRow || position == setAvatarRow ||
                          position == addToGroupButtonRow || position == premiumRow || position == premiumGiftingRow ||
                          position == businessRow || position == liteModeRow || position == birthdayRow || position == channelRow ||
@@ -11048,7 +11904,7 @@ index 40634647..6c589f87 100644
              }
              if (holder.itemView instanceof UserCell) {
                  UserCell userCell = (UserCell) holder.itemView;
-@@ -14314,7 +14429,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -14314,7 +14484,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
              if (position == infoHeaderRow || position == membersHeaderRow || position == settingsSectionRow2 ||
                      position == numberSectionRow || position == helpHeaderRow || position == debugHeaderRow || position == botPermissionsHeader) {
                  return VIEW_TYPE_HEADER;
@@ -11058,7 +11914,7 @@ index 40634647..6c589f87 100644
                  return VIEW_TYPE_TEXT_DETAIL;
              } else if (position == usernameRow || position == setUsernameRow) {
                  return VIEW_TYPE_TEXT_DETAIL_MULTILINE;
-@@ -14332,7 +14448,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -14332,7 +14503,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                      position == clearLogsRow || position == switchBackendRow || position == setAvatarRow || position == addToGroupButtonRow ||
                      position == addToContactsRow || position == liteModeRow || position == premiumGiftingRow || position == businessRow ||
                      position == botStarsBalanceRow || position == botTonBalanceRow || position == channelBalanceRow || position == botPermissionLocation ||
@@ -11068,7 +11924,7 @@ index 40634647..6c589f87 100644
              ) {
                  return VIEW_TYPE_TEXT;
              } else if (position == notificationsDividerRow) {
-@@ -14346,7 +14463,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -14346,7 +14518,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                      position == helpSectionCell || position == setAvatarSectionRow || position == passwordSuggestionSectionRow ||
                      position == phoneSuggestionSectionRow || position == premiumSectionsRow || position == reportDividerRow ||
                      position == channelDividerRow || position == graceSuggestionSectionRow || position == balanceDividerRow ||
@@ -19488,7 +20344,7 @@ index 03d0ba33..17f98fa6 100644
      <string name="English">Inglês</string>
      <string name="LanguageNameInEnglish">Portuguese (Brazil)</string>
 diff --git a/TMessagesProj/src/main/res/values-ru/strings.xml b/TMessagesProj/src/main/res/values-ru/strings.xml
-index 24c56292..8effaca9 100644
+index 24c56292..d64f3b87 100644
 --- a/TMessagesProj/src/main/res/values-ru/strings.xml
 +++ b/TMessagesProj/src/main/res/values-ru/strings.xml
 @@ -1,7 +1,7 @@
@@ -19501,7 +20357,7 @@ index 24c56292..8effaca9 100644
      <string name="LanguageName">Русский</string>
      <string name="English">Английский</string>
      <string name="LanguageNameInEnglish">Russian</string>
-@@ -263,4 +263,202 @@
+@@ -263,4 +263,226 @@
      <string name="RemindTodayAt">\'Отправить сегодня в\' HH:mm</string>
      <string name="RemindDayAt">\'Отправить\' d MMM \'в\' HH:mm</string>
      <string name="RemindDayYearAt">\'Напомнить\' d MMM yyyy \'в\' HH:mm</string>
@@ -19523,6 +20379,30 @@ index 24c56292..8effaca9 100644
 +    <string name="MargeletUpdatesAbout">Приложение спрашивает гитхаб, не вышла ли версия новее и не изменился ли список значков. Новую версию предлагает полоской внизу списка чатов; само ничего не качает и не ставит.</string>
 +    <string name="MargeletUpdatesNow">Проверить сейчас</string>
 +    <string name="MargeletVersionLabel">Пререлиз 1.0</string>
++    <string name="MargeletWall">Стена</string>
++    <string name="MargeletWallOf">Стена %1$s</string>
++    <string name="MargeletWallSubtitle">что написали другие</string>
++    <string name="MargeletWallEmpty">Пока пусто. Написанное на стене остаётся: хозяин стены снять его не может.</string>
++    <string name="MargeletWallHint">Написать на стене</string>
++    <string name="MargeletWallSomeone">Кто-то</string>
++    <string name="MargeletWallNoLinks">Ссылки на %1$s на стенах не пропускаются</string>
++    <string name="MargeletWallOpen">Открыть стену</string>
++    <string name="MargeletWallShow">Показывать стены в профилях</string>
++    <string name="MargeletProfileTitle">Профиль</string>
++    <string name="MargeletProfileInfo">Баннер и стена</string>
++    <string name="MargeletBannerHeader">Баннер</string>
++    <string name="MargeletBannerPick">Выбрать картинку</string>
++    <string name="MargeletBannerRemove">Убрать баннер</string>
++    <string name="MargeletBannerAbout">Картинка за вашей аватаркой. Её видят все, у кого стоит Margy; у остальных ничего не меняется.</string>
++    <string name="MargeletBannerWarn">Картинка уходит в публичную группу @margy_underground. Там её видит кто угодно, в том числе те, у кого Margy нет. Удалить её вы можете сами, прямо в группе.</string>
++    <string name="MargeletBannerShow">Показывать чужие баннеры</string>
++    <string name="MargeletBannerSaved">Баннер отправлен</string>
++    <string name="MargeletBannerRemoved">Баннер убран</string>
++    <string name="MargeletWallOpenMine">Моя стена</string>
++    <string name="MargeletWallMine">меня</string>
++    <string name="MargeletWallAbout">На стене лежит то, что о человеке написали другие. Хозяин стены снять написанное не может — в этом весь смысл, именно поэтому стена и работает против разводил. Писать может каждый, поэтому смотрите и на реакции.</string>
++    <string name="MargeletProfileGroup">Где всё это лежит</string>
++    <string name="MargeletProfileGroupAbout">Баннеры и стены — обычные сообщения в этой публичной группе. Своего сервера у нас нет: подпись под каждым сообщением ставит телеграм, поэтому выложить баннер или отзыв от вашего имени никто не может.</string>
 +    <string name="MargeletUpdatesDownload">Скачать и установить</string>
 +    <string name="MargeletUpdatesInstall">Установить</string>
 +    <string name="MargeletUpdatesFailed">Не удалось скачать обновление</string>
@@ -19721,10 +20601,10 @@ index d4683443..57d10109 100644
      <string name="LanguageNameInEnglish">Ukrainian</string>
 diff --git a/TMessagesProj/src/main/res/values-zh/strings.xml b/TMessagesProj/src/main/res/values-zh/strings.xml
 new file mode 100644
-index 00000000..a4ce2b75
+index 00000000..082023af
 --- /dev/null
 +++ b/TMessagesProj/src/main/res/values-zh/strings.xml
-@@ -0,0 +1,201 @@
+@@ -0,0 +1,225 @@
 +<?xml version="1.0" encoding="utf-8"?>
 +<resources>
 +    <string name="MargeletSettings">分支设置</string>
@@ -19745,6 +20625,30 @@ index 00000000..a4ce2b75
 +    <string name="MargeletUpdatesAbout">应用会去 GitHub 问有没有更新的版本、徽章列表有没有变化。新版本会在聊天列表底部用一条横幅提示；应用不会自行下载或安装。</string>
 +    <string name="MargeletUpdatesNow">立即检查</string>
 +    <string name="MargeletVersionLabel">预发布 1.0</string>
++    <string name="MargeletWall">留言墙</string>
++    <string name="MargeletWallOf">%1$s 的留言墙</string>
++    <string name="MargeletWallSubtitle">别人写下的内容</string>
++    <string name="MargeletWallEmpty">还什么都没有。写在墙上的内容会留下：墙的主人无法删除它。</string>
++    <string name="MargeletWallHint">在墙上留言</string>
++    <string name="MargeletWallSomeone">某人</string>
++    <string name="MargeletWallNoLinks">墙上不允许指向 %1$s 的链接</string>
++    <string name="MargeletWallOpen">打开留言墙</string>
++    <string name="MargeletWallShow">在资料里显示留言墙</string>
++    <string name="MargeletProfileTitle">个人资料</string>
++    <string name="MargeletProfileInfo">横幅与留言墙</string>
++    <string name="MargeletBannerHeader">横幅</string>
++    <string name="MargeletBannerPick">选择图片</string>
++    <string name="MargeletBannerRemove">移除横幅</string>
++    <string name="MargeletBannerAbout">头像后面的图片。装了 Margy 的人都能看到；其他人那里什么也不变。</string>
++    <string name="MargeletBannerWarn">图片会发到公开群组 @margy_underground。那里任何人都能看到，包括没装 Margy 的人。你可以自己在群里把它删掉。</string>
++    <string name="MargeletBannerShow">显示别人的横幅</string>
++    <string name="MargeletBannerSaved">横幅已发送</string>
++    <string name="MargeletBannerRemoved">横幅已移除</string>
++    <string name="MargeletWallOpenMine">我的留言墙</string>
++    <string name="MargeletWallMine">我</string>
++    <string name="MargeletWallAbout">墙上放的是别人写下的关于这个人的内容。墙的主人无法删除写在上面的东西——这正是重点，也正因如此，留言墙才能对付骗子。任何人都能写，所以也请看看那些表态。</string>
++    <string name="MargeletProfileGroup">这些都存在哪里</string>
++    <string name="MargeletProfileGroupAbout">横幅和留言墙都是这个公开群组里的普通消息。我们没有自己的服务器：每条消息都由 Telegram 署名，所以没人能以你的名义发横幅或留言。</string>
 +    <string name="MargeletUpdatesDownload">下载并安装</string>
 +    <string name="MargeletUpdatesInstall">安装</string>
 +    <string name="MargeletUpdatesFailed">无法下载更新</string>
@@ -19943,7 +20847,7 @@ index cc49d135..a8a51c3a 100644
      <item name="menu_regular" type="id"/>
      <item name="menu_bold" type="id"/>
 diff --git a/TMessagesProj/src/main/res/values/strings.xml b/TMessagesProj/src/main/res/values/strings.xml
-index ffa4d566..b8f5da5c 100644
+index ffa4d566..91006d6a 100644
 --- a/TMessagesProj/src/main/res/values/strings.xml
 +++ b/TMessagesProj/src/main/res/values/strings.xml
 @@ -1,7 +1,7 @@
@@ -19956,7 +20860,7 @@ index ffa4d566..b8f5da5c 100644
      <string name="LanguageName">English</string>
      <string name="English">English</string>
      <string name="LanguageNameInEnglish">English</string>
-@@ -11221,4 +11221,202 @@
+@@ -11221,4 +11221,226 @@
      <string name="UnsupportedMessageTitle">Unsupported Message</string>
      <string name="UnsupportedMessageMessage">Update Telegram to view this message</string>
      <string name="UnsupportedUpdate">Update</string>
@@ -19978,6 +20882,30 @@ index ffa4d566..b8f5da5c 100644
 +    <string name="MargeletUpdatesAbout">The app asks GitHub whether a newer version is out and whether the badge list has changed. A new version is offered in a bar at the bottom of the chat list; nothing is downloaded or installed on its own.</string>
 +    <string name="MargeletUpdatesNow">Check now</string>
 +    <string name="MargeletVersionLabel">Prerelease 1.0</string>
++    <string name="MargeletWall">Wall</string>
++    <string name="MargeletWallOf">%1$s\'s wall</string>
++    <string name="MargeletWallSubtitle">what other people wrote</string>
++    <string name="MargeletWallEmpty">Nothing here yet. Anything written on a wall stays: the owner cannot remove it.</string>
++    <string name="MargeletWallHint">Write on the wall</string>
++    <string name="MargeletWallSomeone">Someone</string>
++    <string name="MargeletWallNoLinks">Links to %1$s are not allowed on walls</string>
++    <string name="MargeletWallOpen">Open the wall</string>
++    <string name="MargeletWallShow">Show walls in profiles</string>
++    <string name="MargeletProfileTitle">Profile</string>
++    <string name="MargeletProfileInfo">Banner and wall</string>
++    <string name="MargeletBannerHeader">Banner</string>
++    <string name="MargeletBannerPick">Choose an image</string>
++    <string name="MargeletBannerRemove">Remove the banner</string>
++    <string name="MargeletBannerAbout">The picture behind your avatar. Everyone with Margy sees it; for everyone else nothing changes.</string>
++    <string name="MargeletBannerWarn">The picture goes into the public group @margy_underground. Anyone can see it there, including people without Margy. You can delete it yourself, in the group.</string>
++    <string name="MargeletBannerShow">Show other people’s banners</string>
++    <string name="MargeletBannerSaved">Banner sent</string>
++    <string name="MargeletBannerRemoved">Banner removed</string>
++    <string name="MargeletWallOpenMine">My wall</string>
++    <string name="MargeletWallMine">me</string>
++    <string name="MargeletWallAbout">A wall holds what other people wrote about a person. The owner of a wall cannot remove what is written there — that is the whole point: it is what makes a wall work against scammers. Everyone can write, so read the reactions too.</string>
++    <string name="MargeletProfileGroup">Where all of it lives</string>
++    <string name="MargeletProfileGroupAbout">Banners and walls are ordinary messages in this public group. There is no server of ours: Telegram signs every message, so nobody can post a banner or a review in your name.</string>
 +    <string name="MargeletUpdatesDownload">Download and install</string>
 +    <string name="MargeletUpdatesInstall">Install</string>
 +    <string name="MargeletUpdatesFailed">Could not download the update</string>
