@@ -22,9 +22,9 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.R;
-import org.telegram.messenger.browser.Browser;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.ActionBar;
+import org.telegram.ui.ActionBar.ActionBarPopupWindow;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Cells.ChatMessageCell;
@@ -32,6 +32,8 @@ import org.telegram.ui.Components.BulletinFactory;
 import org.telegram.ui.Components.ChatAvatarContainer;
 import org.telegram.ui.Components.EditTextBoldCursor;
 import org.telegram.ui.Components.LayoutHelper;
+import org.telegram.ui.Components.ReactionsContainerLayout;
+import org.telegram.ui.Components.Reactions.ReactionsLayoutInBubble;
 import org.telegram.ui.Components.RecyclerListView;
 import org.telegram.ui.Components.SizeNotifierFrameLayout;
 
@@ -111,6 +113,11 @@ public class MargeletWallActivity extends BaseFragment {
         } catch (Throwable ignored) {
         }
 
+        // Ячейка переписки рисует пузыри не своими силами: их готовит тема, и
+        // без этого вызова остаются голые прямоугольники. ChatActivity зовёт
+        // это первой же строкой — я не позвал, и стена вышла квадратной.
+        Theme.createChatResources(context, false);
+
         // Обои переписки, а не серая заливка: стена — это разговор о человеке,
         // и выглядеть она должна как разговор.
         root = new SizeNotifierFrameLayout(context);
@@ -127,7 +134,6 @@ public class MargeletWallActivity extends BaseFragment {
         listView.setPadding(0, dp(4), 0, dp(4));
         adapter = new Adapter();
         listView.setAdapter(adapter);
-        listView.setOnItemClickListener((view, position) -> openInGroup(position));
         root.addView(listView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT,
                 LayoutHelper.MATCH_PARENT, Gravity.TOP, 0, 0, 0, 52));
 
@@ -192,19 +198,6 @@ public class MargeletWallActivity extends BaseFragment {
         return box;
     }
 
-    /**
-     * Нажатие открывает само сообщение в группе: там работает всё, что умеет
-     * телеграм, — ответить, поставить реакцию, пожаловаться. Своей половины
-     * телеграма мы не пишем.
-     */
-    private void openInGroup(int position) {
-        if (position < 0 || position >= messages.size()) {
-            return;
-        }
-        Browser.openUrl(getContext(), "https://t.me/" + MargeletGroup.USERNAME
-                + "/" + messages.get(position).getId());
-    }
-
     private void load() {
         if (loading) {
             return;
@@ -263,6 +256,120 @@ public class MargeletWallActivity extends BaseFragment {
         }
     }
 
+    /**
+     * Поставить или снять реакцию, не уходя со стены.
+     *
+     * Раньше нажатие уводило в саму группу — и это было прикрытие: реакций на
+     * стене не было, а сказать «там работает всё, что умеет телеграм» было
+     * проще, чем сделать. Реакция на отзыв и есть суд читателей, ради которого
+     * стена задумана; уводить за ней в другой экран — терять её.
+     */
+    private void toggleReaction(ChatMessageCell cell, TLRPC.ReactionCount reaction) {
+        final MessageObject message = cell.getPrimaryMessageObject();
+        if (message == null || reaction == null || reaction.reaction == null) {
+            return;
+        }
+        final ReactionsLayoutInBubble.VisibleReaction pressed =
+                ReactionsLayoutInBubble.VisibleReaction.fromTL(reaction.reaction);
+        final ArrayList<ReactionsLayoutInBubble.VisibleReaction> mine = new ArrayList<>();
+        boolean had = false;
+        try {
+            if (message.messageOwner.reactions != null
+                    && message.messageOwner.reactions.results != null) {
+                for (TLRPC.ReactionCount count : message.messageOwner.reactions.results) {
+                    if (!count.chosen || count.reaction == null) {
+                        continue;
+                    }
+                    final ReactionsLayoutInBubble.VisibleReaction one =
+                            ReactionsLayoutInBubble.VisibleReaction.fromTL(count.reaction);
+                    if (one.equals(pressed)) {
+                        had = true;   // уже стояла — значит снимаем
+                        continue;
+                    }
+                    mine.add(one);
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        if (!had) {
+            mine.add(pressed);
+        }
+        getSendMessagesHelper().sendReaction(message, mine, had ? null : pressed,
+                false, true, this, () -> AndroidUtilities.runOnUIThread(cell::invalidate));
+    }
+
+    /**
+     * Долгое нажатие — выбор новой реакции той же полоской, что и в переписке.
+     *
+     * Нажатие по уже стоящей реакции её переключает, но поставить первую было
+     * бы нечем: полоска выбора живёт в меню сообщения, а меню у стены своего
+     * нет. Показываем её саму по себе, над сообщением.
+     *
+     * Всё в try: полоска — сложная чужая деталь, и если она где-то не
+     * соберётся, стена должна остаться рабочей, а не упасть вместе с ней.
+     */
+    private void pickReaction(ChatMessageCell cell) {
+        final MessageObject message = cell.getPrimaryMessageObject();
+        if (message == null || getContext() == null) {
+            return;
+        }
+        try {
+            final ReactionsContainerLayout picker = new ReactionsContainerLayout(
+                    ReactionsContainerLayout.TYPE_DEFAULT, this, getContext(),
+                    currentAccount, getResourceProvider());
+            picker.setPadding(dp(4), dp(4), dp(4), dp(22));
+            picker.setMessage(message, null, true);
+
+            final FrameLayout box = new FrameLayout(getContext());
+            box.addView(picker, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 72));
+
+            final ActionBarPopupWindow window = new ActionBarPopupWindow(box,
+                    LayoutHelper.MATCH_PARENT, dp(72));
+            window.setOutsideTouchable(true);
+            window.setFocusable(true);
+            window.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(0));
+
+            picker.setDelegate(new ReactionsContainerLayout.ReactionsContainerDelegate() {
+                @Override
+                public void onReactionClicked(View view, ReactionsLayoutInBubble.VisibleReaction chosen,
+                                              boolean longpress, boolean addToRecent) {
+                    window.dismiss();
+                    apply(cell, message, chosen);
+                }
+            });
+
+            final int[] at = new int[2];
+            cell.getLocationInWindow(at);
+            window.showAtLocation(cell, android.view.Gravity.TOP | android.view.Gravity.LEFT,
+                    0, Math.max(0, at[1] - dp(76)));
+            picker.startEnterAnimation(false);
+        } catch (Throwable t) {
+            org.telegram.messenger.FileLog.e(t);
+        }
+    }
+
+    /** Поставить выбранную реакцию поверх уже стоящих у меня. */
+    private void apply(ChatMessageCell cell, MessageObject message,
+                       ReactionsLayoutInBubble.VisibleReaction chosen) {
+        final ArrayList<ReactionsLayoutInBubble.VisibleReaction> mine = new ArrayList<>();
+        mine.add(chosen);
+        getSendMessagesHelper().sendReaction(message, mine, chosen, false, true, this,
+                () -> AndroidUtilities.runOnUIThread(() -> {
+                    cell.invalidate();
+                    load();
+                }));
+    }
+
+    /** Нажали аватарку — открываем профиль того, кто написал. */
+    private void openAuthor(TLRPC.User user) {
+        if (user == null) {
+            return;
+        }
+        final android.os.Bundle args = new android.os.Bundle();
+        args.putLong("user_id", user.id);
+        presentFragment(new ProfileActivity(args));
+    }
+
     private void send() {
         final String text = input.getText().toString().trim();
         if (text.isEmpty()) {
@@ -296,10 +403,33 @@ public class MargeletWallActivity extends BaseFragment {
         @Override
         public RecyclerView.ViewHolder onCreateViewHolder(ViewGroup parent, int viewType) {
             final ChatMessageCell cell = new ChatMessageCell(parent.getContext(), currentAccount);
-            // Ячейке нужен собеседник, иначе она не знает, кому что показывать.
-            // Пустой годится: всё, что она у него спрашивает, для стены не
-            // нужно, а без него она падает.
+            // Без этого ячейка считает, что рисует личку: не показывает ни
+            // имени автора, ни аватарки. На стене пишут разные люди, и
+            // сообщение без подписи там — не мелкая недоделка, а потеря
+            // единственного, чем стена вообще ценна: кто это сказал.
+            cell.isChat = true;
             cell.setDelegate(new ChatMessageCell.ChatMessageCellDelegate() {
+                @Override
+                public void didPressReaction(ChatMessageCell pressed, TLRPC.ReactionCount reaction,
+                                             boolean longpress, float x, float y) {
+                    toggleReaction(pressed, reaction);
+                }
+
+                @Override
+                public void didPressUserAvatar(ChatMessageCell pressed, TLRPC.User user,
+                                               float x, float y, boolean asForward) {
+                    openAuthor(user);
+                }
+
+                @Override
+                public boolean canPerformActions() {
+                    return true;
+                }
+
+                @Override
+                public void didLongPress(ChatMessageCell pressed, float x, float y) {
+                    pickReaction(pressed);
+                }
             });
             cell.setLayoutParams(new RecyclerView.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
