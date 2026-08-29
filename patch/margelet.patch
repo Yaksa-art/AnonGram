@@ -1700,7 +1700,7 @@ index 00000000..a775cdbc
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
 new file mode 100644
-index 00000000..6b701073
+index 00000000..2c14833d
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
 @@ -0,0 +1,446 @@
@@ -1746,7 +1746,7 @@ index 00000000..6b701073
 +     * 0.99, а не 1.0, нарочно: настоящая единица должна остаться свободной
 +     * под настоящий выпуск, а пререлиз обязан быть строго меньше её.
 +     */
-+    public static final String APP_VERSION = "0.99.15";
++    public static final String APP_VERSION = "0.99.16";
 +
 +    /** Как выпуск называется для человека: «Пререлиз 1.0», «Бета 1.1». */
 +    public static String versionLabel() {
@@ -23834,7 +23834,7 @@ index 03d0ba33..17f98fa6 100644
      <string name="English">Inglês</string>
      <string name="LanguageNameInEnglish">Portuguese (Brazil)</string>
 diff --git a/TMessagesProj/src/main/res/values-ru/strings.xml b/TMessagesProj/src/main/res/values-ru/strings.xml
-index 24c56292..8e619112 100644
+index 24c56292..596602d5 100644
 --- a/TMessagesProj/src/main/res/values-ru/strings.xml
 +++ b/TMessagesProj/src/main/res/values-ru/strings.xml
 @@ -1,7 +1,7 @@
@@ -23868,7 +23868,7 @@ index 24c56292..8e619112 100644
 +    <string name="MargeletUpdatesOff">Никогда</string>
 +    <string name="MargeletUpdatesAbout">Приложение спрашивает гитхаб, не вышла ли версия новее и не изменился ли список значков. Новую версию предлагает полоской внизу списка чатов; само ничего не качает и не ставит.</string>
 +    <string name="MargeletUpdatesNow">Проверить сейчас</string>
-+    <string name="MargeletVersionLabel">Пререлиз 1.0.15</string>
++    <string name="MargeletVersionLabel">Пререлиз 1.0.16</string>
 +    <string name="MargeletWall">Стена</string>
 +    <string name="MargeletWallOf">Стена %1$s</string>
 +    <string name="MargeletWallSubtitle">что написали другие</string>
@@ -24112,7 +24112,7 @@ index d4683443..57d10109 100644
      <string name="LanguageNameInEnglish">Ukrainian</string>
 diff --git a/TMessagesProj/src/main/res/values-zh/strings.xml b/TMessagesProj/src/main/res/values-zh/strings.xml
 new file mode 100644
-index 00000000..c128af6f
+index 00000000..c87bfee7
 --- /dev/null
 +++ b/TMessagesProj/src/main/res/values-zh/strings.xml
 @@ -0,0 +1,246 @@
@@ -24135,7 +24135,7 @@ index 00000000..c128af6f
 +    <string name="MargeletUpdatesOff">从不</string>
 +    <string name="MargeletUpdatesAbout">应用会去 GitHub 问有没有更新的版本、徽章列表有没有变化。新版本会在聊天列表底部用一条横幅提示；应用不会自行下载或安装。</string>
 +    <string name="MargeletUpdatesNow">立即检查</string>
-+    <string name="MargeletVersionLabel">预发布 1.0.15</string>
++    <string name="MargeletVersionLabel">预发布 1.0.16</string>
 +    <string name="MargeletWall">留言墙</string>
 +    <string name="MargeletWallOf">%1$s 的留言墙</string>
 +    <string name="MargeletWallSubtitle">别人写下的内容</string>
@@ -24379,7 +24379,7 @@ index cc49d135..a8a51c3a 100644
      <item name="menu_regular" type="id"/>
      <item name="menu_bold" type="id"/>
 diff --git a/TMessagesProj/src/main/res/values/strings.xml b/TMessagesProj/src/main/res/values/strings.xml
-index ffa4d566..8a4089ce 100644
+index ffa4d566..abd39811 100644
 --- a/TMessagesProj/src/main/res/values/strings.xml
 +++ b/TMessagesProj/src/main/res/values/strings.xml
 @@ -1,7 +1,7 @@
@@ -24413,7 +24413,7 @@ index ffa4d566..8a4089ce 100644
 +    <string name="MargeletUpdatesOff">Never</string>
 +    <string name="MargeletUpdatesAbout">The app asks GitHub whether a newer version is out and whether the badge list has changed. A new version is offered in a bar at the bottom of the chat list; nothing is downloaded or installed on its own.</string>
 +    <string name="MargeletUpdatesNow">Check now</string>
-+    <string name="MargeletVersionLabel">Prerelease 1.0.15</string>
++    <string name="MargeletVersionLabel">Prerelease 1.0.16</string>
 +    <string name="MargeletWall">Wall</string>
 +    <string name="MargeletWallOf">%1$s\'s wall</string>
 +    <string name="MargeletWallSubtitle">what other people wrote</string>
@@ -24815,10 +24815,10 @@ HcmV?d00001
 
 diff --git a/TMessagesProj_AppStandalone/src/main/java/org/telegram/margelet/MargeletPython.java b/TMessagesProj_AppStandalone/src/main/java/org/telegram/margelet/MargeletPython.java
 new file mode 100644
-index 00000000..803de8a8
+index 00000000..d5d411e7
 --- /dev/null
 +++ b/TMessagesProj_AppStandalone/src/main/java/org/telegram/margelet/MargeletPython.java
-@@ -0,0 +1,77 @@
+@@ -0,0 +1,92 @@
 +package org.telegram.margelet;
 +
 +import android.content.Context;
@@ -24858,6 +24858,21 @@ index 00000000..803de8a8
 +        final PyObject host = Python.getInstance().getModule("margelet_host");
 +        final PyObject answer = host.callAttr("sending", text, dialogId);
 +        return answer == null ? text : answer.toString();
++    }
++
++    /**
++     * Человек отправляет картинку.
++     *
++     * Ответ нужен до отправки, как и у текста, но ждут его не в главном
++     * потоке: разбор картинки — работа не на миллисекунды.
++     *
++     * Возвращаем null, когда питон ответил None: «никто не заинтересовался» и
++     * «заменить на пустую строку» — разные вещи, и склеивать их нельзя.
++     */
++    public static String sendingMedia(String path, String caption, long dialogId) {
++        final PyObject host = Python.getInstance().getModule("margelet_host");
++        final PyObject answer = host.callAttr("sendingMedia", path, caption, dialogId);
++        return answer == null ? null : answer.toString();
 +    }
 +
 +    /** Пришло сообщение. */
@@ -35825,7 +35840,7 @@ index 528fd746..8b64b0f8 100644
  }
  repositories {
 diff --git a/gradle.properties b/gradle.properties
-index 83408dc5..ab55985b 100644
+index 83408dc5..86972f12 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -13,9 +13,9 @@
@@ -35833,7 +35848,7 @@ index 83408dc5..ab55985b 100644
  # org.gradle.parallel=true
  #Sat Mar 12 05:53:50 MSK 2016
 -APP_VERSION_CODE=7031
-+APP_VERSION_CODE=7051
++APP_VERSION_CODE=7052
  APP_VERSION_NAME=12.10.0
 -APP_PACKAGE=org.telegram.messenger
 +APP_PACKAGE=cat.narezany.margelet

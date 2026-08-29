@@ -39,6 +39,21 @@ public class MargeletPython {
         return answer == null ? text : answer.toString();
     }
 
+    /**
+     * Человек отправляет картинку.
+     *
+     * Ответ нужен до отправки, как и у текста, но ждут его не в главном
+     * потоке: разбор картинки — работа не на миллисекунды.
+     *
+     * Возвращаем null, когда питон ответил None: «никто не заинтересовался» и
+     * «заменить на пустую строку» — разные вещи, и склеивать их нельзя.
+     */
+    public static String sendingMedia(String path, String caption, long dialogId) {
+        final PyObject host = Python.getInstance().getModule("margelet_host");
+        final PyObject answer = host.callAttr("sendingMedia", path, caption, dialogId);
+        return answer == null ? null : answer.toString();
+    }
+
     /** Пришло сообщение. */
     public static void received(String text, long dialogId, int messageId, boolean out) {
         final PyObject host = Python.getInstance().getModule("margelet_host");
