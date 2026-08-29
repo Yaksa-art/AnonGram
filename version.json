@@ -1,7 +1,7 @@
 {
-  "version": "0.99.10",
+  "version": "0.99.9",
   "apk": "https://github.com/narezany/margelet/raw/apk/margelet.apk",
-  "about": "Pre-release 1.0.10. The wall stops losing messages: the service tag is no longer cut out of the message itself, only hidden when shown. The wall header keeps its own avatar.",
-  "about_ru": "Пререлиз 1.0.10. Стена перестала терять сообщения: служебная метка больше не вырезается из самого сообщения, а прячется только при показе. Аватарка в шапке стены больше не подменяется на групповую.",
-  "about_zh": "预发布 1.0.10。留言墙不再丢消息：内部标记不再从消息本身剪掉，只在显示时隐藏。墙的标题栏保留自己的头像。"
+  "about": "Pre-release 1.0.9. 1.0.10 crashed on start and has been withdrawn.",
+  "about_ru": "Пререлиз 1.0.9. Сборка 1.0.10 вылетала при запуске и снята.",
+  "about_zh": "预发布 1.0.9。1.0.10 启动即崩溃，已撤下。"
 }
