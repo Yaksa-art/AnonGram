@@ -1,7 +1,7 @@
 {
-  "version": "0.99.17",
-  "apk": "https://github.com/narezany/margelet/raw/apk/margelet-0.99.17.apk",
-  "about": "Pre-release 1.0.17. Profile gradient: two colours of your own instead of the ones Telegram picks — they paint the top of the profile and the buttons under the avatar. Replacing a running plugin now offers a restart instead of quietly starting a second copy. Three settings removed: both watermarks and the fork channel on top of the chat list.",
-  "about_ru": "Пререлиз 1.0.17. Градиент профиля: два своих цвета вместо тех, что выбирает телеграм, — ими красится верх профиля и кнопки под аватаркой. Замена работающего плагина теперь предлагает перезапуск, а не запускает вторую копию молча. Снято три настройки: обе ватермарки и канал форка сверху списка чатов.",
-  "about_zh": "预发布 1.0.17。个人资料渐变：用你自己的两种颜色代替 Telegram 挑的——它们会给资料页顶部和头像下面的按钮上色。替换正在运行的插件时会提示重启，而不再默默启动第二份。删掉三项设置：两个水印，以及聊天列表顶部的分支频道。"
+  "version": "0.99.18",
+  "apk": "https://github.com/narezany/margelet/raw/apk/margelet-0.99.18.apk",
+  "about": "Pre-release 1.0.18. The profile gradient is now linear, left to right, and covers the whole profile page — not just the three buttons under the avatar. The watermark is gone entirely, not merely off. On the wall, tapping a message works again — reactions and the menu; and the wall now reads further back on its own instead of showing one message.",
+  "about_ru": "Пререлиз 1.0.18. Градиент профиля стал линейным, слева направо, и красит всю страницу профиля, а не три кнопки под аватаркой. Ватермарка убрана совсем, а не выключена. На стене снова работает нажатие по сообщению — реакции и меню; и стена сама дочитывает дальние сообщения, а не показывает одно.",
+  "about_zh": "预发布 1.0.18。个人资料渐变改成了从左到右的线性渐变，并且铺满整个资料页，而不只是头像下面那三个按钮。水印被彻底去掉，而不是关掉。留言墙上点消息又能用了——表情回应和菜单；而且墙会自己往前读更多消息，不再只显示一条。"
 }
