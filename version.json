@@ -1,7 +1,7 @@
 {
-  "version": "0.99.14",
-  "apk": "https://github.com/narezany/margelet/raw/apk/margelet.apk",
-  "about": "Pre-release 1.0.14. A named door for sending pictures: a plugin now sees the file and the caption before the picture goes, and can replace it with text. The first plugin built on it turns a photo into a picture made of characters — attach a photo, caption it \".ascii\".",
-  "about_ru": "Пререлиз 1.0.14. Названная дверь для отправки картинок: плагин видит файл и подпись до отправки и может заменить картинку текстом. Первый плагин на ней — «картинка знаками»: прикладываешь фото, подписываешь «.ascii», и вместо фото уходит рисунок из знаков.",
-  "about_zh": "预发布 1.0.14。新增发送图片的具名接口：插件在图片发出前就能看到文件和说明，并可以用文本替换它。第一个用上它的插件是「字符画」——附上照片，说明写「.ascii」，发出去的就是字符画。"
+  "version": "0.99.15",
+  "apk": "https://github.com/narezany/margelet/raw/apk/margelet-0.99.15.apk",
+  "about": "Pre-release 1.0.15. Fixes the update loop: the updater kept installing the previous build over and over. GitHub caches a file under a fixed name for five minutes, so right after a release the old bytes came back — and the app marked the download ready by the version it expected, not the one it got, so the stale file was then installed forever. The download link now carries the version number, and the downloaded file is checked before anything is installed.",
+  "about_ru": "Пререлиз 1.0.15. Чинит бесконечное обновление: обновлялка раз за разом ставила прошлую сборку. Гитхаб отдаёт файл с постоянным именем через кэш на пять минут, поэтому сразу после выпуска приезжали старые байты — а готовность помечалась тем номером, который ожидали скачать, а не тем, что скачали, и дальше этот файл ставился уже навсегда. Теперь в ссылке стоит номер версии, а скачанный файл проверяется до установки.",
+  "about_zh": "预发布 1.0.15。修复无限更新：更新器反复安装上一版。GitHub 会把固定文件名的文件缓存五分钟，所以刚发布时拿回来的是旧字节——而应用按「期望下载的版本」而不是「实际下载到的版本」标记就绪，于是那个旧文件被一直安装下去。现在下载链接里带上了版本号，并且在安装前会检查下载到的文件。"
 }
