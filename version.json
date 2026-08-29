@@ -1,7 +1,7 @@
 {
-  "version": "0.99.4",
+  "version": "0.99.5",
   "apk": "https://github.com/narezany/margelet/raw/apk/margelet.apk",
-  "about": "Pre-release 1.0.4. The wall now uses Telegram's own filtered view instead of opening the whole group, and the service tags are no longer shown in the text.",
-  "about_ru": "Пререлиз 1.0.4. Стена показывается готовым режимом самого телеграма, а не открытой целиком группой, и служебные метки в тексте больше не видно.",
-  "about_zh": "预发布 1.0.4。留言墙改用 Telegram 自己的过滤视图，不再打开整个群组，文本里也不再显示内部标记。"
+  "about": "Pre-release 1.0.5. Plugin hooks actually run now — they never did before. The wall is the ordinary chat screen with everything but that wall filtered out, and the service tags are gone from the text.",
+  "about_ru": "Пререлиз 1.0.5. Хуки в плагинах наконец выполняются — до этого они не работали ни разу. Стена стала обычным экраном переписки, где оставлены только её сообщения, а служебные метки из текста убраны.",
+  "about_zh": "预发布 1.0.5。插件钩子现在真的能跑了——之前一次都没跑起来过。留言墙成了普通的聊天界面，只留下属于这面墙的消息，文本里的内部标记也去掉了。"
 }
