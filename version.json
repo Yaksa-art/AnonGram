@@ -1,7 +1,7 @@
 {
-  "version": "0.99.23",
-  "apk": "https://github.com/narezany/margelet/raw/apk/margelet-0.99.23.apk",
-  "about": "Pre-release 1.0.23. With a gradient set, the profile now looks the same on every theme: the cards take the gradient itself, a little darker, and every text colour comes from the gradient too, not from the theme. Mixing the theme in was what turned the light theme grey on grey. The odd shadow under \"bio\" is gone with it.",
-  "about_ru": "Пререлиз 1.0.23. Когда стоит градиент, профиль выглядит одинаково на любой теме: карточки берут сам градиент, только темнее, и все цвета текста тоже берутся у него, а не у темы. Именно подмешивание темы и давало на светлой теме серое на сером. Кривая тень под «био» уходит вместе с этим.",
-  "about_zh": "预发布 1.0.23。设置了渐变后，个人资料页在任何主题下都长得一样：卡片直接取渐变色并略深一点，所有文字颜色也来自渐变，而不是主题。之前把主题混进去，正是浅色主题下灰底灰字的原因。「简介」下面那道歪影子也随之消失。"
+  "version": "0.99.24",
+  "apk": "https://github.com/narezany/margelet/raw/apk/margelet-0.99.24.apk",
+  "about": "Pre-release 1.0.24. The profile cards were not taking the gradient on any theme — the palette was only installed in a rare case, so the cards kept the theme's own colour: white on light, dark on dark. It is installed always now. The version shown in settings is computed from the real one instead of being typed in beside it, so it can no longer go stale.",
+  "about_ru": "Пререлиз 1.0.24. Карточки профиля не брали градиент ни на одной теме: палитра ставилась только в редком случае, и карточки оставались цвета темы — белые на светлой, тёмные на тёмной. Теперь ставится всегда. Версия в настройках считается из настоящей, а не вписана рядом с ней, — устареть больше не может.",
+  "about_zh": "预发布 1.0.24。资料卡片在任何主题下都没取到渐变色：调色板只在一种罕见情况下才装上，卡片仍旧用主题自己的颜色——浅色主题下是白的，深色主题下是暗的。现在总会装上。设置里显示的版本号改为从真实版本算出，而不是在旁边另写一份，不会再过时。"
 }
