@@ -175,6 +175,8 @@ public class MargeletGroup {
     }
 
     private static final String TAG_PREFIX = "#margy_";
+    /** Под каким именем храним вырезанные метки в клиентских данных. */
+    private static final String KEY_TAGS = "margy_tags";
     private static final java.util.regex.Pattern TAGS =
             java.util.regex.Pattern.compile("#margy_(wall_c?\\d+|banner)\\b");
 
@@ -191,8 +193,12 @@ public class MargeletGroup {
         }
         final java.util.ArrayList<MessageObject> out = new java.util.ArrayList<>();
         for (MessageObject message : messages) {
-            if (message != null && message.messageOwner != null
-                    && hasTag(message.messageOwner, tag)) {
+            if (message == null || message.messageOwner == null) {
+                continue;
+            }
+            // Сперва смотрим в вырезанное, потом в сам текст: до вырезания
+            // метка лежит в тексте, после — только здесь.
+            if (contains(message.margeletTags, tag) || hasTag(message.messageOwner, tag)) {
                 out.add(message);
             }
         }
@@ -210,14 +216,22 @@ public class MargeletGroup {
      *
      * Само сообщение на сервере не меняется: правим свою копию в памяти.
      */
-    public static void cutTags(TLRPC.Message message) {
-        if (message == null || message.message == null
-                || message.message.indexOf(TAG_PREFIX) < 0) {
-            return;
+    public static String cutTags(TLRPC.Message message) {
+        if (message == null) {
+            return null;
+        }
+        if (message.message == null || message.message.indexOf(TAG_PREFIX) < 0) {
+            // Метки в тексте нет — либо её и не было, либо мы уже вырезали её
+            // раньше. Разобрать одно и то же сообщение могут не один раз, а
+            // второй раз вырезать уже нечего: отдаём запомненное, иначе стена
+            // потеряет сообщение на ровном месте.
+            return message.params != null ? message.params.get(KEY_TAGS) : null;
         }
         final java.util.regex.Matcher at = TAGS.matcher(message.message);
         final java.util.List<int[]> cuts = new ArrayList<>();
+        final StringBuilder found = new StringBuilder();
         while (at.find()) {
+            found.append(at.group()).append(' ');
             int to = at.end();
             // Съедаем пробелы и перевод строки следом: иначе отзыв начинался
             // бы с пустой строки там, где метка стояла отдельно.
@@ -228,7 +242,7 @@ public class MargeletGroup {
             cuts.add(new int[]{at.start(), to});
         }
         if (cuts.isEmpty()) {
-            return;
+            return null;
         }
         final StringBuilder text = new StringBuilder(message.message);
         for (int i = cuts.size() - 1; i >= 0; i--) {
@@ -236,6 +250,16 @@ public class MargeletGroup {
         }
         message.message = text.toString();
         message.entities = shift(message.entities, cuts);
+        // params — место для клиентских данных о сообщении; складываем туда,
+        // чтобы вырезанное пережило повторный разбор.
+        if (message.params == null) {
+            message.params = new java.util.HashMap<>();
+        }
+        message.params.put(KEY_TAGS, found.toString());
+        // Отдаём вырезанное обратно. Отбор сообщений идёт по метке, а метки к
+        // тому времени в тексте уже нет — я вырезал её раньше, чем по ней
+        // отбирают, и стена опустела, хотя сообщения на месте.
+        return found.toString();
     }
 
     /**
@@ -509,6 +533,24 @@ public class MargeletGroup {
             out.add(object);
         }
         return out;
+    }
+
+    /** Есть ли ровно эта метка среди вырезанных. */
+    private static boolean contains(String cut, String tag) {
+        if (cut == null || cut.isEmpty()) {
+            return false;
+        }
+        int at = cut.indexOf(tag);
+        while (at >= 0) {
+            final int end = at + tag.length();
+            // Метки разделены пробелом, поэтому «ровно эта» — значит следом
+            // пробел или конец: иначе wall_5 совпал бы с wall_55.
+            if (end >= cut.length() || cut.charAt(end) == ' ') {
+                return true;
+            }
+            at = cut.indexOf(tag, at + 1);
+        }
+        return false;
     }
 
     /**
