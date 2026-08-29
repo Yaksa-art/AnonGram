@@ -1,7 +1,7 @@
 {
-  "version": "0.99.6",
+  "version": "0.99.7",
   "apk": "https://github.com/narezany/margelet/raw/apk/margelet.apk",
-  "about": "Pre-release 1.0.6. The store installs again — it was looking for the downloaded file in the wrong folder. The wall no longer carries the pinned-message bar, and installing a version you already have says so.",
-  "about_ru": "Пререлиз 1.0.6. Магазин снова ставит плагины — скачанный файл искался не в той папке. На стене больше нет полоски закреплённого, а установка уже стоящей версии честно про это говорит.",
-  "about_zh": "预发布 1.0.6。商店又能装插件了——之前在错误的文件夹里找下载好的文件。留言墙上不再有置顶消息条，重复安装同一版本时也会明说。"
+  "about": "Pre-release 1.0.7. Wall messages no longer carry a coloured tappable stretch that leads nowhere. Badges are visible in chats too, and walls exist for bots, channels and groups.",
+  "about_ru": "Пререлиз 1.0.7. На стене больше нет цветного кликабельного куска, который никуда не ведёт. Значки видны и в переписке, а стена появилась у ботов, каналов и групп.",
+  "about_zh": "预发布 1.0.7。留言墙上不再出现哪儿都不通的彩色可点区域。徽章在聊天里也能看到，机器人、频道和群组也有了自己的留言墙。"
 }
