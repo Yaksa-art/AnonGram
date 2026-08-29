@@ -1,7 +1,7 @@
 {
-  "version": "0.99.8",
+  "version": "0.99.9",
   "apk": "https://github.com/narezany/margelet/raw/apk/margelet.apk",
-  "about": "Pre-release 1.0.8. Big text can no longer be stacked into a message that drags the chat down. The wall header stops flickering between the wall and the group, and the fork badge shows in private chats too.",
-  "about_ru": "Пререлиз 1.0.8. Крупный текст больше нельзя накладывать сам на себя и собирать сообщение, от которого всё тормозит. Шапка стены перестала мигать между стеной и группой, а значок форка виден и в личке.",
-  "about_zh": "预发布 1.0.8。大号文字不能再层层叠加成拖垮聊天的消息。留言墙的标题不再在墙和群组之间闪烁，分支徽章在私聊里也能看到。"
+  "about": "Pre-release 1.0.9. Fixes two things the previous build broke: the wall showed nothing though the messages were there, and its header kept flipping between the wall and the group.",
+  "about_ru": "Пререлиз 1.0.9. Чинит две вещи, сломанные прошлой сборкой: стена не показывала сообщения, хотя они были, а её шапка мигала между стеной и группой.",
+  "about_zh": "预发布 1.0.9。修好上一版弄坏的两处：留言墙上明明有消息却什么都不显示，标题栏还在墙和群组之间来回跳。"
 }
