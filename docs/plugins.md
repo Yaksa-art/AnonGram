@@ -176,6 +176,43 @@ second, the console says so — not as a reproach, but so the author knows.
 >
 > The right shape is below, under "A command that answers from the network".
 
+### A picture instead of a photo
+
+```python
+def on_start():
+    margelet.on_send_photo(instead_of_photo)
+
+def instead_of_photo(path, caption, chat):
+    if caption.strip() != ".ascii":
+        return None           # not our caption — the photo goes as usual
+    return "```\n" + draw(path) + "\n```"
+```
+
+`path` is the file on disk, `caption` is what was typed under the photo.
+
+What to return: a string — the photo does not go, this text goes instead;
+`False` — nothing goes; nothing — the photo goes the usual way. The first
+handler that takes the picture keeps it: there is nothing to share between two
+plugins, so there is no chain here the way there is for text.
+
+The text can be wrapped in triple backticks — then it goes as a monospace
+block. For pictures made of characters that is not decoration but a condition:
+in a normal font letters have different widths, and any such picture falls
+apart.
+
+Unlike `on_send`, this is called **off the main thread**. So decoding the
+picture right here is fine and expected: the screen stays alive meanwhile.
+Going to the network from here is still a bad idea, but now for the ordinary
+reason — someone is waiting for their message to send — not because the phone
+would freeze.
+
+Refuse quietly and often. Not your caption, the file would not open, it does
+not fit — return `None` and the photo goes by itself. Eating someone's send and
+saying nothing is worse than not working.
+
+A finished plugin built on this door is right here:
+[margelet.ascii.marp](margelet.ascii.marp), source inside.
+
 ### A command that answers from the network
 
 ```python
