@@ -104,6 +104,23 @@ public class MargeletRemote {
      * второй раз в сеть не пойдём. Кэш система вправе почистить, и это
      * нормально: не нашли — скачаем снова.
      */
+    /**
+     * Уже скачанная картинка или null.
+     *
+     * Спросить это надо ДО показа: подпись под котом берётся у того же кота,
+     * чью картинку мы покажем, а какого именно покажем — решается тем, есть
+     * ли она уже на диске. Узнать это через {@link #image} нельзя: он отвечает
+     * обратным вызовом, а решение нужно сейчас.
+     */
+    public static File cachedImage(String url) {
+        if (url == null || url.isEmpty()) {
+            return null;
+        }
+        final String full = url.startsWith("http") ? url : BASE + url;
+        final File target = new File(imagesDir(), Integer.toHexString(full.hashCode()));
+        return target.exists() && target.length() > 0 ? target : null;
+    }
+
     public static void image(String url, ImageCallback callback) {
         if (url == null || url.isEmpty() || callback == null) {
             if (callback != null) {

@@ -82,7 +82,45 @@ public class MargeletCats {
      * смотреть на крутилку.
      */
     public static void refresh() {
-        MargeletRemote.refreshIfOlder(FILE, CACHE_KEY, REFRESH_MS, text -> { });
+        MargeletRemote.refreshIfOlder(FILE, CACHE_KEY, REFRESH_MS, text -> warm());
+        warm();
+    }
+
+    /**
+     * Заранее принести картинки котов из списка.
+     *
+     * Кот показывается, только когда его снимок уже на диске, — иначе подпись
+     * пришлось бы вешать на чужую фотографию. Значит, ждать первого показа,
+     * чтобы начать качать, нельзя: первый показ тогда всегда достаётся вшитым,
+     * и новый кот не появится никогда, сколько бы его ни открывали.
+     *
+     * Уже скачанное {@link MargeletRemote#image} отдаёт сразу и в сеть не идёт,
+     * поэтому звать это можно спокойно.
+     */
+    private static void warm() {
+        for (Cat cat : remote()) {
+            MargeletRemote.image(cat.photo, file -> { });
+        }
+    }
+
+    /**
+     * Кот, которого можно показать целиком — со своим снимком и своей кличкой.
+     *
+     * Пусто, если список ещё не приехал или ни одного снимка на диске нет.
+     * Тогда показываются вшитые коты, у которых снимок и подпись лежат рядом в
+     * сборке и разъехаться не могут.
+     */
+    private static Cat pick() {
+        final java.util.List<Cat> ready = new java.util.ArrayList<>();
+        for (Cat cat : remote()) {
+            if (MargeletRemote.cachedImage(cat.photo) != null) {
+                ready.add(cat);
+            }
+        }
+        if (ready.isEmpty()) {
+            return null;
+        }
+        return ready.get((int) (Math.random() * ready.size()));
     }
 
     /** Список с гитхаба или пусто, если его ещё нет. */
@@ -136,9 +174,15 @@ public class MargeletCats {
             return;
         }
         try {
-            final java.util.List<Cat> cats = remote();
-            final Cat cat = cats.isEmpty()
-                    ? null : cats.get((int) (Math.random() * cats.size()));
+            // Бросок кубика ровно один. Раньше их было два — отдельно кот из
+            // списка, отдельно вшитая картинка, — и подпись доставалась одному
+            // коту, а картинка другому. Владелец увидел под фотографией кота
+            // своего друга чужую кличку, и был прав: имя, которое не
+            // принадлежит тому, кто на снимке, — не украшение, а враньё.
+            final Cat cat = pick();
+            // Кот из списка берётся, только когда его картинка уже на диске,
+            // поэтому она здесь есть наверняка.
+            final java.io.File ready = cat == null ? null : MargeletRemote.cachedImage(cat.photo);
             final int index = (int) (Math.random() * PHOTOS.length);
             final long openedAt = System.currentTimeMillis();
 
@@ -147,23 +191,24 @@ public class MargeletCats {
 
             final ImageView photo = new ImageView(activity);
             photo.setScaleType(ImageView.ScaleType.CENTER_CROP);
-            if (cat == null) {
-                photo.setImageResource(PHOTOS[index]);
-            } else {
-                // Пока картинка едет, показываем вшитую: пустой чёрный экран
-                // вместо кота выглядел бы поломкой, а не ожиданием.
-                photo.setImageResource(PHOTOS[index]);
-                MargeletRemote.image(cat.photo, file -> {
-                    if (file == null) {
-                        return;
+            boolean shown = false;
+            if (ready != null) {
+                try {
+                    final android.graphics.Bitmap bitmap =
+                            android.graphics.BitmapFactory.decodeFile(ready.getAbsolutePath());
+                    if (bitmap != null) {
+                        photo.setImageBitmap(bitmap);
+                        shown = true;
                     }
-                    try {
-                        photo.setImageBitmap(android.graphics.BitmapFactory
-                                .decodeFile(file.getAbsolutePath()));
-                    } catch (Throwable t) {
-                        FileLog.e(t);
-                    }
-                });
+                } catch (Throwable t) {
+                    FileLog.e(t);
+                }
+            }
+            // Картинка на диске оказалась битой — показываем вшитого кота с
+            // его же подписью, а не чужую кличку поверх запасной фотографии.
+            final boolean fromList = shown;
+            if (!shown) {
+                photo.setImageResource(PHOTOS[index]);
             }
             root.addView(photo, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
 
@@ -176,7 +221,7 @@ public class MargeletCats {
             name.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 22);
             name.setTypeface(AndroidUtilities.bold());
             name.setTextColor(Color.WHITE);
-            name.setText(cat != null && !cat.name.isEmpty()
+            name.setText(fromList && !cat.name.isEmpty()
                     ? cat.name : LocaleController.getString(NAMES[index]));
             caption.addView(name, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
@@ -184,7 +229,7 @@ public class MargeletCats {
             from.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
             from.setTextColor(0xB3FFFFFF);
             from.setText(LocaleController.formatString(R.string.MargeletCatFrom,
-                    cat != null && !cat.from.isEmpty() ? cat.from : FROM[index]));
+                    fromList && !cat.from.isEmpty() ? cat.from : FROM[index]));
             from.setPadding(0, dp(4), 0, 0);
             caption.addView(from, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
