@@ -375,6 +375,35 @@ public class MargeletGradient {
         return toBrightness(middle, target);
     }
 
+    /**
+     * Цвет карточки на странице профиля: тема, подведённая под градиент.
+     *
+     * Берётся цвет градиента там, где карточка стоит, и подмешивается к цвету
+     * темы, а не заменяет его. Полная замена читалась бы красиво ровно до
+     * первой светлой темы: текст в строках берёт цвет у темы, и тёмно-зелёная
+     * карточка со светлой темой означала бы тёмный текст на тёмном.
+     *
+     * Поэтому яркость ещё и придерживается: на тёмной теме карточка не
+     * светлеет выше 0.35, на светлой не темнеет ниже 0.55. Владелец просил
+     * «чуть темнее градиента» — это и делается, но не ценой нечитаемого текста.
+     */
+    public static int card(int themeColor, int[] pair, float y, float height) {
+        if (pair == null || pair.length < 2) {
+            return themeColor;
+        }
+        final float part = height <= 0 ? 0.5f
+                : Math.max(0f, Math.min(1f, 1f - y / height));
+        final int under = mix(pair[0], pair[1], part);
+        final int mixed = mix(themeColor, under, 0.45f);
+        double want = brightness(mixed) * 0.94;
+        if (brightness(themeColor) < 0.5) {
+            want = Math.min(want, 0.35);
+        } else {
+            want = Math.max(want, 0.55);
+        }
+        return toBrightness(mixed, want);
+    }
+
     /** Смешать два цвета: 0 — весь первый, 1 — весь второй. */
     public static int mix(int from, int to, float part) {
         return Color.argb(
