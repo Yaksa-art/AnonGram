@@ -58,6 +58,7 @@ public class MargeletHooks {
     }
 
     private static volatile boolean wantsSend;
+    private static volatile boolean wantsMedia;
     private static volatile boolean wantsMessage;
     private static final List<Button> buttons = new ArrayList<>();
     private static boolean watching;
@@ -68,6 +69,10 @@ public class MargeletHooks {
         wantsSend = true;
     }
 
+    public static void wantMedia() {
+        wantsMedia = true;
+    }
+
     public static void wantMessage() {
         wantsMessage = true;
         watch();
@@ -75,6 +80,10 @@ public class MargeletHooks {
 
     public static boolean hasSend() {
         return wantsSend;
+    }
+
+    public static boolean hasMedia() {
+        return wantsMedia;
     }
 
     /**
@@ -148,6 +157,68 @@ public class MargeletHooks {
             replyOf.remove(dialogId);
         } else {
             replyOf.put(dialogId, replyTo);
+        }
+    }
+
+    /**
+     * Что плагин решил про отправляемую картинку.
+     *
+     * Три исхода, и все три разные: не тронули, заменили текстом, отменили.
+     * Одной строкой их не выразить — пустой текст и «не тронули» слились бы,
+     * а именно на этом различии здесь всё и держится.
+     */
+    public static final class Media {
+        /** Взял ли плагин эту картинку на себя. Ложь — отправляем как обычно. */
+        public final boolean handled;
+        /** Чем заменить. Пусто — не отправлять вовсе. */
+        public final String text;
+
+        Media(boolean handled, String text) {
+            this.handled = handled;
+            this.text = text;
+        }
+    }
+
+    /**
+     * Дверь для картинок: плагин видит файл и подпись до отправки.
+     *
+     * Отдельно от {@link #sending}, потому что это разные вещи. Там уходит
+     * набранный текст, здесь — файл с диска, и подпись у него своя. Свести их
+     * в одну дверь значило бы отдать плагину строку и умолчать, что за ней
+     * стоит картинка.
+     *
+     * Зовётся не из главного потока: разбор картинки — работа не на
+     * миллисекунды, и держать на ней палец человека нельзя.
+     *
+     * @param path     файл на диске; может быть пусто, если картинка пришла адресом
+     * @param caption  подпись, как её набрали
+     * @return что решил плагин, или null — никто не заинтересовался
+     */
+    public static Media sendingMedia(String path, String caption, long dialogId) {
+        if (!wantsMedia) {
+            return null;
+        }
+        try {
+            final Object answer = MargeletPluginHost.pythonValue("sendingMedia",
+                    new Class<?>[]{String.class, String.class, long.class},
+                    path == null ? "" : path, caption == null ? "" : caption, dialogId);
+            if (answer == null) {
+                return null;
+            }
+            final String result = String.valueOf(answer);
+            if (CANCEL.equals(result)) {
+                return new Media(true, null);
+            }
+            // Та же страховка, что и у текста: нулевого байта в наборе человека
+            // быть не может, значит это разъехавшаяся метка, а не ответ.
+            if (result.indexOf('\u0000') >= 0) {
+                return null;
+            }
+            return new Media(true, result);
+        } catch (Throwable t) {
+            FileLog.e(t);
+            MargeletPluginHost.log("margelet", String.valueOf(t), true);
+            return null;
         }
     }
 
@@ -276,14 +347,40 @@ public class MargeletHooks {
      * когда ответ наконец пришёл, — вместо того чтобы держать отправку.
      */
     public static void send(long dialogId, String text) {
+        send(dialogId, text, false);
+    }
+
+    /**
+     * То же, но с разбором разметки: тройные кавычки становятся моноширинным
+     * блоком, звёздочки — жирным.
+     *
+     * Отдельным доводом, а не всегда: у плагина, шлющего чужой текст, звёздочка
+     * в нём — просто звёздочка, и превращать её в жирный за его спиной нельзя.
+     * Разбор просит тот, кто разметку и написал.
+     */
+    public static void send(long dialogId, String text, boolean markdown) {
         if (text == null || text.length() == 0 || dialogId == 0) {
             return;
         }
         AndroidUtilities.runOnUIThread(() -> {
             try {
                 final int account = org.telegram.messenger.UserConfig.selectedAccount;
+                java.util.ArrayList<org.telegram.tgnet.TLRPC.MessageEntity> entities = null;
+                CharSequence body = text;
+                if (markdown) {
+                    // Разбор съедает сами кавычки и отдаёт разметку отдельно —
+                    // ровно то же самое делает поле ввода, когда человек
+                    // набирает тройные кавычки руками.
+                    final CharSequence[] one = new CharSequence[]{
+                            new android.text.SpannableStringBuilder(text)};
+                    entities = org.telegram.messenger.MediaDataController
+                            .getInstance(account).getEntities(one, true, true);
+                    body = one[0];
+                }
                 final org.telegram.messenger.SendMessagesHelper.SendMessageParams params =
-                        org.telegram.messenger.SendMessagesHelper.SendMessageParams.of(text, dialogId);
+                        org.telegram.messenger.SendMessagesHelper.SendMessageParams.of(
+                                body.toString(), dialogId);
+                params.entities = entities;
                 // Отвечаем туда же, куда отвечал человек. Ответ берётся один
                 // раз: второе сообщение плагина ответом уже не будет, иначе
                 // плагин, пишущий по будильнику, отвечал бы вечно.

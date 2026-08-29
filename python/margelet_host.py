@@ -93,6 +93,7 @@ class Margelet:
         self.folder = folder
         self._on_chat_opened = []
         self._on_send = []
+        self._on_send_photo = []
         self._on_message = []
         self._on_settings = []
         self._on_deleted = []
@@ -359,6 +360,26 @@ class Margelet:
         self._on_send.append(call)
         _Hooks.wantSend()
 
+    def on_send_photo(self, call):
+        """Позвать перед отправкой картинки: call(path, caption, dialog_id).
+
+        path — файл на диске, caption — подпись, как её набрали.
+
+        Что вернуть:
+          строку — картинка не уйдёт, вместо неё уйдёт этот текст;
+          False  — не отправлять ни картинку, ни текст;
+          ничего — оставить как есть, картинка уйдёт обычным путём.
+
+        Текст можно обернуть в тройные кавычки — тогда он уйдёт моноширинным
+        блоком. Для рисунков из знаков это не украшение: в обычном шрифте буквы
+        разной ширины, и любая картинка из них разъезжается.
+
+        Зовут не из главного потока, поэтому долгая работа здесь допустима —
+        в отличие от on_send, где человек смотрит на неотправленное сообщение.
+        """
+        self._on_send_photo.append(call)
+        _Hooks.wantMedia()
+
     def on_message(self, call):
         """Позвать, когда пришло сообщение: call(text, dialog_id, message_id, outgoing).
 
@@ -475,6 +496,28 @@ def chat_opened(fragment):
                 call(fragment)
             except Exception:
                 _Host.log(margelet.name, traceback.format_exc(), True)
+
+
+def sendingMedia(path, caption, dialog_id):
+    """Перед отправкой картинки. Первый, кто взялся, её и забирает.
+
+    В отличие от текста, здесь обработчики не выстраиваются в цепочку:
+    заменить картинку можно только один раз, и делить её между двумя плагинами
+    не на что.
+    """
+    for margelet in list(_margelets.values()):
+        for call in list(margelet._on_send_photo):
+            margelet._cancel_send = False
+            try:
+                answer = call(path, caption, dialog_id)
+            except Exception:
+                _Host.log(margelet.name, traceback.format_exc(), True)
+                continue
+            if answer is False or margelet._cancel_send:
+                return _CANCEL
+            if isinstance(answer, str):
+                return answer
+    return None
 
 
 def sending(text, dialog_id):

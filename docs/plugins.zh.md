@@ -104,6 +104,7 @@ def on_start():
 |---|---|
 | `margelet.on_chat_opened(调用)` | 打开了聊天，并把该界面交给你 |
 | `margelet.on_send(调用)` | 有人要发文本，在发出去之前 |
+| `margelet.on_send_photo(调用)` | 有人要发图片；可以换成文本 |
 | `margelet.on_message(调用)` | 来了一条消息 |
 | `margelet.on_deleted(调用)` | 消息被删除 |
 | `margelet.on_pin(调用)` | 会话被置顶或取消置顶；可以取消 |

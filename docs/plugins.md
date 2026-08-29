@@ -108,6 +108,7 @@ A plugin does not poll the app — the app calls the plugin.
 |---|---|
 | `margelet.on_chat_opened(call)` | a chat was opened; gets the chat screen |
 | `margelet.on_send(call)` | a text is being sent, before it goes |
+| `margelet.on_send_photo(call)` | a picture is being sent; can be replaced with text |
 | `margelet.on_message(call)` | a message arrived |
 | `margelet.on_deleted(call)` | messages were deleted |
 | `margelet.on_pin(call)` | a chat is being pinned or unpinned; can be cancelled |

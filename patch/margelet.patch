@@ -1700,7 +1700,7 @@ index 00000000..a775cdbc
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
 new file mode 100644
-index 00000000..c6adaa82
+index 00000000..981d963a
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
 @@ -0,0 +1,446 @@
@@ -1746,7 +1746,7 @@ index 00000000..c6adaa82
 +     * 0.99, а не 1.0, нарочно: настоящая единица должна остаться свободной
 +     * под настоящий выпуск, а пререлиз обязан быть строго меньше её.
 +     */
-+    public static final String APP_VERSION = "0.99.13";
++    public static final String APP_VERSION = "0.99.14";
 +
 +    /** Как выпуск называется для человека: «Пререлиз 1.0», «Бета 1.1». */
 +    public static String versionLabel() {
@@ -4109,10 +4109,10 @@ index 00000000..0b8ac254
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletHooks.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletHooks.java
 new file mode 100644
-index 00000000..b2477a4d
+index 00000000..3a78caf7
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletHooks.java
-@@ -0,0 +1,531 @@
+@@ -0,0 +1,628 @@
 +package org.telegram.margelet;
 +
 +import org.telegram.messenger.AndroidUtilities;
@@ -4173,6 +4173,7 @@ index 00000000..b2477a4d
 +    }
 +
 +    private static volatile boolean wantsSend;
++    private static volatile boolean wantsMedia;
 +    private static volatile boolean wantsMessage;
 +    private static final List<Button> buttons = new ArrayList<>();
 +    private static boolean watching;
@@ -4183,6 +4184,10 @@ index 00000000..b2477a4d
 +        wantsSend = true;
 +    }
 +
++    public static void wantMedia() {
++        wantsMedia = true;
++    }
++
 +    public static void wantMessage() {
 +        wantsMessage = true;
 +        watch();
@@ -4190,6 +4195,10 @@ index 00000000..b2477a4d
 +
 +    public static boolean hasSend() {
 +        return wantsSend;
++    }
++
++    public static boolean hasMedia() {
++        return wantsMedia;
 +    }
 +
 +    /**
@@ -4263,6 +4272,68 @@ index 00000000..b2477a4d
 +            replyOf.remove(dialogId);
 +        } else {
 +            replyOf.put(dialogId, replyTo);
++        }
++    }
++
++    /**
++     * Что плагин решил про отправляемую картинку.
++     *
++     * Три исхода, и все три разные: не тронули, заменили текстом, отменили.
++     * Одной строкой их не выразить — пустой текст и «не тронули» слились бы,
++     * а именно на этом различии здесь всё и держится.
++     */
++    public static final class Media {
++        /** Взял ли плагин эту картинку на себя. Ложь — отправляем как обычно. */
++        public final boolean handled;
++        /** Чем заменить. Пусто — не отправлять вовсе. */
++        public final String text;
++
++        Media(boolean handled, String text) {
++            this.handled = handled;
++            this.text = text;
++        }
++    }
++
++    /**
++     * Дверь для картинок: плагин видит файл и подпись до отправки.
++     *
++     * Отдельно от {@link #sending}, потому что это разные вещи. Там уходит
++     * набранный текст, здесь — файл с диска, и подпись у него своя. Свести их
++     * в одну дверь значило бы отдать плагину строку и умолчать, что за ней
++     * стоит картинка.
++     *
++     * Зовётся не из главного потока: разбор картинки — работа не на
++     * миллисекунды, и держать на ней палец человека нельзя.
++     *
++     * @param path     файл на диске; может быть пусто, если картинка пришла адресом
++     * @param caption  подпись, как её набрали
++     * @return что решил плагин, или null — никто не заинтересовался
++     */
++    public static Media sendingMedia(String path, String caption, long dialogId) {
++        if (!wantsMedia) {
++            return null;
++        }
++        try {
++            final Object answer = MargeletPluginHost.pythonValue("sendingMedia",
++                    new Class<?>[]{String.class, String.class, long.class},
++                    path == null ? "" : path, caption == null ? "" : caption, dialogId);
++            if (answer == null) {
++                return null;
++            }
++            final String result = String.valueOf(answer);
++            if (CANCEL.equals(result)) {
++                return new Media(true, null);
++            }
++            // Та же страховка, что и у текста: нулевого байта в наборе человека
++            // быть не может, значит это разъехавшаяся метка, а не ответ.
++            if (result.indexOf('\u0000') >= 0) {
++                return null;
++            }
++            return new Media(true, result);
++        } catch (Throwable t) {
++            FileLog.e(t);
++            MargeletPluginHost.log("margelet", String.valueOf(t), true);
++            return null;
 +        }
 +    }
 +
@@ -4391,14 +4462,40 @@ index 00000000..b2477a4d
 +     * когда ответ наконец пришёл, — вместо того чтобы держать отправку.
 +     */
 +    public static void send(long dialogId, String text) {
++        send(dialogId, text, false);
++    }
++
++    /**
++     * То же, но с разбором разметки: тройные кавычки становятся моноширинным
++     * блоком, звёздочки — жирным.
++     *
++     * Отдельным доводом, а не всегда: у плагина, шлющего чужой текст, звёздочка
++     * в нём — просто звёздочка, и превращать её в жирный за его спиной нельзя.
++     * Разбор просит тот, кто разметку и написал.
++     */
++    public static void send(long dialogId, String text, boolean markdown) {
 +        if (text == null || text.length() == 0 || dialogId == 0) {
 +            return;
 +        }
 +        AndroidUtilities.runOnUIThread(() -> {
 +            try {
 +                final int account = org.telegram.messenger.UserConfig.selectedAccount;
++                java.util.ArrayList<org.telegram.tgnet.TLRPC.MessageEntity> entities = null;
++                CharSequence body = text;
++                if (markdown) {
++                    // Разбор съедает сами кавычки и отдаёт разметку отдельно —
++                    // ровно то же самое делает поле ввода, когда человек
++                    // набирает тройные кавычки руками.
++                    final CharSequence[] one = new CharSequence[]{
++                            new android.text.SpannableStringBuilder(text)};
++                    entities = org.telegram.messenger.MediaDataController
++                            .getInstance(account).getEntities(one, true, true);
++                    body = one[0];
++                }
 +                final org.telegram.messenger.SendMessagesHelper.SendMessageParams params =
-+                        org.telegram.messenger.SendMessagesHelper.SendMessageParams.of(text, dialogId);
++                        org.telegram.messenger.SendMessagesHelper.SendMessageParams.of(
++                                body.toString(), dialogId);
++                params.entities = entities;
 +                // Отвечаем туда же, куда отвечал человек. Ответ берётся один
 +                // раз: второе сообщение плагина ответом уже не будет, иначе
 +                // плагин, пишущий по будильнику, отвечал бы вечно.
@@ -9606,7 +9703,7 @@ index 7a0b35b1..e4146316 100644
          if (dialog == null || dialog.pinned == pin) {
              return dialog != null;
 diff --git a/TMessagesProj/src/main/java/org/telegram/messenger/SendMessagesHelper.java b/TMessagesProj/src/main/java/org/telegram/messenger/SendMessagesHelper.java
-index 4a6661d1..795a6188 100644
+index 4a6661d1..9ad21adc 100644
 --- a/TMessagesProj/src/main/java/org/telegram/messenger/SendMessagesHelper.java
 +++ b/TMessagesProj/src/main/java/org/telegram/messenger/SendMessagesHelper.java
 @@ -4257,6 +4257,36 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
@@ -9646,6 +9743,42 @@ index 4a6661d1..795a6188 100644
          final SendMessageChatArguments sendMessageChatArguments = sendMessageParams.sendMessageChatArguments != null ?
                  sendMessageParams.sendMessageChatArguments : SendMessageChatArguments.EMPTY;
          String message = sendMessageParams.message;
+@@ -10670,6 +10700,35 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
+         final boolean forceDisableCheckSentMedia = forcedPollGroupId != 0;
+         final boolean groupMediaFinal = groupMedia;
+         mediaSendQueue.postRunnable(() -> {
++            // Дверь для плагинов: они видят файл и подпись до того, как
++            // картинка ушла, и могут заменить её текстом или отменить отправку.
++            //
++            // Стоит внутри очереди, а не выше по методу, и это не мелочь:
++            // разбор картинки — работа не на миллисекунды, а выше по методу
++            // мы ещё в главном потоке, и человек смотрел бы на замерший экран.
++            //
++            // Идём с конца: обработанное вынимается из списка, и при движении
++            // с начала следующее ушло бы у нас из-под индекса.
++            if (org.telegram.margelet.MargeletHooks.hasMedia()) {
++                for (int a = media.size() - 1; a >= 0; a--) {
++                    final SendingMediaInfo one = media.get(a);
++                    final org.telegram.margelet.MargeletHooks.Media answer =
++                            org.telegram.margelet.MargeletHooks.sendingMedia(
++                                    one.path != null ? one.path
++                                            : one.uri != null ? one.uri.toString() : "",
++                                    one.caption, dialogId);
++                    if (answer == null || !answer.handled) {
++                        continue;
++                    }
++                    media.remove(a);
++                    if (answer.text != null && answer.text.length() > 0) {
++                        org.telegram.margelet.MargeletHooks.send(dialogId, answer.text, true);
++                    }
++                }
++                if (media.isEmpty()) {
++                    return;
++                }
++            }
+             long beginTime = System.currentTimeMillis();
+             HashMap<SendingMediaInfo, MediaSendPrepareWorker> workers;
+             int count = media.size();
 diff --git a/TMessagesProj/src/main/java/org/telegram/messenger/browser/Browser.java b/TMessagesProj/src/main/java/org/telegram/messenger/browser/Browser.java
 index ebc0553f..cea03a48 100644
 --- a/TMessagesProj/src/main/java/org/telegram/messenger/browser/Browser.java
@@ -23631,7 +23764,7 @@ index 03d0ba33..17f98fa6 100644
      <string name="English">Inglês</string>
      <string name="LanguageNameInEnglish">Portuguese (Brazil)</string>
 diff --git a/TMessagesProj/src/main/res/values-ru/strings.xml b/TMessagesProj/src/main/res/values-ru/strings.xml
-index 24c56292..127980e4 100644
+index 24c56292..acdba3ef 100644
 --- a/TMessagesProj/src/main/res/values-ru/strings.xml
 +++ b/TMessagesProj/src/main/res/values-ru/strings.xml
 @@ -1,7 +1,7 @@
@@ -23665,7 +23798,7 @@ index 24c56292..127980e4 100644
 +    <string name="MargeletUpdatesOff">Никогда</string>
 +    <string name="MargeletUpdatesAbout">Приложение спрашивает гитхаб, не вышла ли версия новее и не изменился ли список значков. Новую версию предлагает полоской внизу списка чатов; само ничего не качает и не ставит.</string>
 +    <string name="MargeletUpdatesNow">Проверить сейчас</string>
-+    <string name="MargeletVersionLabel">Пререлиз 1.0.13</string>
++    <string name="MargeletVersionLabel">Пререлиз 1.0.14</string>
 +    <string name="MargeletWall">Стена</string>
 +    <string name="MargeletWallOf">Стена %1$s</string>
 +    <string name="MargeletWallSubtitle">что написали другие</string>
@@ -23909,7 +24042,7 @@ index d4683443..57d10109 100644
      <string name="LanguageNameInEnglish">Ukrainian</string>
 diff --git a/TMessagesProj/src/main/res/values-zh/strings.xml b/TMessagesProj/src/main/res/values-zh/strings.xml
 new file mode 100644
-index 00000000..cbdd544e
+index 00000000..8b97a880
 --- /dev/null
 +++ b/TMessagesProj/src/main/res/values-zh/strings.xml
 @@ -0,0 +1,246 @@
@@ -23932,7 +24065,7 @@ index 00000000..cbdd544e
 +    <string name="MargeletUpdatesOff">从不</string>
 +    <string name="MargeletUpdatesAbout">应用会去 GitHub 问有没有更新的版本、徽章列表有没有变化。新版本会在聊天列表底部用一条横幅提示；应用不会自行下载或安装。</string>
 +    <string name="MargeletUpdatesNow">立即检查</string>
-+    <string name="MargeletVersionLabel">预发布 1.0.13</string>
++    <string name="MargeletVersionLabel">预发布 1.0.14</string>
 +    <string name="MargeletWall">留言墙</string>
 +    <string name="MargeletWallOf">%1$s 的留言墙</string>
 +    <string name="MargeletWallSubtitle">别人写下的内容</string>
@@ -24176,7 +24309,7 @@ index cc49d135..a8a51c3a 100644
      <item name="menu_regular" type="id"/>
      <item name="menu_bold" type="id"/>
 diff --git a/TMessagesProj/src/main/res/values/strings.xml b/TMessagesProj/src/main/res/values/strings.xml
-index ffa4d566..87c3f109 100644
+index ffa4d566..a8e053c5 100644
 --- a/TMessagesProj/src/main/res/values/strings.xml
 +++ b/TMessagesProj/src/main/res/values/strings.xml
 @@ -1,7 +1,7 @@
@@ -24210,7 +24343,7 @@ index ffa4d566..87c3f109 100644
 +    <string name="MargeletUpdatesOff">Never</string>
 +    <string name="MargeletUpdatesAbout">The app asks GitHub whether a newer version is out and whether the badge list has changed. A new version is offered in a bar at the bottom of the chat list; nothing is downloaded or installed on its own.</string>
 +    <string name="MargeletUpdatesNow">Check now</string>
-+    <string name="MargeletVersionLabel">Prerelease 1.0.13</string>
++    <string name="MargeletVersionLabel">Prerelease 1.0.14</string>
 +    <string name="MargeletWall">Wall</string>
 +    <string name="MargeletWallOf">%1$s\'s wall</string>
 +    <string name="MargeletWallSubtitle">what other people wrote</string>
@@ -24855,10 +24988,10 @@ index 00000000..14308d17
 +    margelet.log("настройка", key, "теперь", value)
 diff --git a/TMessagesProj_AppStandalone/src/main/python/margelet_host.py b/TMessagesProj_AppStandalone/src/main/python/margelet_host.py
 new file mode 100644
-index 00000000..1175f0da
+index 00000000..6406ccbd
 --- /dev/null
 +++ b/TMessagesProj_AppStandalone/src/main/python/margelet_host.py
-@@ -0,0 +1,613 @@
+@@ -0,0 +1,656 @@
 +# -*- coding: utf-8 -*-
 +"""Прослойка между приложением и плагинами Margelet.
 +
@@ -24954,6 +25087,7 @@ index 00000000..1175f0da
 +        self.folder = folder
 +        self._on_chat_opened = []
 +        self._on_send = []
++        self._on_send_photo = []
 +        self._on_message = []
 +        self._on_settings = []
 +        self._on_deleted = []
@@ -25220,6 +25354,26 @@ index 00000000..1175f0da
 +        self._on_send.append(call)
 +        _Hooks.wantSend()
 +
++    def on_send_photo(self, call):
++        """Позвать перед отправкой картинки: call(path, caption, dialog_id).
++
++        path — файл на диске, caption — подпись, как её набрали.
++
++        Что вернуть:
++          строку — картинка не уйдёт, вместо неё уйдёт этот текст;
++          False  — не отправлять ни картинку, ни текст;
++          ничего — оставить как есть, картинка уйдёт обычным путём.
++
++        Текст можно обернуть в тройные кавычки — тогда он уйдёт моноширинным
++        блоком. Для рисунков из знаков это не украшение: в обычном шрифте буквы
++        разной ширины, и любая картинка из них разъезжается.
++
++        Зовут не из главного потока, поэтому долгая работа здесь допустима —
++        в отличие от on_send, где человек смотрит на неотправленное сообщение.
++        """
++        self._on_send_photo.append(call)
++        _Hooks.wantMedia()
++
 +    def on_message(self, call):
 +        """Позвать, когда пришло сообщение: call(text, dialog_id, message_id, outgoing).
 +
@@ -25336,6 +25490,28 @@ index 00000000..1175f0da
 +                call(fragment)
 +            except Exception:
 +                _Host.log(margelet.name, traceback.format_exc(), True)
++
++
++def sendingMedia(path, caption, dialog_id):
++    """Перед отправкой картинки. Первый, кто взялся, её и забирает.
++
++    В отличие от текста, здесь обработчики не выстраиваются в цепочку:
++    заменить картинку можно только один раз, и делить её между двумя плагинами
++    не на что.
++    """
++    for margelet in list(_margelets.values()):
++        for call in list(margelet._on_send_photo):
++            margelet._cancel_send = False
++            try:
++                answer = call(path, caption, dialog_id)
++            except Exception:
++                _Host.log(margelet.name, traceback.format_exc(), True)
++                continue
++            if answer is False or margelet._cancel_send:
++                return _CANCEL
++            if isinstance(answer, str):
++                return answer
++    return None
 +
 +
 +def sending(text, dialog_id):
@@ -35579,7 +35755,7 @@ index 528fd746..8b64b0f8 100644
  }
  repositories {
 diff --git a/gradle.properties b/gradle.properties
-index 83408dc5..f41ef5e4 100644
+index 83408dc5..6408fd1c 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -13,9 +13,9 @@
@@ -35587,7 +35763,7 @@ index 83408dc5..f41ef5e4 100644
  # org.gradle.parallel=true
  #Sat Mar 12 05:53:50 MSK 2016
 -APP_VERSION_CODE=7031
-+APP_VERSION_CODE=7049
++APP_VERSION_CODE=7050
  APP_VERSION_NAME=12.10.0
 -APP_PACKAGE=org.telegram.messenger
 +APP_PACKAGE=cat.narezany.margelet
