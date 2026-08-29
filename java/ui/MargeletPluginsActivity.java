@@ -279,7 +279,10 @@ public class MargeletPluginsActivity extends BaseFragment {
             BulletinFactory.of(this).createSimpleBulletin(R.raw.info,
                     LocaleController.getString(R.string.MargeletPluginInstalled)).show();
         }, () -> BulletinFactory.of(this).createSimpleBulletin(R.raw.error,
-                LocaleController.getString(R.string.MargeletStoreFailed)).show());
+                // Не «не удалось прочитать канал»: канал прочитан, список на
+                // экране. Сорвалось скачивание одного файла, и говорить надо
+                // про него, а не пугать человека тем, чего не было.
+                LocaleController.getString(R.string.MargeletStoreNoFile)).show());
     }
 
     /** Спрашиваем канал один раз за открытие экрана, а не при каждом взгляде. */

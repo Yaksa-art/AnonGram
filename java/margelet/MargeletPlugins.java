@@ -494,7 +494,12 @@ public class MargeletPlugins {
             text.append(plugin.description).append("\n\n");
         }
         if (existing != null) {
-            text.append(LocaleController.formatString(R.string.MargeletPluginAlready, existing.version))
+            // Та же версия — это не обновление, а повтор, и сказать об этом
+            // надо прямо: иначе человек ставит второй раз то же самое и ждёт
+            // изменений, которых не будет.
+            text.append(existing.version.equals(plugin.version)
+                            ? LocaleController.formatString(R.string.MargeletPluginSameVersion, existing.version)
+                            : LocaleController.formatString(R.string.MargeletPluginAlready, existing.version))
                     .append("\n\n");
         }
         text.append(LocaleController.getString(R.string.MargeletPluginDeclares));

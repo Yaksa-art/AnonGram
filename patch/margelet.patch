@@ -1564,7 +1564,7 @@ index 00000000..a775cdbc
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
 new file mode 100644
-index 00000000..617744c0
+index 00000000..7f94ec73
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
 @@ -0,0 +1,446 @@
@@ -1610,7 +1610,7 @@ index 00000000..617744c0
 +     * 0.99, а не 1.0, нарочно: настоящая единица должна остаться свободной
 +     * под настоящий выпуск, а пререлиз обязан быть строго меньше её.
 +     */
-+    public static final String APP_VERSION = "0.99.5";
++    public static final String APP_VERSION = "0.99.6";
 +
 +    /** Как выпуск называется для человека: «Пререлиз 1.0», «Бета 1.1». */
 +    public static String versionLabel() {
@@ -5668,10 +5668,10 @@ index 00000000..cfc704d6
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletPlugins.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletPlugins.java
 new file mode 100644
-index 00000000..fdcdcb49
+index 00000000..702af157
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletPlugins.java
-@@ -0,0 +1,712 @@
+@@ -0,0 +1,717 @@
 +package org.telegram.margelet;
 +
 +import android.content.Context;
@@ -6168,7 +6168,12 @@ index 00000000..fdcdcb49
 +            text.append(plugin.description).append("\n\n");
 +        }
 +        if (existing != null) {
-+            text.append(LocaleController.formatString(R.string.MargeletPluginAlready, existing.version))
++            // Та же версия — это не обновление, а повтор, и сказать об этом
++            // надо прямо: иначе человек ставит второй раз то же самое и ждёт
++            // изменений, которых не будет.
++            text.append(existing.version.equals(plugin.version)
++                            ? LocaleController.formatString(R.string.MargeletPluginSameVersion, existing.version)
++                            : LocaleController.formatString(R.string.MargeletPluginAlready, existing.version))
 +                    .append("\n\n");
 +        }
 +        text.append(LocaleController.getString(R.string.MargeletPluginDeclares));
@@ -7301,10 +7306,10 @@ index 00000000..0c486a57
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletStore.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletStore.java
 new file mode 100644
-index 00000000..d9263e0f
+index 00000000..464b688f
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletStore.java
-@@ -0,0 +1,229 @@
+@@ -0,0 +1,233 @@
 +package org.telegram.margelet;
 +
 +import android.content.Context;
@@ -7323,16 +7328,17 @@ index 00000000..d9263e0f
 +import java.util.List;
 +
 +/**
-+ * Магазин плагинов: обычный канал вместо своего склада.
++ * Магазин плагинов: канал владельца вместо своего склада.
 + *
 + * Склад пришлось бы содержать, охранять и кому-то доверять. Канал уже есть у
 + * телеграма: автор выкладывает туда .marp, подпись под файлом ставит телеграм,
 + * а кто и когда выложил — видно и без нас. Нам остаётся прочитать список.
 + *
-+ * Ничего своего мы про эти плагины не утверждаем. Магазин показывает то, что
-+ * лежит в канале, и ровно в том виде, в каком лежит: проверять чужой код нам
-+ * нечем, и делать вид, что он проверен, было бы враньём. Окно установки
-+ * спрашивает про каждый так же строго, как про принесённый файлом.
++ * Выкладывает в канал только владелец, и то, что выложил, он смотрел сам.
++ * Поэтому магазин — не свалка, куда попадает что угодно. Окно установки всё
++ * равно спрашивает про каждый плагин так же строго, как про принесённый
++ * файлом: разрешения человек читает сам, и «за него уже проверили» не должно
++ * означать «ему не надо смотреть».
 + */
 +public class MargeletStore {
 +
@@ -7483,8 +7489,11 @@ index 00000000..d9263e0f
 +     * весит сколько весит, а связь бывает какая угодно.
 +     */
 +    public static void fetch(Item item, Ready done) {
++        // Без forceCache: скачанный документ ложится в папку документов, а не
++        // в кэш. Я искал его в кэше — файл там не появлялся никогда, и
++        // магазин честно говорил «не удалось», хотя качалось всё нормально.
 +        final File ready = FileLoader.getInstance(UserConfig.selectedAccount)
-+                .getPathToAttach(item.document, true);
++                .getPathToAttach(item.document);
 +        if (ready != null && ready.exists() && ready.length() > 0) {
 +            done.onReady(ready);
 +            return;
@@ -7504,7 +7513,7 @@ index 00000000..d9263e0f
 +                return;
 +            }
 +            final File file = FileLoader.getInstance(UserConfig.selectedAccount)
-+                    .getPathToAttach(item.document, true);
++                    .getPathToAttach(item.document);
 +            done.onReady(file != null && file.exists() ? file : null);
 +        };
 +        center.addObserver(holder[0], NotificationCenter.fileLoaded);
@@ -8905,7 +8914,7 @@ index 7804a161..fddfd674 100644
                      }
                  });
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
-index 6b8cddfe..c548b82d 100644
+index 6b8cddfe..b0d8c2bd 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
 @@ -490,6 +490,15 @@ public class ChatActivity extends BaseFragment implements
@@ -9096,7 +9105,23 @@ index 6b8cddfe..c548b82d 100644
  
          SpannableStringBuilder stringBuilder = new SpannableStringBuilder(LocaleController.getString(R.string.Bold));
          stringBuilder.setSpan(new TypefaceSpan(AndroidUtilities.bold()), 0, stringBuilder.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-@@ -29727,6 +29804,10 @@ public class ChatActivity extends BaseFragment implements
+@@ -28295,6 +28372,15 @@ public class ChatActivity extends BaseFragment implements
+         if (currentEncryptedChat != null || chatMode != 0) {
+             return;
+         }
++        if (margeletWallTag != null) {
++            // На стене закреплённое ни при чём: оно закреплено в группе, а
++            // человек пришёл читать про конкретного человека. Полоска сверху
++            // тут только отнимает место и уводит не туда.
++            if (pinnedMessageView != null) {
++                pinnedMessageView.setVisibility(View.GONE);
++            }
++            return;
++        }
+         int pinned_msg_id;
+         boolean changed = false;
+         MessageObject pinnedMessageObject;
+@@ -29727,6 +29813,10 @@ public class ChatActivity extends BaseFragment implements
      @Override
      public void onResume() {
          super.onResume();
@@ -9107,7 +9132,7 @@ index 6b8cddfe..c548b82d 100644
          checkShowBlur(false);
          activityResumeTime = System.currentTimeMillis();
          if (openImport && getSendMessagesHelper().getImportingHistory(dialog_id) != null) {
-@@ -33379,6 +33460,19 @@ public class ChatActivity extends BaseFragment implements
+@@ -33379,6 +33469,19 @@ public class ChatActivity extends BaseFragment implements
                  undoView.showWithAction(0, UndoView.ACTION_MESSAGE_COPIED, null);
                  break;
              }
@@ -9127,7 +9152,7 @@ index 6b8cddfe..c548b82d 100644
              case OPTION_SAVE_TO_GALLERY: {
                  if (Build.VERSION.SDK_INT >= 23 && (Build.VERSION.SDK_INT <= 28 || BuildVars.NO_SCOPED_STORAGE) && getParentActivity().checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
                      getParentActivity().requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 4);
-@@ -41614,7 +41708,7 @@ public class ChatActivity extends BaseFragment implements
+@@ -41614,7 +41717,7 @@ public class ChatActivity extends BaseFragment implements
              } else if (BuildVars.isHuaweiStoreApp()) {
                  Browser.openUrl(getContext(), BuildVars.HUAWEI_STORE_URL);
              } else {
@@ -9136,7 +9161,7 @@ index 6b8cddfe..c548b82d 100644
              }
          }
  
-@@ -46097,6 +46191,33 @@ public class ChatActivity extends BaseFragment implements
+@@ -46097,6 +46200,33 @@ public class ChatActivity extends BaseFragment implements
                      }
                  }
  
@@ -11341,10 +11366,10 @@ index 00000000..fadc6c32
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletPluginsActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletPluginsActivity.java
 new file mode 100644
-index 00000000..81c30136
+index 00000000..449fa93f
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletPluginsActivity.java
-@@ -0,0 +1,471 @@
+@@ -0,0 +1,474 @@
 +package org.telegram.ui;
 +
 +import android.content.Context;
@@ -11626,7 +11651,10 @@ index 00000000..81c30136
 +            BulletinFactory.of(this).createSimpleBulletin(R.raw.info,
 +                    LocaleController.getString(R.string.MargeletPluginInstalled)).show();
 +        }, () -> BulletinFactory.of(this).createSimpleBulletin(R.raw.error,
-+                LocaleController.getString(R.string.MargeletStoreFailed)).show());
++                // Не «не удалось прочитать канал»: канал прочитан, список на
++                // экране. Сорвалось скачивание одного файла, и говорить надо
++                // про него, а не пугать человека тем, чего не было.
++                LocaleController.getString(R.string.MargeletStoreNoFile)).show());
 +    }
 +
 +    /** Спрашиваем канал один раз за открытие экрана, а не при каждом взгляде. */
@@ -22171,7 +22199,7 @@ index 03d0ba33..17f98fa6 100644
      <string name="English">Inglês</string>
      <string name="LanguageNameInEnglish">Portuguese (Brazil)</string>
 diff --git a/TMessagesProj/src/main/res/values-ru/strings.xml b/TMessagesProj/src/main/res/values-ru/strings.xml
-index 24c56292..199960e4 100644
+index 24c56292..6081210b 100644
 --- a/TMessagesProj/src/main/res/values-ru/strings.xml
 +++ b/TMessagesProj/src/main/res/values-ru/strings.xml
 @@ -1,7 +1,7 @@
@@ -22184,7 +22212,7 @@ index 24c56292..199960e4 100644
      <string name="LanguageName">Русский</string>
      <string name="English">Английский</string>
      <string name="LanguageNameInEnglish">Russian</string>
-@@ -263,4 +263,243 @@
+@@ -263,4 +263,245 @@
      <string name="RemindTodayAt">\'Отправить сегодня в\' HH:mm</string>
      <string name="RemindDayAt">\'Отправить\' d MMM \'в\' HH:mm</string>
      <string name="RemindDayYearAt">\'Напомнить\' d MMM yyyy \'в\' HH:mm</string>
@@ -22205,7 +22233,7 @@ index 24c56292..199960e4 100644
 +    <string name="MargeletUpdatesOff">Никогда</string>
 +    <string name="MargeletUpdatesAbout">Приложение спрашивает гитхаб, не вышла ли версия новее и не изменился ли список значков. Новую версию предлагает полоской внизу списка чатов; само ничего не качает и не ставит.</string>
 +    <string name="MargeletUpdatesNow">Проверить сейчас</string>
-+    <string name="MargeletVersionLabel">Пререлиз 1.0.5</string>
++    <string name="MargeletVersionLabel">Пререлиз 1.0.6</string>
 +    <string name="MargeletWall">Стена</string>
 +    <string name="MargeletWallOf">Стена %1$s</string>
 +    <string name="MargeletWallSubtitle">что написали другие</string>
@@ -22374,9 +22402,10 @@ index 24c56292..199960e4 100644
 +    <string name="MargeletPlugins">Плагины</string>
 +    <string name="MargeletPluginsMineTab">Свои</string>
 +    <string name="MargeletStoreTab">Магазин</string>
-+    <string name="MargeletStoreAbout">Плагины, которые люди выложили в канал @margelet_marps. Их никто не проверял — мы тоже. Прочитай код, прежде чем ставить.</string>
++    <string name="MargeletStoreAbout">Плагины из канала @margelet_marps. Выкладывает туда только автор форка, и то, что выложил, он смотрел сам. Окно установки всё равно покажет, что плагин просит, — прочитай.</string>
 +    <string name="MargeletStoreEmpty">В канале пока пусто.</string>
 +    <string name="MargeletStoreFailed">Не удалось прочитать канал. Дело в связи, а не в том, что там пусто.</string>
++    <string name="MargeletStoreNoFile">Не удалось скачать этот плагин. Попробуй, когда связь вернётся.</string>
 +    <string name="MargeletStoreOpenChannel">Открыть канал</string>
 +    <string name="MargeletPluginsInfo">Свой код внутри форка</string>
 +    <string name="MargeletPluginsAbout">Плагин работает внутри приложения и может всё, что может оно. Ставьте только то, чему доверяете.</string>
@@ -22392,6 +22421,7 @@ index 24c56292..199960e4 100644
 +    <string name="MargeletPluginInstalled">Готово</string>
 +    <string name="MargeletPluginInstallOk">Установить</string>
 +    <string name="MargeletPluginAlready">Он уже стоит, версия %1$s. Установка заменит его.</string>
++    <string name="MargeletPluginSameVersion">Он уже стоит, и версия та же — %1$s. Установка ничего не изменит.</string>
 +    <string name="MargeletPluginAlreadyRestart">Та версия, что уже работает, доработает до перезапуска приложения.</string>
 +    <string name="MargeletPluginUpdateOk">Заменить</string>
 +    <string name="MargeletPluginInstallAndRun">Поставить и включить</string>
@@ -22445,10 +22475,10 @@ index d4683443..57d10109 100644
      <string name="LanguageNameInEnglish">Ukrainian</string>
 diff --git a/TMessagesProj/src/main/res/values-zh/strings.xml b/TMessagesProj/src/main/res/values-zh/strings.xml
 new file mode 100644
-index 00000000..7ac3286d
+index 00000000..4a9c0361
 --- /dev/null
 +++ b/TMessagesProj/src/main/res/values-zh/strings.xml
-@@ -0,0 +1,242 @@
+@@ -0,0 +1,244 @@
 +<?xml version="1.0" encoding="utf-8"?>
 +<resources>
 +    <string name="MargeletSettings">分支设置</string>
@@ -22468,7 +22498,7 @@ index 00000000..7ac3286d
 +    <string name="MargeletUpdatesOff">从不</string>
 +    <string name="MargeletUpdatesAbout">应用会去 GitHub 问有没有更新的版本、徽章列表有没有变化。新版本会在聊天列表底部用一条横幅提示；应用不会自行下载或安装。</string>
 +    <string name="MargeletUpdatesNow">立即检查</string>
-+    <string name="MargeletVersionLabel">预发布 1.0.5</string>
++    <string name="MargeletVersionLabel">预发布 1.0.6</string>
 +    <string name="MargeletWall">留言墙</string>
 +    <string name="MargeletWallOf">%1$s 的留言墙</string>
 +    <string name="MargeletWallSubtitle">别人写下的内容</string>
@@ -22637,9 +22667,10 @@ index 00000000..7ac3286d
 +    <string name="MargeletPlugins">插件</string>
 +    <string name="MargeletPluginsMineTab">我的</string>
 +    <string name="MargeletStoreTab">商店</string>
-+    <string name="MargeletStoreAbout">别人发到 @margelet_marps 频道里的插件。没有人审核过它们——我们也没有。装之前先读代码。</string>
++    <string name="MargeletStoreAbout">来自 @margelet_marps 频道的插件。只有本分支的作者往那里发，发之前他自己看过。安装窗口仍然会告诉你每个插件要什么——读一读。</string>
 +    <string name="MargeletStoreEmpty">频道里还什么都没有。</string>
 +    <string name="MargeletStoreFailed">没能读取那个频道。问题出在网络，不是频道里没东西。</string>
++    <string name="MargeletStoreNoFile">没能下载这个插件。等网络恢复了再试。</string>
 +    <string name="MargeletStoreOpenChannel">打开频道</string>
 +    <string name="MargeletPluginsInfo">分支里你自己的代码</string>
 +    <string name="MargeletPluginsAbout">插件在应用内部运行，应用能做的它都能做。只装你信任的。</string>
@@ -22655,6 +22686,7 @@ index 00000000..7ac3286d
 +    <string name="MargeletPluginInstalled">好了</string>
 +    <string name="MargeletPluginInstallOk">安装</string>
 +    <string name="MargeletPluginAlready">已安装 %1$s 版本，安装将替换它。</string>
++    <string name="MargeletPluginSameVersion">它已经装着了，而且就是同一个版本 %1$s。再装一次不会有任何变化。</string>
 +    <string name="MargeletPluginAlreadyRestart">已在运行的那一份会继续运行，直到应用重启。</string>
 +    <string name="MargeletPluginUpdateOk">替换</string>
 +    <string name="MargeletPluginInstallAndRun">安装并启用</string>
@@ -22708,7 +22740,7 @@ index cc49d135..a8a51c3a 100644
      <item name="menu_regular" type="id"/>
      <item name="menu_bold" type="id"/>
 diff --git a/TMessagesProj/src/main/res/values/strings.xml b/TMessagesProj/src/main/res/values/strings.xml
-index ffa4d566..00a2d0c6 100644
+index ffa4d566..a7eaafd6 100644
 --- a/TMessagesProj/src/main/res/values/strings.xml
 +++ b/TMessagesProj/src/main/res/values/strings.xml
 @@ -1,7 +1,7 @@
@@ -22721,7 +22753,7 @@ index ffa4d566..00a2d0c6 100644
      <string name="LanguageName">English</string>
      <string name="English">English</string>
      <string name="LanguageNameInEnglish">English</string>
-@@ -11221,4 +11221,243 @@
+@@ -11221,4 +11221,245 @@
      <string name="UnsupportedMessageTitle">Unsupported Message</string>
      <string name="UnsupportedMessageMessage">Update Telegram to view this message</string>
      <string name="UnsupportedUpdate">Update</string>
@@ -22742,7 +22774,7 @@ index ffa4d566..00a2d0c6 100644
 +    <string name="MargeletUpdatesOff">Never</string>
 +    <string name="MargeletUpdatesAbout">The app asks GitHub whether a newer version is out and whether the badge list has changed. A new version is offered in a bar at the bottom of the chat list; nothing is downloaded or installed on its own.</string>
 +    <string name="MargeletUpdatesNow">Check now</string>
-+    <string name="MargeletVersionLabel">Prerelease 1.0.5</string>
++    <string name="MargeletVersionLabel">Prerelease 1.0.6</string>
 +    <string name="MargeletWall">Wall</string>
 +    <string name="MargeletWallOf">%1$s\'s wall</string>
 +    <string name="MargeletWallSubtitle">what other people wrote</string>
@@ -22911,9 +22943,10 @@ index ffa4d566..00a2d0c6 100644
 +    <string name="MargeletPlugins">Plugins</string>
 +    <string name="MargeletPluginsMineTab">Mine</string>
 +    <string name="MargeletStoreTab">Store</string>
-+    <string name="MargeletStoreAbout">Plugins other people posted to the @margelet_marps channel. Nobody checked them — not us either. Read the code before you install.</string>
++    <string name="MargeletStoreAbout">Plugins from the @margelet_marps channel. Only the fork\'s author posts there, and he looks at what he posts. The install dialog still shows you what each one asks for — read it.</string>
 +    <string name="MargeletStoreEmpty">Nothing in the channel yet.</string>
 +    <string name="MargeletStoreFailed">Could not read the channel. It is the connection, not an empty channel.</string>
++    <string name="MargeletStoreNoFile">Could not download this plugin. Try again when the connection is back.</string>
 +    <string name="MargeletStoreOpenChannel">Open the channel</string>
 +    <string name="MargeletPluginsInfo">Your own code inside the fork</string>
 +    <string name="MargeletPluginsAbout">A plugin runs inside the app and can do anything the app can. Install only what you trust.</string>
@@ -22929,6 +22962,7 @@ index ffa4d566..00a2d0c6 100644
 +    <string name="MargeletPluginInstalled">Done</string>
 +    <string name="MargeletPluginInstallOk">Install</string>
 +    <string name="MargeletPluginAlready">Version %1$s of it is already installed. Installing will replace it.</string>
++    <string name="MargeletPluginSameVersion">You already have this one, version %1$s — the very same. Installing changes nothing.</string>
 +    <string name="MargeletPluginAlreadyRestart">The version already running keeps running until the app is restarted.</string>
 +    <string name="MargeletPluginUpdateOk">Replace</string>
 +    <string name="MargeletPluginInstallAndRun">Install and run</string>
@@ -34070,7 +34104,7 @@ index 528fd746..8b64b0f8 100644
  }
  repositories {
 diff --git a/gradle.properties b/gradle.properties
-index 83408dc5..08bc8411 100644
+index 83408dc5..aa8ba1a0 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -13,9 +13,9 @@
@@ -34078,7 +34112,7 @@ index 83408dc5..08bc8411 100644
  # org.gradle.parallel=true
  #Sat Mar 12 05:53:50 MSK 2016
 -APP_VERSION_CODE=7031
-+APP_VERSION_CODE=7041
++APP_VERSION_CODE=7042
  APP_VERSION_NAME=12.10.0
 -APP_PACKAGE=org.telegram.messenger
 +APP_PACKAGE=cat.narezany.margelet

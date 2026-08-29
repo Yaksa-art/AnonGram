@@ -16,16 +16,17 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Магазин плагинов: обычный канал вместо своего склада.
+ * Магазин плагинов: канал владельца вместо своего склада.
  *
  * Склад пришлось бы содержать, охранять и кому-то доверять. Канал уже есть у
  * телеграма: автор выкладывает туда .marp, подпись под файлом ставит телеграм,
  * а кто и когда выложил — видно и без нас. Нам остаётся прочитать список.
  *
- * Ничего своего мы про эти плагины не утверждаем. Магазин показывает то, что
- * лежит в канале, и ровно в том виде, в каком лежит: проверять чужой код нам
- * нечем, и делать вид, что он проверен, было бы враньём. Окно установки
- * спрашивает про каждый так же строго, как про принесённый файлом.
+ * Выкладывает в канал только владелец, и то, что выложил, он смотрел сам.
+ * Поэтому магазин — не свалка, куда попадает что угодно. Окно установки всё
+ * равно спрашивает про каждый плагин так же строго, как про принесённый
+ * файлом: разрешения человек читает сам, и «за него уже проверили» не должно
+ * означать «ему не надо смотреть».
  */
 public class MargeletStore {
 
@@ -176,8 +177,11 @@ public class MargeletStore {
      * весит сколько весит, а связь бывает какая угодно.
      */
     public static void fetch(Item item, Ready done) {
+        // Без forceCache: скачанный документ ложится в папку документов, а не
+        // в кэш. Я искал его в кэше — файл там не появлялся никогда, и
+        // магазин честно говорил «не удалось», хотя качалось всё нормально.
         final File ready = FileLoader.getInstance(UserConfig.selectedAccount)
-                .getPathToAttach(item.document, true);
+                .getPathToAttach(item.document);
         if (ready != null && ready.exists() && ready.length() > 0) {
             done.onReady(ready);
             return;
@@ -197,7 +201,7 @@ public class MargeletStore {
                 return;
             }
             final File file = FileLoader.getInstance(UserConfig.selectedAccount)
-                    .getPathToAttach(item.document, true);
+                    .getPathToAttach(item.document);
             done.onReady(file != null && file.exists() ? file : null);
         };
         center.addObserver(holder[0], NotificationCenter.fileLoaded);
