@@ -203,6 +203,58 @@ public class MargeletUpdate {
         }
     }
 
+    /**
+     * Адрес, по которому точно приедет свежий файл.
+     *
+     * Имя файла в ветке постоянное, а гитхаб отдаёт его через кэш на пять
+     * минут. Сразу после выпуска это значит, что можно получить байты прошлой
+     * сборки — и получить их молча, с кодом 200. Владелец на это и наступил:
+     * обновлялка ставила прошлую версию, приложение оставалось старым, полоска
+     * появлялась снова, и так по кругу.
+     *
+     * Номер версии в запросе делает адрес другим для каждого выпуска, а другой
+     * адрес кэш ещё не видел.
+     */
+    private static String fresh(Info info) {
+        if (info.apk == null || info.apk.isEmpty()) {
+            return "";
+        }
+        return info.apk + (info.apk.indexOf('?') >= 0 ? "&" : "?") + "v="
+                + android.net.Uri.encode(info.version);
+    }
+
+    /**
+     * Правда ли в этом файле версия новее той, что работает.
+     *
+     * Раньше готовность помечалась тем номером, который мы ОЖИДАЛИ скачать.
+     * Ожидание — не проверка: если приехали чужие байты, отметка всё равно
+     * говорила «готово», и дальше этот файл ставился уже без всякой закачки,
+     * навсегда. Спрашиваем систему, что лежит в файле на самом деле.
+     *
+     * Не «равна ли объявленной», а «новее ли установленной»: номер сборки в
+     * apk и номер выпуска в version.json — разные числа, и сводить их
+     * значило бы завести ещё одно место, где они могут разойтись.
+     */
+    private static boolean newerThanInstalled(File file) {
+        try {
+            final android.content.Context context = ApplicationLoader.applicationContext;
+            final android.content.pm.PackageManager manager = context.getPackageManager();
+            final android.content.pm.PackageInfo downloaded =
+                    manager.getPackageArchiveInfo(file.getAbsolutePath(), 0);
+            if (downloaded == null) {
+                return false;       // не apk вовсе
+            }
+            final android.content.pm.PackageInfo mine =
+                    manager.getPackageInfo(context.getPackageName(), 0);
+            return downloaded.versionCode > mine.versionCode;
+        } catch (Throwable t) {
+            FileLog.e(t);
+            // Не смогли посмотреть — не запрещаем: обновление важнее, чем моя
+            // уверенность, а хуже проверки только проверка, ломающая работу.
+            return true;
+        }
+    }
+
     /** Куда кладём скачанное. Папка уже описана в provider_paths. */
     private static File file() {
         final File directory = new File(ApplicationLoader.getFilesDirFixed(), "cache");
@@ -254,11 +306,13 @@ public class MargeletUpdate {
             HttpURLConnection connection = null;
             final File target = file();
             try {
-                connection = (HttpURLConnection) new URL(info.apk).openConnection();
+                connection = (HttpURLConnection) new URL(fresh(info)).openConnection();
                 connection.setConnectTimeout(20000);
                 connection.setReadTimeout(20000);
                 connection.setInstanceFollowRedirects(true);
                 connection.setRequestProperty("User-Agent", MargeletConfig.APP_NAME);
+                connection.setRequestProperty("Cache-Control", "no-cache");
+                connection.setUseCaches(false);
                 if (connection.getResponseCode() == 200) {
                     final long total = connection.getContentLength();
                     try (InputStream in = connection.getInputStream();
@@ -289,6 +343,13 @@ public class MargeletUpdate {
                     connection.disconnect();
                 }
             }
+            // Целиком скачанный — ещё не значит нужный. Проверяем, что в файле
+            // лежит версия новее установленной, и только тогда считаем готовым.
+            if (ok && !newerThanInstalled(target)) {
+                ok = false;
+                MargeletPluginHost.log("margelet",
+                        "скачался apk не новее установленного — не ставим", true);
+            }
             // Недокачанный файл не должен притворяться готовым: помечаем
             // готовность только целиком скачанной версией.
             if (ok) {
@@ -314,6 +375,15 @@ public class MargeletUpdate {
     public static void install(Activity activity) {
         final File file = downloaded();
         if (activity == null || file == null) {
+            return;
+        }
+        // Последняя проверка перед тем, как отдать файл системе. Отметка
+        // «готово» — наша память, а память бывает неверной; сам файл соврать
+        // не может. Стоит здесь, а не в downloaded(): туда заглядывают на
+        // каждой перерисовке списка, а разбор apk на это не рассчитан.
+        if (!newerThanInstalled(file)) {
+            prefs().edit().remove(KEY_READY_VERSION).apply();
+            file.delete();
             return;
         }
         try {
