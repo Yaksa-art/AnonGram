@@ -40,7 +40,7 @@ public class MargeletConfig {
      * 0.99, а не 1.0, нарочно: настоящая единица должна остаться свободной
      * под настоящий выпуск, а пререлиз обязан быть строго меньше её.
      */
-    public static final String APP_VERSION = "0.99.18";
+    public static final String APP_VERSION = "0.99.19";
 
     /** Как выпуск называется для человека: «Пререлиз 1.0», «Бета 1.1». */
     public static String versionLabel() {
@@ -202,6 +202,20 @@ public class MargeletConfig {
 
     public static void setMarkdownEnabled(String kind, boolean on) {
         prefs().edit().putBoolean("markdown_" + kind, on).apply();
+    }
+
+    /**
+     * Прятать ли папку «Все чаты» сверху списка. По умолчанию нет.
+     *
+     * По умолчанию нет нарочно: без папок вкладок не видно вовсе, и человек,
+     * включивший это вслепую, решил бы, что сломались папки.
+     */
+    public static boolean hideAllChatsTab() {
+        return prefs().getBoolean("hide_all_chats_tab", false);
+    }
+
+    public static void setHideAllChatsTab(boolean on) {
+        prefs().edit().putBoolean("hide_all_chats_tab", on).apply();
     }
 
     /** Показывать баннеры за аватарками. */

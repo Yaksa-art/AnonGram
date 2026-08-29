@@ -1565,10 +1565,10 @@ index 00000000..a6f9b07d
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
 new file mode 100644
-index 00000000..5d8cc820
+index 00000000..a748b26b
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
-@@ -0,0 +1,419 @@
+@@ -0,0 +1,433 @@
 +package org.telegram.margelet;
 +
 +import android.content.Context;
@@ -1611,7 +1611,7 @@ index 00000000..5d8cc820
 +     * 0.99, а не 1.0, нарочно: настоящая единица должна остаться свободной
 +     * под настоящий выпуск, а пререлиз обязан быть строго меньше её.
 +     */
-+    public static final String APP_VERSION = "0.99.18";
++    public static final String APP_VERSION = "0.99.19";
 +
 +    /** Как выпуск называется для человека: «Пререлиз 1.0», «Бета 1.1». */
 +    public static String versionLabel() {
@@ -1773,6 +1773,20 @@ index 00000000..5d8cc820
 +
 +    public static void setMarkdownEnabled(String kind, boolean on) {
 +        prefs().edit().putBoolean("markdown_" + kind, on).apply();
++    }
++
++    /**
++     * Прятать ли папку «Все чаты» сверху списка. По умолчанию нет.
++     *
++     * По умолчанию нет нарочно: без папок вкладок не видно вовсе, и человек,
++     * включивший это вслепую, решил бы, что сломались папки.
++     */
++    public static boolean hideAllChatsTab() {
++        return prefs().getBoolean("hide_all_chats_tab", false);
++    }
++
++    public static void setHideAllChatsTab(boolean on) {
++        prefs().edit().putBoolean("hide_all_chats_tab", on).apply();
 +    }
 +
 +    /** Показывать баннеры за аватарками. */
@@ -3015,13 +3029,14 @@ index 00000000..33ff716b
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletGradient.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletGradient.java
 new file mode 100644
-index 00000000..f6e69053
+index 00000000..2030951c
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletGradient.java
-@@ -0,0 +1,343 @@
+@@ -0,0 +1,386 @@
 +package org.telegram.margelet;
 +
 +import android.graphics.Canvas;
++import android.graphics.Color;
 +import android.graphics.ColorFilter;
 +import android.graphics.LinearGradient;
 +import android.graphics.Paint;
@@ -3270,22 +3285,22 @@ index 00000000..f6e69053
 +
 +    // --- рисование ---------------------------------------------------------
 +    //
-+    // Градиент линейный: первый цвет слева, второй справа. Сперва я взял
-+    // радиальный — тот самый, каким телеграм красит шапку по номеру цвета, —
-+    // и это было рассуждением от кода, а не от того, что человек называет
-+    // градиентом. Радиальный читается как пятно света посередине, а не как
-+    // переход слева направо, и владелец сказал об этом первым же словом.
++    // Градиент линейный и идёт снизу вверх: первый цвет внизу, второй наверху.
++    // Радиальный, взятый поначалу из телеграмовской шапки, читался как пятно
++    // света посередине, а не как переход; горизонтальный был уже переходом, но
++    // не тем — у профиля высота работает лучше ширины, потому что вниз он
++    // длинный.
 +
 +    /** Общая кисть. Только для главного потока: рисование живёт только в нём. */
 +    private static final Paint FILL = new Paint(Paint.ANTI_ALIAS_FLAG);
 +    private static int builtFrom, builtTo;
-+    private static float builtWidth;
++    private static float builtHeight;
 +
 +    /**
-+     * Залить прямоугольник градиентом слева направо.
++     * Залить прямоугольник градиентом снизу вверх.
 +     *
-+     * Ширина входит в ключ пересборки наравне с цветами: растяжка у заливки
-+     * своя, и пара, построенная на узкий образец, на широкой шапке дала бы
++     * Высота входит в ключ пересборки наравне с цветами: растяжка у заливки
++     * своя, и пара, построенная на низкий образец, на высокой странице дала бы
 +     * переход не там, где нужно.
 +     */
 +    public static void paint(Canvas canvas, int[] pair,
@@ -3295,19 +3310,61 @@ index 00000000..f6e69053
 +            return;
 +        }
 +        final float width = right - left;
++        final float height = bottom - top;
 +        if (FILL.getShader() == null || builtFrom != pair[0] || builtTo != pair[1]
-+                || builtWidth != width) {
++                || builtHeight != height) {
 +            builtFrom = pair[0];
 +            builtTo = pair[1];
-+            builtWidth = width;
-+            FILL.setShader(new LinearGradient(0, 0, width, 0,
++            builtHeight = height;
++            FILL.setShader(new LinearGradient(0, height, 0, 0,
 +                    pair[0], pair[1], Shader.TileMode.CLAMP));
 +        }
 +        FILL.setAlpha(alpha);
 +        canvas.save();
 +        canvas.translate(left, top);
-+        canvas.drawRect(0, 0, width, bottom - top, FILL);
++        canvas.drawRect(0, 0, width, height, FILL);
 +        canvas.restore();
++    }
++
++    /**
++     * Чем писать поверх градиента: белым или чёрным.
++     *
++     * Считаем по воспринимаемой яркости, а не по среднему трёх чисел: глаз
++     * видит зелёное куда светлее синего той же величины, и среднее назвало бы
++     * тёмно-синий светлее травяного. Веса — обычные для яркости, 0.299 / 0.587
++     * / 0.114.
++     *
++     * Берём середину пары: краем градиента может быть и тёмное, и светлое, а
++     * текст один на всю шапку.
++     */
++    public static int ink(int[] pair) {
++        if (pair == null || pair.length < 2) {
++            return Color.WHITE;
++        }
++        final double bright = (brightness(pair[0]) + brightness(pair[1])) / 2;
++        // Порог посередине между двумя ближайшими краями, а не на глаз:
++        // серединный серый (0.502) должен получить белый текст, а чистый
++        // зелёный (0.587) — чёрный, потому что он светлый, хотя канал у него
++        // один. Ровно между ними и стоит граница.
++        return bright > 0.545 ? Color.BLACK : Color.WHITE;
++    }
++
++    private static double brightness(int color) {
++        return (0.299 * Color.red(color)
++                + 0.587 * Color.green(color)
++                + 0.114 * Color.blue(color)) / 255.0;
++    }
++
++    /**
++     * Цвет кнопок поверх градиента: он же, но приглушённый.
++     *
++     * Полупрозрачная краска, а не готовый цвет: под кнопкой градиент, и она
++     * должна темнеть (или светлеть) вместе с ним, а не одинаково по всей
++     * шапке. На светлом градиенте затемняем, на тёмном осветляем — «чуть
++     * затемнить» тёмно-синюю кнопку на тёмно-синем фоне значит стереть её.
++     */
++    public static int buttons(int[] pair) {
++        return ink(pair) == Color.BLACK ? 0x22000000 : 0x2BFFFFFF;
 +    }
 +
 +    /**
@@ -10427,10 +10484,10 @@ index 7804a161..fddfd674 100644
                      }
                  });
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
-index 6b8cddfe..0db4b8e2 100644
+index 6b8cddfe..925e1f7f 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
-@@ -490,6 +490,29 @@ public class ChatActivity extends BaseFragment implements
+@@ -490,6 +490,38 @@ public class ChatActivity extends BaseFragment implements
      private ChatBigEmptyView bigEmptyView;
      private ArrayList<View> actionModeViews = new ArrayList<>();
      public ChatAvatarContainer avatarContainer;
@@ -10454,13 +10511,22 @@ index 6b8cddfe..0db4b8e2 100644
 +    private int margeletWallOldest;
 +    /** Сколько страниц дочитано само. Ограничение против бесконечного хода. */
 +    private int margeletWallPages;
++    /**
++     * Номер самого старого сообщения этой стены — по ответу сервера.
++     *
++     * Дочитывать «сколько-то страниц» оказалось негодной мерой: у владельца
++     * сообщения лежали глубже, и стена до них не доходила. Сколько именно
++     * нужно — знает не клиент, а сервер: он умеет искать по метке сразу по
++     * всей группе. Спрашиваем у него нижнюю границу и грузим ровно до неё.
++     */
++    private int margeletWallTarget;
 +    /** Чья это стена и как его звать — для шапки. */
 +    private String margeletWallName;
 +    private long margeletWallPeer;
      private AnimatedTextView selectedMessagesCountTextView;
      private RecyclerListView.OnItemClickListener mentionsOnItemClickListener;
      private SuggestEmojiView suggestEmojiPanel;
-@@ -1199,6 +1222,9 @@ public class ChatActivity extends BaseFragment implements
+@@ -1199,6 +1231,9 @@ public class ChatActivity extends BaseFragment implements
      public final static int OPTION_DELETE = 1;
      public final static int OPTION_FORWARD = 2;
      public final static int OPTION_COPY = 3;
@@ -10470,7 +10536,7 @@ index 6b8cddfe..0db4b8e2 100644
      public final static int OPTION_SAVE_TO_GALLERY = 4;
      public final static int OPTION_APPLY_LOCALIZATION_OR_THEME = 5;
      public final static int OPTION_SHARE = 6;
-@@ -1690,6 +1716,12 @@ public class ChatActivity extends BaseFragment implements
+@@ -1690,6 +1725,12 @@ public class ChatActivity extends BaseFragment implements
  
      private final static int id_chat_compose_panel = 1000;
  
@@ -10483,7 +10549,7 @@ index 6b8cddfe..0db4b8e2 100644
      RecyclerListView.OnItemLongClickListenerExtended onItemLongClickListener = new RecyclerListView.OnItemLongClickListenerExtended() {
          @Override
          public boolean onItemClick(View view, int position, float x, float y) {
-@@ -1834,6 +1866,15 @@ public class ChatActivity extends BaseFragment implements
+@@ -1834,6 +1875,15 @@ public class ChatActivity extends BaseFragment implements
              if (inPreviewMode) {
                  return;
              }
@@ -10499,17 +10565,37 @@ index 6b8cddfe..0db4b8e2 100644
              wasManualScroll = true;
              if (view instanceof ChatActionCell && ((ChatActionCell) view).getMessageObject().isDateObject) {
                  if (isInsideContainer) {
-@@ -2666,6 +2707,9 @@ public class ChatActivity extends BaseFragment implements
+@@ -2666,6 +2716,29 @@ public class ChatActivity extends BaseFragment implements
  
      @Override
      public boolean onFragmentCreate() {
 +        margeletWallTag = arguments.getString("margeletWallTag", null);
++        if (margeletWallTag != null) {
++            // Один запрос на всю стену: сервер ищет по метке по всей группе и
++            // отвечает, где лежит самое старое. Дальше история дочитывается
++            // ровно до этого номера — не больше и не меньше.
++            org.telegram.margelet.MargeletGroup.find(margeletWallTag, 100,
++                    (found, problem) -> {
++                        int oldest = 0;
++                        for (MessageObject one : found) {
++                            final int id = one == null ? 0 : one.getId();
++                            if (id > 0 && (oldest == 0 || id < oldest)) {
++                                oldest = id;
++                            }
++                        }
++                        final int target = oldest;
++                        AndroidUtilities.runOnUIThread(() -> {
++                            margeletWallTarget = target;
++                            margeletFillWall();
++                        });
++                    });
++        }
 +        margeletWallName = arguments.getString("margeletWallName", "");
 +        margeletWallPeer = arguments.getLong("margeletWallPeer", 0);
          final long chatId = arguments.getLong("chat_id", 0);
          final long userId = arguments.getLong("user_id", 0);
          final int encId = arguments.getInt("enc_id", 0);
-@@ -3695,6 +3739,11 @@ public class ChatActivity extends BaseFragment implements
+@@ -3695,6 +3768,11 @@ public class ChatActivity extends BaseFragment implements
          actionBar.setActionBarMenuOnItemClick(new ActionBar.ActionBarMenuOnItemClick() {
              @Override
              public void onItemClick(final int id) {
@@ -10521,7 +10607,7 @@ index 6b8cddfe..0db4b8e2 100644
                  if (id == -1) {
                      if (isInPollAddOptionMode()) {
                          pollAddOptionModeClose();
-@@ -4514,6 +4563,16 @@ public class ChatActivity extends BaseFragment implements
+@@ -4514,6 +4592,16 @@ public class ChatActivity extends BaseFragment implements
              closeTopicItem = headerItem.lazilyAddSubItem(topic_close, R.drawable.msg_topic_close, LocaleController.getString(R.string.CloseTopic));
              closeTopicItem.setVisibility(currentChat != null && ChatObject.canManageTopic(currentAccount, currentChat, forumTopic) && forumTopic != null && !forumTopic.closed ? View.VISIBLE : View.GONE);
          }
@@ -10538,7 +10624,7 @@ index 6b8cddfe..0db4b8e2 100644
          menu.setVisibility(inMenuMode ? View.GONE : View.VISIBLE);
  
          updateTitle(false);
-@@ -10880,18 +10939,33 @@ public class ChatActivity extends BaseFragment implements
+@@ -10880,18 +10968,33 @@ public class ChatActivity extends BaseFragment implements
      }
  
      private void updatePagedownButtonsPosition() {
@@ -10576,7 +10662,7 @@ index 6b8cddfe..0db4b8e2 100644
          }
      }
  
-@@ -12018,13 +12092,23 @@ public class ChatActivity extends BaseFragment implements
+@@ -12018,13 +12121,23 @@ public class ChatActivity extends BaseFragment implements
          if (isInsideContainer && parentChatActivity == null) {
              paddingBottom = AndroidUtilities.navigationBarHeight;
          } else {
@@ -10602,7 +10688,7 @@ index 6b8cddfe..0db4b8e2 100644
          if (topicsTabs != null) {
              topicsTabs.setSideMenuBackgroundMarginTop(0);//Math.max(0, paddingTop - blurredViewTopOffset - dp(5)));
          }
-@@ -13799,7 +13883,12 @@ public class ChatActivity extends BaseFragment implements
+@@ -13799,7 +13912,12 @@ public class ChatActivity extends BaseFragment implements
                      loading = true;
                      waitingForLoad.add(lastLoadIndex);
                      if (messagesByDays.size() != 0) {
@@ -10616,7 +10702,7 @@ index 6b8cddfe..0db4b8e2 100644
                      } else {
                          getMessagesController().loadMessages(dialog_id, mergeDialogId, false, 50, 0, 0, !cacheEndReached[0], minDate[0], classGuid, 0, 0, chatMode, threadMessageId, replyMaxReadId, lastLoadIndex++, isTopic);
                      }
-@@ -15607,6 +15696,11 @@ public class ChatActivity extends BaseFragment implements
+@@ -15607,6 +15725,13 @@ public class ChatActivity extends BaseFragment implements
              cacheEndReached[a] = false;
              forwardEndReached[a] = true;
          }
@@ -10625,10 +10711,12 @@ index 6b8cddfe..0db4b8e2 100644
 +        // стена попросила бы «то, что старше» от места, где её уже нет.
 +        margeletWallOldest = 0;
 +        margeletWallPages = 0;
++        // Цель не трогаем: она про то, где лежит самое старое сообщение стены
++        // в группе, а не про наш список. Перезагрузка переписки этого не меняет.
          if (full) {
              first = true;
              firstLoading = true;
-@@ -19376,6 +19470,82 @@ public class ChatActivity extends BaseFragment implements
+@@ -19376,6 +19501,91 @@ public class ChatActivity extends BaseFragment implements
          }
      }
  
@@ -10643,10 +10731,15 @@ index 6b8cddfe..0db4b8e2 100644
 +     * Только в группе. На стене это не работает, и правильно: там все
 +     * сообщения об одном человеке, открывать нечего.
 +     */
-+    /** Сколько сообщений стены считаем достаточным, чтобы перестать дочитывать. */
-+    private static final int MARGELET_WALL_ENOUGH = 20;
-+    /** И сколько страниц группы готовы ради этого перебрать. */
-+    private static final int MARGELET_WALL_MAX_PAGES = 10;
++    /**
++     * Предел на всякий случай: сколько страниц готовы перебрать, даже если
++     * сервер о нижней границе не ответил.
++     *
++     * Это защита от бесконечного хода, а не мера достаточности. Мерой был
++     * предел в десять страниц — и он оказался негодным: у владельца сообщения
++     * лежали глубже, и стена честно останавливалась, не дойдя.
++     */
++    private static final int MARGELET_WALL_MAX_PAGES = 60;
 +
 +    /**
 +     * Дочитать стену, если принесённого не хватило.
@@ -10667,9 +10760,13 @@ index 6b8cddfe..0db4b8e2 100644
 +        if (margeletWallTag == null || loading || endReached[0]) {
 +            return;
 +        }
-+        if (messages.size() >= MARGELET_WALL_ENOUGH
-+                || margeletWallPages >= MARGELET_WALL_MAX_PAGES
-+                || margeletWallOldest <= 1) {
++        if (margeletWallPages >= MARGELET_WALL_MAX_PAGES || margeletWallOldest <= 1) {
++            return;
++        }
++        // Дошли до самого старого сообщения стены — дальше в истории её нет.
++        // Цель ноль значит, что сервер ещё не ответил или у стены пусто; тогда
++        // идём по общему пределу, как раньше.
++        if (margeletWallTarget > 0 && margeletWallOldest <= margeletWallTarget) {
 +            return;
 +        }
 +        margeletWallPages++;
@@ -10711,7 +10808,7 @@ index 6b8cddfe..0db4b8e2 100644
      private void processRowSelect(View view, boolean outside, float touchX, float touchY) {
          MessageObject message = null;
          if (view instanceof ChatMessageCell) {
-@@ -19428,6 +19598,41 @@ public class ChatActivity extends BaseFragment implements
+@@ -19428,6 +19638,41 @@ public class ChatActivity extends BaseFragment implements
          if (avatarContainer == null) {
              return;
          }
@@ -10753,7 +10850,7 @@ index 6b8cddfe..0db4b8e2 100644
          if (chatMode == MODE_SUGGESTIONS && currentChat != null) {
              if (isSubscriberSuggestions) {
                  avatarContainer.setTitle(ForumUtilities.getMonoForumTitle(currentAccount, currentChat), currentChat.scam, currentChat.fake, currentChat.verified, false, null, animated);
-@@ -19520,7 +19725,7 @@ public class ChatActivity extends BaseFragment implements
+@@ -19520,7 +19765,7 @@ public class ChatActivity extends BaseFragment implements
                  avatarContainer.setTitle(LocaleController.getString(R.string.SavedMessages));
              } else if (!MessagesController.isSupportUser(currentUser) && getContactsController().contactsDict.get(currentUser.id) == null && (getContactsController().contactsDict.size() != 0 || !getContactsController().isLoadingContacts())) {
                  if (!TextUtils.isEmpty(currentUser.phone)) {
@@ -10762,7 +10859,7 @@ index 6b8cddfe..0db4b8e2 100644
                  } else {
                      avatarContainer.setTitle(AndroidUtilities.removeRTL(AndroidUtilities.removeDiacritics(UserObject.getUserName(currentUser))), currentUser.scam, currentUser.fake, currentUser.verified, getMessagesController().isPremiumUser(currentUser), currentUser.emoji_status, animated);
                  }
-@@ -20524,6 +20729,28 @@ public class ChatActivity extends BaseFragment implements
+@@ -20524,6 +20769,28 @@ public class ChatActivity extends BaseFragment implements
              postponedScrollToLastMessageQueryIndex = 0;
          }
          ArrayList<MessageObject> messArr = (ArrayList<MessageObject>) args[2];
@@ -10791,7 +10888,7 @@ index 6b8cddfe..0db4b8e2 100644
  
          boolean universalNotify = false;
          HashMap<Integer, MessageObject> oldMessages = null;
-@@ -21408,7 +21635,7 @@ public class ChatActivity extends BaseFragment implements
+@@ -21408,7 +21675,7 @@ public class ChatActivity extends BaseFragment implements
              }
              loadingForward = false;
          } else {
@@ -10800,7 +10897,7 @@ index 6b8cddfe..0db4b8e2 100644
                  if (isCache) {
                      if (currentEncryptedChat != null || loadIndex == 1 && mergeDialogId != 0 && isEnd) {
                          endReached[loadIndex] = true;
-@@ -21416,11 +21643,12 @@ public class ChatActivity extends BaseFragment implements
+@@ -21416,11 +21683,12 @@ public class ChatActivity extends BaseFragment implements
                      if (load_type != 2) {
                          cacheEndReached[loadIndex] = true;
                      }
@@ -10814,7 +10911,7 @@ index 6b8cddfe..0db4b8e2 100644
              if (onChatMessagesLoaded != null) {
                  onChatMessagesLoaded.run();
                  onChatMessagesLoaded = null;
-@@ -21950,6 +22178,7 @@ public class ChatActivity extends BaseFragment implements
+@@ -21950,6 +22218,7 @@ public class ChatActivity extends BaseFragment implements
              FileLog.d("ChatActivity didReceiveNewMessages start");
              long did = (Long) args[0];
              ArrayList<MessageObject> arr = (ArrayList<MessageObject>) args[1];
@@ -10822,7 +10919,7 @@ index 6b8cddfe..0db4b8e2 100644
              if (isInsideContainer) return;
              if (did == dialog_id) {
                  boolean scheduled = (Boolean) args[2];
-@@ -27588,6 +27817,18 @@ public class ChatActivity extends BaseFragment implements
+@@ -27588,6 +27857,18 @@ public class ChatActivity extends BaseFragment implements
          if (includeSpoilers) {
              menu.add(R.id.menu_groupbolditalic, R.id.menu_spoiler, order++, LocaleController.getString(R.string.Spoiler));
          }
@@ -10841,7 +10938,7 @@ index 6b8cddfe..0db4b8e2 100644
  
          SpannableStringBuilder stringBuilder = new SpannableStringBuilder(LocaleController.getString(R.string.Bold));
          stringBuilder.setSpan(new TypefaceSpan(AndroidUtilities.bold()), 0, stringBuilder.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-@@ -28295,6 +28536,15 @@ public class ChatActivity extends BaseFragment implements
+@@ -28295,6 +28576,15 @@ public class ChatActivity extends BaseFragment implements
          if (currentEncryptedChat != null || chatMode != 0) {
              return;
          }
@@ -10857,7 +10954,7 @@ index 6b8cddfe..0db4b8e2 100644
          int pinned_msg_id;
          boolean changed = false;
          MessageObject pinnedMessageObject;
-@@ -29727,6 +29977,10 @@ public class ChatActivity extends BaseFragment implements
+@@ -29727,6 +30017,10 @@ public class ChatActivity extends BaseFragment implements
      @Override
      public void onResume() {
          super.onResume();
@@ -10868,7 +10965,7 @@ index 6b8cddfe..0db4b8e2 100644
          checkShowBlur(false);
          activityResumeTime = System.currentTimeMillis();
          if (openImport && getSendMessagesHelper().getImportingHistory(dialog_id) != null) {
-@@ -33379,6 +33633,19 @@ public class ChatActivity extends BaseFragment implements
+@@ -33379,6 +33673,19 @@ public class ChatActivity extends BaseFragment implements
                  undoView.showWithAction(0, UndoView.ACTION_MESSAGE_COPIED, null);
                  break;
              }
@@ -10888,7 +10985,7 @@ index 6b8cddfe..0db4b8e2 100644
              case OPTION_SAVE_TO_GALLERY: {
                  if (Build.VERSION.SDK_INT >= 23 && (Build.VERSION.SDK_INT <= 28 || BuildVars.NO_SCOPED_STORAGE) && getParentActivity().checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
                      getParentActivity().requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 4);
-@@ -41614,7 +41881,7 @@ public class ChatActivity extends BaseFragment implements
+@@ -41614,7 +41921,7 @@ public class ChatActivity extends BaseFragment implements
              } else if (BuildVars.isHuaweiStoreApp()) {
                  Browser.openUrl(getContext(), BuildVars.HUAWEI_STORE_URL);
              } else {
@@ -10897,7 +10994,7 @@ index 6b8cddfe..0db4b8e2 100644
              }
          }
  
-@@ -46097,6 +46364,33 @@ public class ChatActivity extends BaseFragment implements
+@@ -46097,6 +46404,33 @@ public class ChatActivity extends BaseFragment implements
                      }
                  }
  
@@ -11377,7 +11474,7 @@ index 78c3b9e1..b820c3eb 100644
          tmpRect.set(
              Math.round(inputBubbleOffsetLeft),
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/DialogsActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/DialogsActivity.java
-index b04f149f..c2d63df5 100644
+index b04f149f..9e0ad735 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/DialogsActivity.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/DialogsActivity.java
 @@ -3517,12 +3517,11 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
@@ -11409,6 +11506,45 @@ index b04f149f..c2d63df5 100644
              if (initialDialogsType != DIALOGS_TYPE_WIDGET) {
                  hideFloatingButton(false);
              }
+@@ -6878,8 +6881,17 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
+                     selectWithStableId = true;
+                 }
+                 filterTabsView.removeTabs();
++                // «Все чаты» можно спрятать: многим эта вкладка не нужна, они
++                // читают личные или выборочные чаты. Прячем, только когда есть
++                // куда переключиться, — иначе от полосы вкладок не осталось бы
++                // ничего, и это выглядело бы поломкой папок, а не настройкой.
++                final boolean margeletHideAll = org.telegram.margelet.MargeletConfig.hideAllChatsTab()
++                        && filters.size() > 1;
+                 for (int a = 0, N = filters.size(); a < N; a++) {
+                     if (filters.get(a).isDefault()) {
++                        if (margeletHideAll) {
++                            continue;
++                        }
+                         filterTabsView.addTab(a, 0, LocaleController.getString(R.string.FilterAllChats), null, false, true, filters.get(a).locked);
+                     } else {
+                         final MessagesController.DialogFilter filter = filters.get(a);
+@@ -6906,6 +6918,20 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
+                     if (viewPages[a].selectedType >= filters.size()) {
+                         viewPages[a].selectedType = filters.size() - 1;
+                     }
++                    // Спрятанная вкладка не может остаться выбранной: выбор
++                    // указывал бы на то, чего на экране нет, и полоса вкладок
++                    // не подсвечивала бы ничего.
++                    if (margeletHideAll && viewPages[a].selectedType >= 0
++                            && viewPages[a].selectedType < filters.size()
++                            && filters.get(viewPages[a].selectedType).isDefault()) {
++                        for (int b = 0, N = filters.size(); b < N; b++) {
++                            if (!filters.get(b).isDefault()) {
++                                viewPages[a].selectedType = b;
++                                updateCurrentTab = true;
++                                break;
++                            }
++                        }
++                    }
+                     viewPages[a].listView.setScrollingTouchSlop(RecyclerView.TOUCH_SLOP_PAGING);
+                 }
+                 filterTabsView.finishAddingTabs(animatedUpdateItems);
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/IntroActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/IntroActivity.java
 index 4153ceb2..d1557801 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/IntroActivity.java
@@ -11694,10 +11830,10 @@ index 00000000..022075eb
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletConveniencesActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletConveniencesActivity.java
 new file mode 100644
-index 00000000..d1d8868e
+index 00000000..ca38f663
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletConveniencesActivity.java
-@@ -0,0 +1,92 @@
+@@ -0,0 +1,106 @@
 +package org.telegram.ui;
 +
 +import android.view.View;
@@ -11715,12 +11851,13 @@ index 00000000..d1d8868e
 +
 +/**
 + * «Удобности» — мелкие переключатели, которым не нужен свой экран каждому:
-+ * канал форка сверху, теги музыки и «приступ». Раньше они были разбросаны по
++ * папка «Все чаты», теги музыки и «приступ». Раньше они были разбросаны по
 + * корню настроек (а теги музыки занимали целую вкладку ради одного тумблера);
 + * собраны сюда, чтобы корень не был свалкой.
 + */
 +public class MargeletConveniencesActivity extends UniversalFragment {
 +
++    private static final int ID_ALL_CHATS = 1;
 +    private static final int ID_TRACKS = 2;
 +    private static final int ID_SEIZURE = 3;
 +    private static final int ID_FONTS = 4;
@@ -11740,6 +11877,9 @@ index 00000000..d1d8868e
 +
 +    @Override
 +    protected void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
++        items.add(UItem.asCheck(ID_ALL_CHATS, LocaleController.getString(R.string.MargeletHideAllChats))
++                .setChecked(MargeletConfig.hideAllChatsTab()));
++        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletHideAllChatsAbout)));
 +        items.add(UItem.asCheck(ID_TRACKS, LocaleController.getString(R.string.MargeletTracksEnabled))
 +                .setChecked(MargeletConfig.tagsEnabled()));
 +        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletTracksEnabledAbout)));
@@ -11753,7 +11893,17 @@ index 00000000..d1d8868e
 +
 +    @Override
 +    protected void onClick(UItem item, View view, int position, float x, float y) {
-+        if (item.id == ID_TRACKS) {
++        if (item.id == ID_ALL_CHATS) {
++            MargeletConfig.setHideAllChatsTab(!MargeletConfig.hideAllChatsTab());
++            listView.adapter.update(true);
++            // Полоса вкладок пересобирается по этому же событию, каким телеграм
++            // отвечает на правку папок. Без него список чатов узнал бы о
++            // настройке только при следующем открытии, и человек решил бы, что
++            // она не работает.
++            org.telegram.messenger.NotificationCenter.getInstance(currentAccount)
++                    .postNotificationName(
++                            org.telegram.messenger.NotificationCenter.dialogFiltersUpdated);
++        } else if (item.id == ID_TRACKS) {
 +            MargeletConfig.setTagsEnabled(!MargeletConfig.tagsEnabled());
 +            listView.adapter.update(true);
 +        } else if (item.id == ID_SEIZURE) {
@@ -15420,7 +15570,7 @@ index 00000000..b142afca
 +    }
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java
-index 40634647..2a251d77 100644
+index 40634647..85f2548f 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java
 @@ -626,6 +626,30 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
@@ -15454,7 +15604,7 @@ index 40634647..2a251d77 100644
      private int privacyRow;
      private int dataRow;
      private int chatRow;
-@@ -1327,7 +1351,37 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -1327,7 +1351,41 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
              return false;
          }
  
@@ -15483,8 +15633,12 @@ index 40634647..2a251d77 100644
 +            color1 = own[0];
 +            color2 = own[1];
 +            actionBarBackgroundColor = ColorUtils.blendARGB(color1, color2, 0.25f);
-+            emojiColor = PeerColorActivity.adaptProfileEmojiColor(color1);
-+            btnColor = Theme.multAlpha(PeerColorActivity.adaptProfileEmojiColor(color1), .15f);
++            // Кнопки и знак поверх градиента красятся им же, приглушённо:
++            // краска полупрозрачная, поэтому кнопка темнеет вместе с тем
++            // куском градиента, над которым стоит, а не одинаково по всей
++            // шапке. Готовый цвет так не умеет.
++            emojiColor = org.telegram.margelet.MargeletGradient.ink(own);
++            btnColor = org.telegram.margelet.MargeletGradient.buttons(own);
 +        }
 +
          private void updateBackgroundPaint() {
@@ -15492,7 +15646,7 @@ index 40634647..2a251d77 100644
              final int color1 = color1Animated.set(this.color1);
              final int color2 = color2Animated.set(this.color2);
              if (actionsView != null) {
-@@ -1347,6 +1401,70 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -1347,6 +1405,70 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
              }
          }
  
@@ -15563,7 +15717,7 @@ index 40634647..2a251d77 100644
          @Override
          protected void onDraw(Canvas canvas) {
              final int height = ActionBar.getCurrentActionBarHeight() + (actionBar.getOccupyStatusBar() ? AndroidUtilities.statusBarHeight : 0);
-@@ -1365,6 +1483,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -1365,6 +1487,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                      backgroundPaint.setAlpha((int) (0xFF * progressToGradient));
                      canvas.drawRect(0, 0, getMeasuredWidth(), y1, backgroundPaint);
                  }
@@ -15572,7 +15726,7 @@ index 40634647..2a251d77 100644
                  if (hasEmoji) {
                      final float loadedScale = emojiLoadedT.set(isEmojiLoaded());
                      boolean shoudIgnore = openAnimationInProgress && playProfileAnimation == 2;
-@@ -4220,7 +4340,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -4220,7 +4344,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
          };
          listView.setSections();
          listView.applyPaddingToSections = false;
@@ -15587,7 +15741,7 @@ index 40634647..2a251d77 100644
          listView.setVerticalScrollBarEnabled(false);
          final IBlur3Capture listViewCapture = new ViewGroupPartRenderer(listView, (ViewGroup) fragmentView, (canvas, child, drawingTime) -> {
              if (child == sharedMediaLayout) {
-@@ -4536,6 +4662,25 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -4536,6 +4666,25 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                  presentFragment(new PrivacySettingsActivity().setCurrentPassword(currentPassword));
              } else if (position == dataRow) {
                  presentFragment(new DataSettingsActivity());
@@ -15613,7 +15767,109 @@ index 40634647..2a251d77 100644
              } else if (position == chatRow) {
                  presentFragment(new ThemeActivity(ThemeActivity.THEME_TYPE_BASIC));
              } else if (position == filtersRow) {
-@@ -10469,6 +10614,12 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -6304,7 +6453,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+         }
+ 
+         if (lockIconDrawable != null) {
+-            lockIconDrawable.setColorFilter(peerColor != null ? Color.WHITE : ColorUtils.blendARGB(getThemedColor(Theme.key_chat_lockIcon), Color.WHITE, value), PorterDuff.Mode.MULTIPLY);
++            lockIconDrawable.setColorFilter(margeletInk() != 0 ? margeletInk() : peerColor != null ? Color.WHITE : ColorUtils.blendARGB(getThemedColor(Theme.key_chat_lockIcon), Color.WHITE, value), PorterDuff.Mode.MULTIPLY);
+         }
+ 
+         if (verifiedCrossfadeDrawable[0] != null) {
+@@ -6386,8 +6535,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+             showStatusButton.setBackgroundColor(ColorUtils.blendARGB(Theme.multAlpha(Theme.adaptHSV(actionBarBackgroundColor, +0.18f, -0.1f), 0.5f), 0x23ffffff, currentExpandAnimatorValue));
+         }
+ 
+-        nameTextView[1].setTextColor(peerColor != null ? Color.WHITE : ColorUtils.blendARGB(getThemedColor(Theme.key_profile_title), Color.WHITE, currentExpandAnimatorValue));
+-        actionBar.setItemsColor(peerColor != null ? Color.WHITE : ColorUtils.blendARGB(getThemedColor(Theme.key_actionBarDefaultIcon), Color.WHITE, value), false);
++        nameTextView[1].setTextColor(margeletInk() != 0 ? margeletInk() : peerColor != null ? Color.WHITE : ColorUtils.blendARGB(getThemedColor(Theme.key_profile_title), Color.WHITE, currentExpandAnimatorValue));
++        actionBar.setItemsColor(margeletInk() != 0 ? margeletInk() : peerColor != null ? Color.WHITE : ColorUtils.blendARGB(getThemedColor(Theme.key_actionBarDefaultIcon), Color.WHITE, value), false);
+         actionBar.setMenuOffsetSuppressed(true);
+ 
+         avatarImage.setForegroundAlpha(value);
+@@ -7724,19 +7873,19 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+             }
+             topView.invalidate();
+ 
+-            int color1 = peerColor != null ? Color.WHITE : getThemedColor(Theme.key_profile_title);
++            int color1 = margeletInk() != 0 ? margeletInk() : peerColor != null ? Color.WHITE : getThemedColor(Theme.key_profile_title);
+             int color2 = getThemedColor(Theme.key_player_actionBarTitle);
+             int c = AndroidUtilities.getOffsetColor(color1, color2, value, 1.0f);
+             nameTextView[1].setTextColor(c);
+             if (lockIconDrawable != null) {
+-                lockIconDrawable.setColorFilter(peerColor != null ? Color.WHITE : c, PorterDuff.Mode.MULTIPLY);
++                lockIconDrawable.setColorFilter(margeletInk() != 0 ? margeletInk() : peerColor != null ? Color.WHITE : c, PorterDuff.Mode.MULTIPLY);
+             }
+             if (scamDrawable != null) {
+                 color1 = getThemedColor(Theme.key_avatar_subtitleInProfileBlue);
+                 scamDrawable.setColor(AndroidUtilities.getOffsetColor(color1, color2, value, 1.0f));
+             }
+ 
+-            color1 = peerColor != null ? Color.WHITE : getThemedColor(Theme.key_actionBarDefaultIcon);
++            color1 = margeletInk() != 0 ? margeletInk() : peerColor != null ? Color.WHITE : getThemedColor(Theme.key_actionBarDefaultIcon);
+             color2 = getThemedColor(Theme.key_actionBarActionModeDefaultIcon);
+             actionBar.setItemsColor(AndroidUtilities.getOffsetColor(color1, color2, value, 1.0f), false);
+ 
+@@ -7745,12 +7894,12 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+             actionBar.setItemsBackgroundColor(AndroidUtilities.getOffsetColor(color1, color2, value, 1.0f), false);
+ 
+             topView.invalidate();
+-            otherItem.setIconColor(peerColor != null ? Color.WHITE : getThemedColor(Theme.key_actionBarDefaultIcon));
+-            callItem.setIconColor(peerColor != null ? Color.WHITE : getThemedColor(Theme.key_actionBarDefaultIcon));
+-            videoCallItem.setIconColor(peerColor != null ? Color.WHITE : getThemedColor(Theme.key_actionBarDefaultIcon));
+-            editItem.setIconColor(peerColor != null ? Color.WHITE : getThemedColor(Theme.key_actionBarDefaultIcon));
++            otherItem.setIconColor(margeletInk() != 0 ? margeletInk() : peerColor != null ? Color.WHITE : getThemedColor(Theme.key_actionBarDefaultIcon));
++            callItem.setIconColor(margeletInk() != 0 ? margeletInk() : peerColor != null ? Color.WHITE : getThemedColor(Theme.key_actionBarDefaultIcon));
++            videoCallItem.setIconColor(margeletInk() != 0 ? margeletInk() : peerColor != null ? Color.WHITE : getThemedColor(Theme.key_actionBarDefaultIcon));
++            editItem.setIconColor(margeletInk() != 0 ? margeletInk() : peerColor != null ? Color.WHITE : getThemedColor(Theme.key_actionBarDefaultIcon));
+             if (callToActionItem != null) {
+-                //callToActionItem.setIconColor(peerColor != null ? Color.WHITE : getThemedColor(Theme.key_actionBarDefaultIcon));
++                //callToActionItem.setIconColor(margeletInk() != 0 ? margeletInk() : peerColor != null ? Color.WHITE : getThemedColor(Theme.key_actionBarDefaultIcon));
+             }
+ 
+             if (verifiedDrawable[0] != null) {
+@@ -7770,7 +7919,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+                 verifiedCheckDrawable[0].setColorFilter(AndroidUtilities.getOffsetColor(color1, color2, value, 1.0f), PorterDuff.Mode.MULTIPLY);
+             }
+             if (verifiedCheckDrawable[1] != null) {
+-                color1 = peerColor != null ? Color.WHITE : dontApplyPeerColor(getThemedColor(Theme.key_profile_verifiedCheck));
++                color1 = margeletInk() != 0 ? margeletInk() : peerColor != null ? Color.WHITE : dontApplyPeerColor(getThemedColor(Theme.key_profile_verifiedCheck));
+                 color2 = getThemedColor(Theme.key_windowBackgroundWhite);
+                 verifiedCheckDrawable[1].setColorFilter(AndroidUtilities.getOffsetColor(color1, color2, value, 1.0f), PorterDuff.Mode.MULTIPLY);
+             }
+@@ -8665,13 +8814,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+                 avatarImage.setBlurRadiusProgressForExpand(avatarAnimationProgress, avatarScale, true);
+ 
+                 overlaysView.setAlphaValue(avatarAnimationProgress, false);
+-                actionBar.setItemsColor(ColorUtils.blendARGB(peerColor != null ? Color.WHITE : getThemedColor(Theme.key_actionBarDefaultIcon), Color.WHITE, avatarAnimationProgress), false);
++                actionBar.setItemsColor(ColorUtils.blendARGB(margeletInk() != 0 ? margeletInk() : peerColor != null ? Color.WHITE : getThemedColor(Theme.key_actionBarDefaultIcon), Color.WHITE, avatarAnimationProgress), false);
+ 
+                 if (scamDrawable != null) {
+                     scamDrawable.setColor(ColorUtils.blendARGB(getThemedColor(Theme.key_avatar_subtitleInProfileBlue), Color.argb(179, 255, 255, 255), avatarAnimationProgress));
+                 }
+                 if (lockIconDrawable != null) {
+-                    lockIconDrawable.setColorFilter(peerColor != null ? Color.WHITE : ColorUtils.blendARGB(getThemedColor(Theme.key_chat_lockIcon), Color.WHITE, avatarAnimationProgress), PorterDuff.Mode.MULTIPLY);
++                    lockIconDrawable.setColorFilter(margeletInk() != 0 ? margeletInk() : peerColor != null ? Color.WHITE : ColorUtils.blendARGB(getThemedColor(Theme.key_chat_lockIcon), Color.WHITE, avatarAnimationProgress), PorterDuff.Mode.MULTIPLY);
+                 }
+                 if (verifiedCrossfadeDrawable[1] != null) {
+                     verifiedCrossfadeDrawable[1].setProgress(avatarAnimationProgress);
+@@ -9829,12 +9978,12 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+         topView.setBackgroundColor(ColorUtils.blendARGB(actionBarColor, color, progress));
+         timerDrawable.setBackgroundColor(ColorUtils.blendARGB(actionBarColor2, color, progress));
+ 
+-        color = peerColor != null ? Color.WHITE : AvatarDrawable.getIconColorForId(userId != 0 || ChatObject.isChannel(chatId, currentAccount) && !currentChat.megagroup ? 5 : chatId, resourcesProvider);
++        color = margeletInk() != 0 ? margeletInk() : peerColor != null ? Color.WHITE : AvatarDrawable.getIconColorForId(userId != 0 || ChatObject.isChannel(chatId, currentAccount) && !currentChat.megagroup ? 5 : chatId, resourcesProvider);
+         int iconColor = getThemedColor(Theme.key_actionBarDefaultIcon);
+         actionBar.setItemsColor(ColorUtils.blendARGB(iconColor, color, avatarAnimationProgress), false);
+ 
+-        color = peerColor != null ? Color.WHITE : getThemedColor(Theme.key_profile_title);
+-        int titleColor = /*peerColor != null ? Color.WHITE :*/ getThemedColor(Theme.key_actionBarDefaultTitle);
++        color = margeletInk() != 0 ? margeletInk() : peerColor != null ? Color.WHITE : getThemedColor(Theme.key_profile_title);
++        int titleColor = /*margeletInk() != 0 ? margeletInk() : peerColor != null ? Color.WHITE :*/ getThemedColor(Theme.key_actionBarDefaultTitle);
+         for (int i = 0; i < 2; i++) {
+             if (nameTextView[i] == null || i == 1 && playProfileAnimation == 2) {
+                 continue;
+@@ -10469,6 +10618,12 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
          settingsSectionRow2 = -1;
          notificationRow = -1;
          languageRow = -1;
@@ -15626,7 +15882,7 @@ index 40634647..2a251d77 100644
          premiumRow = -1;
          starsRow = -1;
          tonRow = -1;
-@@ -10638,6 +10789,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -10638,6 +10793,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                  }
  
                  settingsSectionRow2 = rowCount++;
@@ -15634,7 +15890,7 @@ index 40634647..2a251d77 100644
                  chatRow = rowCount++;
                  privacyRow = rowCount++;
                  notificationRow = rowCount++;
-@@ -10733,9 +10885,27 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -10733,9 +10889,27 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                  if (isBot && user != null && user.bot_has_main_app) {
                      botAppRow = rowCount++;
                  }
@@ -15662,7 +15918,7 @@ index 40634647..2a251d77 100644
                  if (user != null && user.linked_community_id != 0) {
                      linkedCommunityRow = rowCount++;
                      linkedCommunityDividerRow = rowCount++;
-@@ -10885,9 +11055,22 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -10885,9 +11059,22 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                  }
                  notificationsRow = rowCount++;
              }
@@ -15685,7 +15941,37 @@ index 40634647..2a251d77 100644
  
              if (currentChat != null && currentChat.linked_community_id != 0) {
                  linkedCommunityRow = rowCount++;
-@@ -11420,7 +11603,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -11251,6 +11438,29 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+ 
+     private MessagesController.PeerColor peerColor;
+ 
++    /**
++     * Пара цветов градиента этого человека — или null, если его нет.
++     *
++     * Спрашивается из отрисовки по многу раз в секунду, поэтому ничего не
++     * ждёт и не качает: {@link org.telegram.margelet.MargeletGradient#of}
++     * отдаёт уже найденное.
++     */
++    private int[] margeletGradient() {
++        return userId == 0 ? null : org.telegram.margelet.MargeletGradient.of(userId, null);
++    }
++
++    /**
++     * Чем писать поверх шапки, когда стоит градиент. Ноль — градиента нет.
++     *
++     * Ноль как «решать нечего» здесь честнее, чем возвращать белый: белый —
++     * это уже решение, и оно перебило бы телеграмовское там, где градиента
++     * никакого нет.
++     */
++    private int margeletInk() {
++        final int[] pair = margeletGradient();
++        return pair == null ? 0 : org.telegram.margelet.MargeletGradient.ink(pair);
++    }
++
+     private void updateProfileData(boolean reload) {
+         if (avatarContainer == null || nameTextView == null || getParentActivity() == null) {
+             return;
+@@ -11420,7 +11630,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                      nameTextView[a].setRightDrawable2(titleTextView.getRightDrawable2());
                  } else if (a == 0 && user.id != getUserConfig().getClientUserId() && !MessagesController.isSupportUser(user) && user.phone != null && user.phone.length() != 0 && getContactsController().contactsDict.get(user.id) == null &&
                          (getContactsController().contactsDict.size() != 0 || !getContactsController().isLoadingContacts())) {
@@ -15694,7 +15980,7 @@ index 40634647..2a251d77 100644
                  } else {
                      nameTextView[a].setText(newString);
                  }
-@@ -11459,9 +11642,23 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -11459,9 +11669,23 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                      } else if (getMessagesController().isDialogMuted(dialogId != 0 ? dialogId : userId, topicId)) {
                          nameTextView[a].setRightDrawable2(getThemedDrawable(Theme.key_drawable_muteIconDrawable));
                          nameTextViewRightDrawable2ContentDescription = LocaleController.getString(R.string.NotificationsMuted);
@@ -15718,7 +16004,7 @@ index 40634647..2a251d77 100644
                      }
                      if (user != null/* && !getMessagesController().premiumFeaturesBlocked()*/ && !MessagesController.isSupportUser(user) && DialogObject.getEmojiStatusDocumentId(user.emoji_status) != 0) {
                          rightIconIsStatus = true;
-@@ -11482,8 +11679,18 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -11482,8 +11706,18 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                          nameTextView[a].setRightDrawable2(getScamDrawable(user.scam ? 0 : 1));
                      } else if (user.verified) {
                          nameTextView[a].setRightDrawable2(getVerifiedCrossfadeDrawable(a));
@@ -15737,7 +16023,7 @@ index 40634647..2a251d77 100644
                      }
                      if (/*!getMessagesController().premiumFeaturesBlocked() && */user != null && !MessagesController.isSupportUser(user) && DialogObject.getEmojiStatusDocumentId(user.emoji_status) != 0) {
                          rightIconIsStatus = true;
-@@ -11775,6 +11982,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -11775,6 +12009,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                      } else if (chat.verified) {
                          nameTextView[a].setRightDrawable2(getVerifiedCrossfadeDrawable(a));
                          nameTextViewRightDrawableContentDescription = LocaleController.getString(R.string.AccDescrVerified);
@@ -15751,7 +16037,7 @@ index 40634647..2a251d77 100644
                      } else {
                          nameTextView[a].setRightDrawable2(null);
                          nameTextViewRightDrawableContentDescription = null;
-@@ -11805,6 +12019,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -11805,6 +12046,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                          nameTextView[a].setRightDrawable2(getVerifiedCrossfadeDrawable(a));
                      } else if (getMessagesController().isDialogMuted(-chatId, topicId)) {
                          nameTextView[a].setRightDrawable2(getThemedDrawable(Theme.key_drawable_muteIconDrawable));
@@ -15762,7 +16048,38 @@ index 40634647..2a251d77 100644
                      } else {
                          nameTextView[a].setRightDrawable2(null);
                      }
-@@ -13456,7 +13674,28 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -11961,7 +12206,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+             showStatusButton.setBackgroundColor(ColorUtils.blendARGB(Theme.multAlpha(Theme.adaptHSV(actionBarBackgroundColor, +0.18f, -0.1f), 0.5f), 0x23ffffff, currentExpandAnimatorValue));
+         }
+         if (actionBar != null) {
+-            actionBar.setItemsColor(ColorUtils.blendARGB(peerColor != null ? Color.WHITE : getThemedColor(Theme.key_actionBarDefaultIcon), getThemedColor(Theme.key_actionBarActionModeDefaultIcon), mediaHeaderAnimationProgress), false);
++            actionBar.setItemsColor(ColorUtils.blendARGB(margeletInk() != 0 ? margeletInk() : peerColor != null ? Color.WHITE : getThemedColor(Theme.key_actionBarDefaultIcon), getThemedColor(Theme.key_actionBarActionModeDefaultIcon), mediaHeaderAnimationProgress), false);
+             actionBar.setItemsBackgroundColor(ColorUtils.blendARGB(peerColor != null ? Theme.ACTION_BAR_WHITE_SELECTOR_COLOR : peerColor != null ? 0x20ffffff : getThemedColor(Theme.key_avatar_actionBarSelectorBlue), getThemedColor(Theme.key_actionBarActionModeDefaultSelector), mediaHeaderAnimationProgress), false);
+         }
+         if (verifiedDrawable[1] != null) {
+@@ -11970,18 +12215,18 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+             verifiedDrawable[1].setColorFilter(AndroidUtilities.getOffsetColor(color1, color2, mediaHeaderAnimationProgress, 1.0f), PorterDuff.Mode.MULTIPLY);
+         }
+         if (verifiedCheckDrawable[1] != null) {
+-            final int color1 = peerColor != null ? Color.WHITE : dontApplyPeerColor(getThemedColor(Theme.key_profile_verifiedCheck));
++            final int color1 = margeletInk() != 0 ? margeletInk() : peerColor != null ? Color.WHITE : dontApplyPeerColor(getThemedColor(Theme.key_profile_verifiedCheck));
+             final int color2 = getThemedColor(Theme.key_windowBackgroundWhite);
+             verifiedCheckDrawable[1].setColorFilter(AndroidUtilities.getOffsetColor(color1, color2, mediaHeaderAnimationProgress, 1.0f), PorterDuff.Mode.MULTIPLY);
+         }
+         if (nameTextView[1] != null) {
+-            nameTextView[1].setTextColor(ColorUtils.blendARGB(ColorUtils.blendARGB(peerColor != null ? Color.WHITE : getThemedColor(Theme.key_profile_title), getThemedColor(Theme.key_player_actionBarTitle), mediaHeaderAnimationProgress), Color.WHITE, currentExpandAnimatorValue));
++            nameTextView[1].setTextColor(ColorUtils.blendARGB(ColorUtils.blendARGB(margeletInk() != 0 ? margeletInk() : peerColor != null ? Color.WHITE : getThemedColor(Theme.key_profile_title), getThemedColor(Theme.key_player_actionBarTitle), mediaHeaderAnimationProgress), Color.WHITE, currentExpandAnimatorValue));
+         }
+         if (autoDeletePopupWrapper != null && autoDeletePopupWrapper.textView != null) {
+             autoDeletePopupWrapper.textView.invalidate();
+         }
+         if (lockIconDrawable != null) {
+-            lockIconDrawable.setColorFilter(peerColor != null ? Color.WHITE : ColorUtils.blendARGB(getThemedColor(Theme.key_chat_lockIcon), Color.WHITE, avatarAnimationProgress), PorterDuff.Mode.MULTIPLY);
++            lockIconDrawable.setColorFilter(margeletInk() != 0 ? margeletInk() : peerColor != null ? Color.WHITE : ColorUtils.blendARGB(getThemedColor(Theme.key_chat_lockIcon), Color.WHITE, avatarAnimationProgress), PorterDuff.Mode.MULTIPLY);
+         }
+         if (musicView != null) {
+             musicView.setColor(peerColor);
+@@ -13456,7 +13701,28 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                      TextDetailCell detailCell = (TextDetailCell) holder.itemView;
                      boolean containsQr = false;
                      boolean containsGift = false;
@@ -15792,7 +16109,7 @@ index 40634647..2a251d77 100644
                          TLRPC.UserFull userFull = getMessagesController().getUserFull(userId);
                          if (userFull != null && userFull.birthday != null) {
                              final boolean today = BirthdayController.isToday(userFull);
-@@ -13491,7 +13730,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -13491,7 +13757,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                              text = PhoneFormat.getInstance().format("+" + vcardPhone);
                              phoneNumber = vcardPhone;
                          } else if (user != null && !TextUtils.isEmpty(user.phone)) {
@@ -15801,7 +16118,7 @@ index 40634647..2a251d77 100644
                              phoneNumber = user.phone;
                          } else {
                              text = LocaleController.getString(R.string.PhoneHidden);
-@@ -13585,7 +13824,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -13585,7 +13851,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                          TLRPC.User user = UserConfig.getInstance(currentAccount).getCurrentUser();
                          String value;
                          if (user != null && user.phone != null && user.phone.length() != 0) {
@@ -15810,7 +16127,7 @@ index 40634647..2a251d77 100644
                          } else {
                              value = LocaleController.getString(R.string.NumberUnknown);
                          }
-@@ -13610,13 +13849,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -13610,13 +13876,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                              if (username == null || TextUtils.isEmpty(username)) {
                                  text = LocaleController.getString(R.string.UsernameEmpty);
                              } else {
@@ -15826,7 +16143,7 @@ index 40634647..2a251d77 100644
                              } else {
                                  text = LocaleController.getString(R.string.UsernameEmpty);
                              }
-@@ -13624,7 +13863,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -13624,7 +13890,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                          detailCell.setTextAndValue(text, value, true);
                          detailCell.setContentDescriptionValueFirst(true);
                      }
@@ -15841,7 +16158,7 @@ index 40634647..2a251d77 100644
                          Drawable drawable = ContextCompat.getDrawable(detailCell.getContext(), R.drawable.msg_input_gift);
                          drawable.setColorFilter(new PorterDuffColorFilter(dontApplyPeerColor(getThemedColor(Theme.key_switch2TrackChecked), false), PorterDuff.Mode.MULTIPLY));
                          if (UserObject.areGiftsDisabled(userInfo)) {
-@@ -13839,6 +14084,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -13839,6 +14111,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                          textCell.setTextAndIcon(LocaleController.getString(R.string.PrivacySettings), R.drawable.msg2_secret, true);
                      } else if (position == dataRow) {
                          textCell.setTextAndIcon(LocaleController.getString(R.string.DataSettings), R.drawable.msg2_data, true);
@@ -15850,7 +16167,7 @@ index 40634647..2a251d77 100644
                      } else if (position == chatRow) {
                          textCell.setTextAndIcon(LocaleController.getString(R.string.ChatSettings), R.drawable.msg2_discussion, true);
                      } else if (position == filtersRow) {
-@@ -14286,7 +14533,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -14286,7 +14560,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                          position == clearLogsRow || position == switchBackendRow || position == setAvatarRow ||
                          position == addToGroupButtonRow || position == premiumRow || position == premiumGiftingRow ||
                          position == businessRow || position == liteModeRow || position == birthdayRow || position == channelRow ||
@@ -15861,7 +16178,7 @@ index 40634647..2a251d77 100644
              }
              if (holder.itemView instanceof UserCell) {
                  UserCell userCell = (UserCell) holder.itemView;
-@@ -14314,7 +14563,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -14314,7 +14590,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
              if (position == infoHeaderRow || position == membersHeaderRow || position == settingsSectionRow2 ||
                      position == numberSectionRow || position == helpHeaderRow || position == debugHeaderRow || position == botPermissionsHeader) {
                  return VIEW_TYPE_HEADER;
@@ -15871,7 +16188,7 @@ index 40634647..2a251d77 100644
                  return VIEW_TYPE_TEXT_DETAIL;
              } else if (position == usernameRow || position == setUsernameRow) {
                  return VIEW_TYPE_TEXT_DETAIL_MULTILINE;
-@@ -14332,7 +14582,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -14332,7 +14609,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                      position == clearLogsRow || position == switchBackendRow || position == setAvatarRow || position == addToGroupButtonRow ||
                      position == addToContactsRow || position == liteModeRow || position == premiumGiftingRow || position == businessRow ||
                      position == botStarsBalanceRow || position == botTonBalanceRow || position == channelBalanceRow || position == botPermissionLocation ||
@@ -15881,7 +16198,7 @@ index 40634647..2a251d77 100644
              ) {
                  return VIEW_TYPE_TEXT;
              } else if (position == notificationsDividerRow) {
-@@ -14346,7 +14597,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -14346,7 +14624,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                      position == helpSectionCell || position == setAvatarSectionRow || position == passwordSuggestionSectionRow ||
                      position == phoneSuggestionSectionRow || position == premiumSectionsRow || position == reportDividerRow ||
                      position == channelDividerRow || position == graceSuggestionSectionRow || position == balanceDividerRow ||
@@ -15891,6 +16208,24 @@ index 40634647..2a251d77 100644
              ) {
                  return VIEW_TYPE_SHADOW;
              } else if (position >= membersStartRow && position < membersEndRow) {
+@@ -15291,7 +15570,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+                     }
+                 }
+                 if (lockIconDrawable != null) {
+-                    lockIconDrawable.setColorFilter(peerColor != null ? Color.WHITE : getThemedColor(Theme.key_chat_lockIcon), PorterDuff.Mode.MULTIPLY);
++                    lockIconDrawable.setColorFilter(margeletInk() != 0 ? margeletInk() : peerColor != null ? Color.WHITE : getThemedColor(Theme.key_chat_lockIcon), PorterDuff.Mode.MULTIPLY);
+                 }
+                 if (scamDrawable != null) {
+                     scamDrawable.setColor(getThemedColor(Theme.key_avatar_subtitleInProfileBlue));
+@@ -15300,7 +15579,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+                     nameTextView[1].setTextColor(getThemedColor(Theme.key_profile_title));
+                 }
+                 if (actionBar != null) {
+-                    actionBar.setItemsColor(peerColor != null ? Color.WHITE : getThemedColor(Theme.key_actionBarDefaultIcon), false);
++                    actionBar.setItemsColor(margeletInk() != 0 ? margeletInk() : peerColor != null ? Color.WHITE : getThemedColor(Theme.key_actionBarDefaultIcon), false);
+                     actionBar.setItemsBackgroundColor(peerColor != null ? 0x20ffffff : getThemedColor(Theme.key_avatar_actionBarSelectorBlue), false);
+                 }
+ //                if (sharedMediaLayout != null) {
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/SettingsActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/SettingsActivity.java
 index cbfb369a..b9de3d85 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/SettingsActivity.java
@@ -24301,7 +24636,7 @@ index 03d0ba33..17f98fa6 100644
      <string name="English">Inglês</string>
      <string name="LanguageNameInEnglish">Portuguese (Brazil)</string>
 diff --git a/TMessagesProj/src/main/res/values-ru/strings.xml b/TMessagesProj/src/main/res/values-ru/strings.xml
-index 24c56292..0cb129b4 100644
+index 24c56292..cacdf344 100644
 --- a/TMessagesProj/src/main/res/values-ru/strings.xml
 +++ b/TMessagesProj/src/main/res/values-ru/strings.xml
 @@ -1,7 +1,7 @@
@@ -24314,7 +24649,7 @@ index 24c56292..0cb129b4 100644
      <string name="LanguageName">Русский</string>
      <string name="English">Английский</string>
      <string name="LanguageNameInEnglish">Russian</string>
-@@ -263,4 +263,247 @@
+@@ -263,4 +263,249 @@
      <string name="RemindTodayAt">\'Отправить сегодня в\' HH:mm</string>
      <string name="RemindDayAt">\'Отправить\' d MMM \'в\' HH:mm</string>
      <string name="RemindDayYearAt">\'Напомнить\' d MMM yyyy \'в\' HH:mm</string>
@@ -24328,6 +24663,8 @@ index 24c56292..0cb129b4 100644
 +    <string name="MargeletTracks">Теги музыки</string>
 +    <string name="MargeletTracksInfo">Правка названия, исполнителя и обложки</string>
 +    <string name="MargeletConveniences">Удобности</string>
++    <string name="MargeletHideAllChats">Прятать папку «Все чаты»</string>
++    <string name="MargeletHideAllChatsAbout">Вкладка сверху списка чатов. Прячется, только пока есть другие папки, — иначе от полосы вкладок не осталось бы ничего.</string>
 +    <string name="MargeletConveniencesInfo">Канал форка сверху, теги музыки, приступ</string>
 +    <string name="MargeletUpdates">Обновления</string>
 +    <string name="MargeletUpdatesInfo">Как часто искать новую версию</string>
@@ -24579,10 +24916,10 @@ index d4683443..57d10109 100644
      <string name="LanguageNameInEnglish">Ukrainian</string>
 diff --git a/TMessagesProj/src/main/res/values-zh/strings.xml b/TMessagesProj/src/main/res/values-zh/strings.xml
 new file mode 100644
-index 00000000..50cff7d8
+index 00000000..7512e2db
 --- /dev/null
 +++ b/TMessagesProj/src/main/res/values-zh/strings.xml
-@@ -0,0 +1,246 @@
+@@ -0,0 +1,248 @@
 +<?xml version="1.0" encoding="utf-8"?>
 +<resources>
 +    <string name="MargeletSettings">分支设置</string>
@@ -24595,6 +24932,8 @@ index 00000000..50cff7d8
 +    <string name="MargeletTracks">音乐标签</string>
 +    <string name="MargeletTracksInfo">修改标题、艺术家和封面</string>
 +    <string name="MargeletConveniences">便利功能</string>
++    <string name="MargeletHideAllChats">隐藏「所有对话」文件夹</string>
++    <string name="MargeletHideAllChatsAbout">聊天列表顶部那个标签页。只有在你还有别的文件夹时才隐藏——否则标签栏就什么都不剩了。</string>
 +    <string name="MargeletConveniencesInfo">分支频道置顶、音乐标签、发作模式</string>
 +    <string name="MargeletUpdates">更新</string>
 +    <string name="MargeletUpdatesInfo">多久查找一次新版本</string>
@@ -24846,7 +25185,7 @@ index cc49d135..a8a51c3a 100644
      <item name="menu_regular" type="id"/>
      <item name="menu_bold" type="id"/>
 diff --git a/TMessagesProj/src/main/res/values/strings.xml b/TMessagesProj/src/main/res/values/strings.xml
-index ffa4d566..aaee2ef6 100644
+index ffa4d566..51546a47 100644
 --- a/TMessagesProj/src/main/res/values/strings.xml
 +++ b/TMessagesProj/src/main/res/values/strings.xml
 @@ -1,7 +1,7 @@
@@ -24859,7 +25198,7 @@ index ffa4d566..aaee2ef6 100644
      <string name="LanguageName">English</string>
      <string name="English">English</string>
      <string name="LanguageNameInEnglish">English</string>
-@@ -11221,4 +11221,247 @@
+@@ -11221,4 +11221,249 @@
      <string name="UnsupportedMessageTitle">Unsupported Message</string>
      <string name="UnsupportedMessageMessage">Update Telegram to view this message</string>
      <string name="UnsupportedUpdate">Update</string>
@@ -24873,6 +25212,8 @@ index ffa4d566..aaee2ef6 100644
 +    <string name="MargeletTracks">Music tags</string>
 +    <string name="MargeletTracksInfo">Edit title, artist and cover</string>
 +    <string name="MargeletConveniences">Conveniences</string>
++    <string name="MargeletHideAllChats">Hide the “All chats” folder</string>
++    <string name="MargeletHideAllChatsAbout">The tab at the top of the chat list. Hidden only while you have other folders — otherwise there would be no tabs left at all.</string>
 +    <string name="MargeletConveniencesInfo">Fork channel on top, music tags, seizure mode</string>
 +    <string name="MargeletUpdates">Updates</string>
 +    <string name="MargeletUpdatesInfo">How often to look for a new version</string>
@@ -36306,8 +36647,494 @@ index 528fd746..8b64b0f8 100644
      }
  }
  repositories {
+diff --git a/build2.log b/build2.log
+new file mode 100644
+index 00000000..70bd5505
+--- /dev/null
++++ b/build2.log
+@@ -0,0 +1,236 @@
++Picked up JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStore=/root/.ccr/java-truststore.p12 -Djavax.net.ssl.trustStorePassword=changeit -Djavax.net.ssl.trustStoreType=PKCS12 -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=36225 -Dhttp.nonProxyHosts=localhost|127.0.0.1|::1|127.*|0.*|::|169.254.*|api.anthropic.com|api-staging.anthropic.com|api-pr-preview.anthropic.com|mcp-proxy.anthropic.com|mcp-proxy-staging.anthropic.com|registry.npmjs.org|jsr.io|npm.jsr.io|pypi.org|files.pythonhosted.org|index.crates.io|proxy.golang.org|host.docker.internal|10.*|172.16.*|172.17.*|172.18.*|172.19.*|172.20.*|172.21.*|172.22.*|172.23.*|172.24.*|172.25.*|172.26.*|172.27.*|172.28.*|172.29.*|172.30.*|172.31.*|192.168.*|100.64.0.0/10|*.svc.cluster.local|*.svc.cluster.local -Djdk.http.auth.tunneling.disabledSchemes= -Djdk.http.auth.proxying.disabledSchemes=
++> Task :buildSrc:checkKotlinGradlePluginConfigurationErrors SKIPPED
++> Task :buildSrc:compileKotlin UP-TO-DATE
++> Task :buildSrc:compileJava NO-SOURCE
++> Task :buildSrc:compileGroovy NO-SOURCE
++> Task :buildSrc:pluginDescriptors UP-TO-DATE
++> Task :buildSrc:processResources UP-TO-DATE
++> Task :buildSrc:classes UP-TO-DATE
++> Task :buildSrc:jar UP-TO-DATE
++
++> Configure project :jlatexmath
++WARNING: The option setting 'android.defaults.buildfeatures.buildconfig=true' is deprecated.
++The current default is 'false'.
++It will be removed in version 10.0 of the Android Gradle plugin.
++To keep using this feature, add the following to your module-level build.gradle files:
++    android.buildFeatures.buildConfig = true
++or from Android Studio, click: `Refactor` > `Migrate BuildConfig to Gradle Build Files`.
++
++> Configure project :TMessagesProj
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++
++> Configure project :TMessagesProj_AppHuawei
++--W- Build Environment: AGConnect plugin version is: 1.9.1.301, Gradle version is: 8.11.1, Android Plugin version is: 8.6.1
++--I- Using the AGConnect-Config file: /tmp/claude-0/-home-user-TaioPlugin/59596ece-759e-529f-8f90-c807e90b950a/scratchpad/tg-src/TMessagesProj_AppHuawei/agconnect-services.json
++--W- The variant: afatDebug, Use the json file: /tmp/claude-0/-home-user-TaioPlugin/59596ece-759e-529f-8f90-c807e90b950a/scratchpad/tg-src/TMessagesProj_AppHuawei/agconnect-services.json
++--I- Using the AGConnect-Config file: /tmp/claude-0/-home-user-TaioPlugin/59596ece-759e-529f-8f90-c807e90b950a/scratchpad/tg-src/TMessagesProj_AppHuawei/agconnect-services.json
++--W- The variant: afatRelease, Use the json file: /tmp/claude-0/-home-user-TaioPlugin/59596ece-759e-529f-8f90-c807e90b950a/scratchpad/tg-src/TMessagesProj_AppHuawei/agconnect-services.json
++
++> Configure project :TMessagesProj_AppStandalone
++Warning: Python version 3.11 may have fewer packages available. If you experience problems, try switching to version 3.8.
++
++> Task :TMessagesProj_AppStandalone:preBuild UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:preAfatStandaloneBuild UP-TO-DATE
++> Task :jlatexmath:preBuild UP-TO-DATE
++> Task :jlatexmath:preReleaseBuild UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:mergeAfatStandaloneNativeDebugMetadata NO-SOURCE
++> Task :jlatexmath:prepareReleaseArtProfile UP-TO-DATE
++> Task :TMessagesProj:checkVisibility
++> Task :TMessagesProj:preBuild
++> Task :TMessagesProj:preStandaloneBuild
++> Task :jlatexmath:generateReleaseBuildConfig UP-TO-DATE
++> Task :jlatexmath:generateReleaseResValues UP-TO-DATE
++> Task :TMessagesProj:prepareStandaloneArtProfile UP-TO-DATE
++> Task :jlatexmath:generateReleaseResources UP-TO-DATE
++> Task :TMessagesProj:generateStandaloneBuildConfig UP-TO-DATE
++> Task :TMessagesProj:generateStandaloneResValues UP-TO-DATE
++> Task :TMessagesProj:processStandaloneGoogleServices UP-TO-DATE
++> Task :TMessagesProj:generateStandaloneLottieMeta UP-TO-DATE
++> Task :TMessagesProj:generateStandaloneResources UP-TO-DATE
++> Task :jlatexmath:packageReleaseResources UP-TO-DATE
++> Task :TMessagesProj:packageStandaloneResources UP-TO-DATE
++> Task :TMessagesProj:parseStandaloneLocalResources UP-TO-DATE
++> Task :jlatexmath:parseReleaseLocalResources UP-TO-DATE
++> Task :TMessagesProj:javaPreCompileStandalone UP-TO-DATE
++> Task :TMessagesProj:extractProguardFiles UP-TO-DATE
++> Task :TMessagesProj:processStandaloneManifest UP-TO-DATE
++> Task :TMessagesProj:generateStandaloneLibraryProguardRules UP-TO-DATE
++> Task :TMessagesProj:processStandaloneJavaRes NO-SOURCE
++> Task :TMessagesProj:mergeStandaloneJavaResource UP-TO-DATE
++> Task :TMessagesProj:compileStandaloneLibraryResources UP-TO-DATE
++> Task :jlatexmath:generateReleaseRFile UP-TO-DATE
++> Task :TMessagesProj:writeStandaloneAarMetadata UP-TO-DATE
++> Task :TMessagesProj:extractDeepLinksStandalone UP-TO-DATE
++> Task :TMessagesProj:mergeStandaloneShaders UP-TO-DATE
++> Task :jlatexmath:javaPreCompileRelease UP-TO-DATE
++> Task :jlatexmath:compileReleaseJavaWithJavac UP-TO-DATE
++> Task :jlatexmath:bundleLibCompileToJarRelease UP-TO-DATE
++> Task :jlatexmath:mergeReleaseGeneratedProguardFiles UP-TO-DATE
++> Task :jlatexmath:exportReleaseConsumerProguardFiles UP-TO-DATE
++> Task :jlatexmath:bundleLibRuntimeToJarRelease UP-TO-DATE
++> Task :jlatexmath:processReleaseJavaRes NO-SOURCE
++> Task :jlatexmath:compileReleaseLibraryResources UP-TO-DATE
++> Task :jlatexmath:writeReleaseAarMetadata UP-TO-DATE
++> Task :jlatexmath:extractDeepLinksRelease UP-TO-DATE
++> Task :jlatexmath:processReleaseManifest UP-TO-DATE
++> Task :jlatexmath:mergeReleaseShaders UP-TO-DATE
++> Task :jlatexmath:compileReleaseShaders NO-SOURCE
++> Task :jlatexmath:generateReleaseAssets UP-TO-DATE
++> Task :jlatexmath:mergeReleaseAssets UP-TO-DATE
++> Task :jlatexmath:mergeReleaseJniLibFolders UP-TO-DATE
++> Task :jlatexmath:mergeReleaseNativeLibs NO-SOURCE
++> Task :jlatexmath:copyReleaseJniLibsProjectOnly UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:checkAfatStandaloneDuplicateClasses UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:mergeAfatStandaloneArtProfile UP-TO-DATE
++> Task :TMessagesProj:generateStandaloneRFile UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:expandAfatStandaloneL8ArtProfileWildcards UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:generateAfatStandaloneBuildConfig UP-TO-DATE
++
++> Task :TMessagesProj_AppStandalone:extractAfatStandalonePythonBuildPackages UP-TO-DATE
++Caught exception: Already watching path: /tmp/claude-0/-home-user-TaioPlugin/59596ece-759e-529f-8f90-c807e90b950a/scratchpad/tg-src/TMessagesProj_AppStandalone/build/python/env/afatStandalone/lib64/python3.11/site-packages/_distutils_hack
++
++> Task :TMessagesProj_AppStandalone:generateAfatStandalonePythonRequirements UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:mergeAfatStandalonePythonSources UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:generateAfatStandalonePythonProxies UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:javaPreCompileAfatStandalone UP-TO-DATE
++> Task :TMessagesProj:compileStandaloneJavaWithJavac UP-TO-DATE
++> Task :TMessagesProj:mergeStandaloneGeneratedProguardFiles UP-TO-DATE
++> Task :TMessagesProj:exportStandaloneConsumerProguardFiles UP-TO-DATE
++> Task :TMessagesProj:bundleLibCompileToJarStandalone UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:checkAfatStandaloneAarMetadata UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:generateAfatStandaloneResValues UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:mapAfatStandaloneSourceSetPaths UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:generateAfatStandaloneResources UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:mergeAfatStandaloneResources UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:createAfatStandaloneCompatibleScreenManifests UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:extractDeepLinksAfatStandalone UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:processAfatStandaloneMainManifest UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:processAfatStandaloneManifest UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:processAfatStandaloneManifestForPackage UP-TO-DATE
++> Task :TMessagesProj:minifyStandaloneWithR8 UP-TO-DATE
++> Task :TMessagesProj:bundleLibRuntimeToJarStandalone UP-TO-DATE
++> Task :TMessagesProj:compileStandaloneShaders NO-SOURCE
++> Task :TMessagesProj:generateStandaloneAssets UP-TO-DATE
++> Task :TMessagesProj:mergeStandaloneAssets UP-TO-DATE
++> Task :TMessagesProj:configureCMakeRelWithDebInfo[arm64-v8a]
++> Task :TMessagesProj_AppStandalone:processAfatStandaloneResources UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:compileAfatStandaloneJavaWithJavac UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:expandAfatStandaloneArtProfileWildcards UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:extractProguardFiles UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:mergeAfatStandaloneGeneratedProguardFiles UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:processAfatStandaloneJavaRes NO-SOURCE
++> Task :TMessagesProj_AppStandalone:mergeAfatStandaloneJavaResource UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:mergeAfatStandaloneStartupProfile UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:minifyAfatStandaloneWithR8 UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:mergeAfatStandaloneShaders UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:compileAfatStandaloneShaders NO-SOURCE
++> Task :TMessagesProj_AppStandalone:generateAfatStandaloneAssets UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:generateAfatStandalonePythonMiscAssets UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:generateAfatStandalonePythonRequirementsAssets UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:generateAfatStandalonePythonSourceAssets UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:generateAfatStandalonePythonBuildAssets UP-TO-DATE
++> Task :TMessagesProj:buildCMakeRelWithDebInfo[arm64-v8a]
++> Task :TMessagesProj_AppStandalone:mergeAfatStandaloneAssets UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:compressAfatStandaloneAssets UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:extractAfatStandaloneVersionControlInfo UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:optimizeAfatStandaloneResources UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:collectAfatStandaloneDependencies UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:sdkAfatStandaloneDependencyData UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:generateAfatStandalonePythonJniLibs UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:mergeAfatStandaloneJniLibFolders UP-TO-DATE
++> Task :TMessagesProj:mergeStandaloneJniLibFolders UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:validateSigningAfatStandalone UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:writeAfatStandaloneAppMetadata UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:writeAfatStandaloneSigningConfigVersions UP-TO-DATE
++> Task :TMessagesProj:mergeStandaloneNativeLibs UP-TO-DATE
++> Task :TMessagesProj:copyStandaloneJniLibsProjectOnly UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:mergeAfatStandaloneNativeLibs UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:stripAfatStandaloneDebugSymbols UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:l8DexDesugarLibAfatStandalone
++> Task :TMessagesProj_AppStandalone:compileAfatStandaloneArtProfile
++> Task :TMessagesProj_AppStandalone:packageAfatStandalone
++> Task :TMessagesProj_AppStandalone:createAfatStandaloneApkListingFileRedirect
++> Task :TMessagesProj_AppStandalone:assembleAfatStandalone
++[Incubating] Problems report is available at: file:///tmp/claude-0/-home-user-TaioPlugin/59596ece-759e-529f-8f90-c807e90b950a/scratchpad/tg-src/build/reports/problems/problems-report.html
++
++Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
++
++You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
++
++For more on this, please refer to https://docs.gradle.org/8.11.1/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
++
++BUILD SUCCESSFUL in 33s
++105 actionable tasks: 7 executed, 98 up-to-date
+diff --git a/build3.log b/build3.log
+new file mode 100644
+index 00000000..714d6d79
+--- /dev/null
++++ b/build3.log
+@@ -0,0 +1,238 @@
++Picked up JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStore=/root/.ccr/java-truststore.p12 -Djavax.net.ssl.trustStorePassword=changeit -Djavax.net.ssl.trustStoreType=PKCS12 -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=36225 -Dhttp.nonProxyHosts=localhost|127.0.0.1|::1|127.*|0.*|::|169.254.*|api.anthropic.com|api-staging.anthropic.com|api-pr-preview.anthropic.com|mcp-proxy.anthropic.com|mcp-proxy-staging.anthropic.com|registry.npmjs.org|jsr.io|npm.jsr.io|pypi.org|files.pythonhosted.org|index.crates.io|proxy.golang.org|host.docker.internal|10.*|172.16.*|172.17.*|172.18.*|172.19.*|172.20.*|172.21.*|172.22.*|172.23.*|172.24.*|172.25.*|172.26.*|172.27.*|172.28.*|172.29.*|172.30.*|172.31.*|192.168.*|100.64.0.0/10|*.svc.cluster.local|*.svc.cluster.local -Djdk.http.auth.tunneling.disabledSchemes= -Djdk.http.auth.proxying.disabledSchemes=
++> Task :buildSrc:checkKotlinGradlePluginConfigurationErrors SKIPPED
++> Task :buildSrc:compileKotlin UP-TO-DATE
++> Task :buildSrc:compileJava NO-SOURCE
++> Task :buildSrc:compileGroovy NO-SOURCE
++> Task :buildSrc:pluginDescriptors UP-TO-DATE
++> Task :buildSrc:processResources UP-TO-DATE
++> Task :buildSrc:classes UP-TO-DATE
++> Task :buildSrc:jar UP-TO-DATE
++
++> Configure project :jlatexmath
++WARNING: The option setting 'android.defaults.buildfeatures.buildconfig=true' is deprecated.
++The current default is 'false'.
++It will be removed in version 10.0 of the Android Gradle plugin.
++To keep using this feature, add the following to your module-level build.gradle files:
++    android.buildFeatures.buildConfig = true
++or from Android Studio, click: `Refactor` > `Migrate BuildConfig to Gradle Build Files`.
++
++> Configure project :TMessagesProj
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++
++> Configure project :TMessagesProj_AppHuawei
++--W- Build Environment: AGConnect plugin version is: 1.9.1.301, Gradle version is: 8.11.1, Android Plugin version is: 8.6.1
++--I- Using the AGConnect-Config file: /tmp/claude-0/-home-user-TaioPlugin/59596ece-759e-529f-8f90-c807e90b950a/scratchpad/tg-src/TMessagesProj_AppHuawei/agconnect-services.json
++--W- The variant: afatDebug, Use the json file: /tmp/claude-0/-home-user-TaioPlugin/59596ece-759e-529f-8f90-c807e90b950a/scratchpad/tg-src/TMessagesProj_AppHuawei/agconnect-services.json
++--I- Using the AGConnect-Config file: /tmp/claude-0/-home-user-TaioPlugin/59596ece-759e-529f-8f90-c807e90b950a/scratchpad/tg-src/TMessagesProj_AppHuawei/agconnect-services.json
++--W- The variant: afatRelease, Use the json file: /tmp/claude-0/-home-user-TaioPlugin/59596ece-759e-529f-8f90-c807e90b950a/scratchpad/tg-src/TMessagesProj_AppHuawei/agconnect-services.json
++
++> Configure project :TMessagesProj_AppStandalone
++Warning: Python version 3.11 may have fewer packages available. If you experience problems, try switching to version 3.8.
++
++> Task :jlatexmath:preBuild UP-TO-DATE
++> Task :jlatexmath:preReleaseBuild UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:preBuild UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:preAfatStandaloneBuild UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:mergeAfatStandaloneNativeDebugMetadata NO-SOURCE
++> Task :jlatexmath:prepareReleaseArtProfile UP-TO-DATE
++> Task :TMessagesProj:checkVisibility
++> Task :TMessagesProj:preBuild
++> Task :TMessagesProj:preStandaloneBuild
++> Task :jlatexmath:generateReleaseBuildConfig UP-TO-DATE
++> Task :jlatexmath:generateReleaseResValues UP-TO-DATE
++> Task :jlatexmath:generateReleaseResources UP-TO-DATE
++> Task :TMessagesProj:prepareStandaloneArtProfile UP-TO-DATE
++> Task :TMessagesProj:generateStandaloneBuildConfig UP-TO-DATE
++> Task :jlatexmath:packageReleaseResources UP-TO-DATE
++> Task :TMessagesProj:generateStandaloneResValues UP-TO-DATE
++> Task :TMessagesProj:processStandaloneGoogleServices UP-TO-DATE
++> Task :jlatexmath:parseReleaseLocalResources UP-TO-DATE
++> Task :TMessagesProj:generateStandaloneLottieMeta UP-TO-DATE
++> Task :jlatexmath:generateReleaseRFile UP-TO-DATE
++> Task :jlatexmath:javaPreCompileRelease UP-TO-DATE
++> Task :jlatexmath:compileReleaseJavaWithJavac UP-TO-DATE
++> Task :jlatexmath:bundleLibCompileToJarRelease UP-TO-DATE
++> Task :jlatexmath:mergeReleaseGeneratedProguardFiles UP-TO-DATE
++> Task :jlatexmath:exportReleaseConsumerProguardFiles UP-TO-DATE
++> Task :TMessagesProj:generateStandaloneResources UP-TO-DATE
++> Task :jlatexmath:bundleLibRuntimeToJarRelease UP-TO-DATE
++> Task :jlatexmath:processReleaseJavaRes NO-SOURCE
++> Task :jlatexmath:compileReleaseLibraryResources UP-TO-DATE
++> Task :jlatexmath:writeReleaseAarMetadata UP-TO-DATE
++> Task :jlatexmath:extractDeepLinksRelease UP-TO-DATE
++> Task :jlatexmath:processReleaseManifest UP-TO-DATE
++> Task :jlatexmath:mergeReleaseShaders UP-TO-DATE
++> Task :jlatexmath:compileReleaseShaders NO-SOURCE
++> Task :jlatexmath:generateReleaseAssets UP-TO-DATE
++> Task :jlatexmath:mergeReleaseAssets UP-TO-DATE
++> Task :jlatexmath:mergeReleaseJniLibFolders UP-TO-DATE
++> Task :jlatexmath:mergeReleaseNativeLibs NO-SOURCE
++> Task :jlatexmath:copyReleaseJniLibsProjectOnly UP-TO-DATE
++> Task :TMessagesProj:packageStandaloneResources UP-TO-DATE
++> Task :TMessagesProj:parseStandaloneLocalResources UP-TO-DATE
++> Task :TMessagesProj:generateStandaloneRFile UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:checkAfatStandaloneDuplicateClasses UP-TO-DATE
++> Task :TMessagesProj:javaPreCompileStandalone UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:mergeAfatStandaloneArtProfile UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:expandAfatStandaloneL8ArtProfileWildcards UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:generateAfatStandaloneBuildConfig
++
++> Task :TMessagesProj_AppStandalone:extractAfatStandalonePythonBuildPackages UP-TO-DATE
++Caught exception: Already watching path: /tmp/claude-0/-home-user-TaioPlugin/59596ece-759e-529f-8f90-c807e90b950a/scratchpad/tg-src/TMessagesProj_AppStandalone/build/python/env/afatStandalone/lib64/python3.11/site-packages/_distutils_hack
++
++> Task :TMessagesProj_AppStandalone:generateAfatStandalonePythonRequirements UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:mergeAfatStandalonePythonSources UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:generateAfatStandalonePythonProxies UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:javaPreCompileAfatStandalone UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:generateAfatStandaloneResValues UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:mapAfatStandaloneSourceSetPaths UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:generateAfatStandaloneResources UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:mergeAfatStandaloneResources UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:createAfatStandaloneCompatibleScreenManifests
++> Task :TMessagesProj_AppStandalone:extractDeepLinksAfatStandalone UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:extractProguardFiles UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:processAfatStandaloneJavaRes NO-SOURCE
++> Task :TMessagesProj_AppStandalone:mergeAfatStandaloneStartupProfile UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:mergeAfatStandaloneShaders UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:compileAfatStandaloneShaders NO-SOURCE
++> Task :TMessagesProj_AppStandalone:generateAfatStandaloneAssets UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:generateAfatStandalonePythonMiscAssets UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:generateAfatStandalonePythonRequirementsAssets UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:generateAfatStandalonePythonSourceAssets UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:generateAfatStandalonePythonBuildAssets UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:extractAfatStandaloneVersionControlInfo UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:collectAfatStandaloneDependencies UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:sdkAfatStandaloneDependencyData UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:generateAfatStandalonePythonJniLibs UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:mergeAfatStandaloneJniLibFolders UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:validateSigningAfatStandalone UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:writeAfatStandaloneAppMetadata UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:writeAfatStandaloneSigningConfigVersions UP-TO-DATE
++
++> Task :TMessagesProj:compileStandaloneJavaWithJavac
++Java compiler version 21 has deprecated support for compiling with source/target version 8.
++Try one of the following options:
++    1. [Recommended] Use Java toolchain with a lower language version
++    2. Set a higher source/target version
++    3. Use a lower version of the JDK running the build (if you're not using Java toolchain)
++For more details on how to configure these settings, see https://developer.android.com/build/jdks.
++To suppress this warning, set android.javaCompile.suppressSourceTargetDeprecationWarning=true in gradle.properties.
++warning: [options] source value 8 is obsolete and will be removed in a future release
++warning: [options] target value 8 is obsolete and will be removed in a future release
++warning: [options] To suppress warnings about obsolete options, use -Xlint:-options.
++Note: Some input files use or override a deprecated API.
++Note: Recompile with -Xlint:deprecation for details.
++Note: Some input files use unchecked or unsafe operations.
++Note: Recompile with -Xlint:unchecked for details.
++3 warnings
++
++> Task :TMessagesProj:mergeStandaloneGeneratedProguardFiles UP-TO-DATE
++> Task :TMessagesProj:exportStandaloneConsumerProguardFiles UP-TO-DATE
++> Task :TMessagesProj:extractProguardFiles UP-TO-DATE
++> Task :TMessagesProj:processStandaloneManifest UP-TO-DATE
++> Task :TMessagesProj:processStandaloneJavaRes NO-SOURCE
++> Task :TMessagesProj:generateStandaloneLibraryProguardRules
++> Task :TMessagesProj:mergeStandaloneJavaResource UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:mergeAfatStandaloneJavaResource UP-TO-DATE
++> Task :TMessagesProj:bundleLibCompileToJarStandalone
++> Task :TMessagesProj:compileStandaloneLibraryResources UP-TO-DATE
++> Task :TMessagesProj:writeStandaloneAarMetadata UP-TO-DATE
++> Task :TMessagesProj:extractDeepLinksStandalone UP-TO-DATE
++> Task :TMessagesProj:mergeStandaloneShaders UP-TO-DATE
++> Task :TMessagesProj:compileStandaloneShaders NO-SOURCE
++> Task :TMessagesProj_AppStandalone:checkAfatStandaloneAarMetadata UP-TO-DATE
++> Task :TMessagesProj:generateStandaloneAssets UP-TO-DATE
++> Task :TMessagesProj:mergeStandaloneAssets UP-TO-DATE
++> Task :TMessagesProj:configureCMakeRelWithDebInfo[arm64-v8a]
++> Task :TMessagesProj:buildCMakeRelWithDebInfo[arm64-v8a]
++
++> Task :TMessagesProj_AppStandalone:processAfatStandaloneMainManifest
++/tmp/claude-0/-home-user-TaioPlugin/59596ece-759e-529f-8f90-c807e90b950a/scratchpad/tg-src/TMessagesProj/config/release/AndroidManifest_standalone.xml Warning:
++	uses-permission#android.permission.WRITE_EXTERNAL_STORAGE was tagged at AndroidManifest_standalone.xml:0 to replace another declaration but no other declaration present
++/tmp/claude-0/-home-user-TaioPlugin/59596ece-759e-529f-8f90-c807e90b950a/scratchpad/tg-src/TMessagesProj/config/release/AndroidManifest_standalone.xml:141:9-149:20 Warning:
++	receiver#com.google.android.gms.measurement.AppMeasurementReceiver@android:enabled was tagged at AndroidManifest_standalone.xml:141 to replace other declarations but no other declaration present
++/tmp/claude-0/-home-user-TaioPlugin/59596ece-759e-529f-8f90-c807e90b950a/scratchpad/tg-src/TMessagesProj/config/release/AndroidManifest_standalone.xml:157:9-161:40 Warning:
++	service#com.google.android.gms.measurement.AppMeasurementService@android:enabled was tagged at AndroidManifest_standalone.xml:157 to replace other declarations but no other declaration present
++
++> Task :TMessagesProj_AppStandalone:processAfatStandaloneManifest
++> Task :TMessagesProj:mergeStandaloneJniLibFolders UP-TO-DATE
++> Task :TMessagesProj:mergeStandaloneNativeLibs UP-TO-DATE
++> Task :TMessagesProj:copyStandaloneJniLibsProjectOnly UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:mergeAfatStandaloneAssets UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:compressAfatStandaloneAssets UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:mergeAfatStandaloneNativeLibs UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:stripAfatStandaloneDebugSymbols UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:processAfatStandaloneManifestForPackage
 diff --git a/gradle.properties b/gradle.properties
-index 83408dc5..f86fe307 100644
+index 83408dc5..722ea553 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -13,9 +13,9 @@
@@ -36315,7 +37142,7 @@ index 83408dc5..f86fe307 100644
  # org.gradle.parallel=true
  #Sat Mar 12 05:53:50 MSK 2016
 -APP_VERSION_CODE=7031
-+APP_VERSION_CODE=7054
++APP_VERSION_CODE=7055
  APP_VERSION_NAME=12.10.0
 -APP_PACKAGE=org.telegram.messenger
 +APP_PACKAGE=cat.narezany.margelet

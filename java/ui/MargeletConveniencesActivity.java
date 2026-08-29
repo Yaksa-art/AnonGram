@@ -15,12 +15,13 @@ import java.util.ArrayList;
 
 /**
  * «Удобности» — мелкие переключатели, которым не нужен свой экран каждому:
- * канал форка сверху, теги музыки и «приступ». Раньше они были разбросаны по
+ * папка «Все чаты», теги музыки и «приступ». Раньше они были разбросаны по
  * корню настроек (а теги музыки занимали целую вкладку ради одного тумблера);
  * собраны сюда, чтобы корень не был свалкой.
  */
 public class MargeletConveniencesActivity extends UniversalFragment {
 
+    private static final int ID_ALL_CHATS = 1;
     private static final int ID_TRACKS = 2;
     private static final int ID_SEIZURE = 3;
     private static final int ID_FONTS = 4;
@@ -40,6 +41,9 @@ public class MargeletConveniencesActivity extends UniversalFragment {
 
     @Override
     protected void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
+        items.add(UItem.asCheck(ID_ALL_CHATS, LocaleController.getString(R.string.MargeletHideAllChats))
+                .setChecked(MargeletConfig.hideAllChatsTab()));
+        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletHideAllChatsAbout)));
         items.add(UItem.asCheck(ID_TRACKS, LocaleController.getString(R.string.MargeletTracksEnabled))
                 .setChecked(MargeletConfig.tagsEnabled()));
         items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletTracksEnabledAbout)));
@@ -53,7 +57,17 @@ public class MargeletConveniencesActivity extends UniversalFragment {
 
     @Override
     protected void onClick(UItem item, View view, int position, float x, float y) {
-        if (item.id == ID_TRACKS) {
+        if (item.id == ID_ALL_CHATS) {
+            MargeletConfig.setHideAllChatsTab(!MargeletConfig.hideAllChatsTab());
+            listView.adapter.update(true);
+            // Полоса вкладок пересобирается по этому же событию, каким телеграм
+            // отвечает на правку папок. Без него список чатов узнал бы о
+            // настройке только при следующем открытии, и человек решил бы, что
+            // она не работает.
+            org.telegram.messenger.NotificationCenter.getInstance(currentAccount)
+                    .postNotificationName(
+                            org.telegram.messenger.NotificationCenter.dialogFiltersUpdated);
+        } else if (item.id == ID_TRACKS) {
             MargeletConfig.setTagsEnabled(!MargeletConfig.tagsEnabled());
             listView.adapter.update(true);
         } else if (item.id == ID_SEIZURE) {

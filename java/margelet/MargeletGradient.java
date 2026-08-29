@@ -1,6 +1,7 @@
 package org.telegram.margelet;
 
 import android.graphics.Canvas;
+import android.graphics.Color;
 import android.graphics.ColorFilter;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
@@ -249,22 +250,22 @@ public class MargeletGradient {
 
     // --- рисование ---------------------------------------------------------
     //
-    // Градиент линейный: первый цвет слева, второй справа. Сперва я взял
-    // радиальный — тот самый, каким телеграм красит шапку по номеру цвета, —
-    // и это было рассуждением от кода, а не от того, что человек называет
-    // градиентом. Радиальный читается как пятно света посередине, а не как
-    // переход слева направо, и владелец сказал об этом первым же словом.
+    // Градиент линейный и идёт снизу вверх: первый цвет внизу, второй наверху.
+    // Радиальный, взятый поначалу из телеграмовской шапки, читался как пятно
+    // света посередине, а не как переход; горизонтальный был уже переходом, но
+    // не тем — у профиля высота работает лучше ширины, потому что вниз он
+    // длинный.
 
     /** Общая кисть. Только для главного потока: рисование живёт только в нём. */
     private static final Paint FILL = new Paint(Paint.ANTI_ALIAS_FLAG);
     private static int builtFrom, builtTo;
-    private static float builtWidth;
+    private static float builtHeight;
 
     /**
-     * Залить прямоугольник градиентом слева направо.
+     * Залить прямоугольник градиентом снизу вверх.
      *
-     * Ширина входит в ключ пересборки наравне с цветами: растяжка у заливки
-     * своя, и пара, построенная на узкий образец, на широкой шапке дала бы
+     * Высота входит в ключ пересборки наравне с цветами: растяжка у заливки
+     * своя, и пара, построенная на низкий образец, на высокой странице дала бы
      * переход не там, где нужно.
      */
     public static void paint(Canvas canvas, int[] pair,
@@ -274,19 +275,61 @@ public class MargeletGradient {
             return;
         }
         final float width = right - left;
+        final float height = bottom - top;
         if (FILL.getShader() == null || builtFrom != pair[0] || builtTo != pair[1]
-                || builtWidth != width) {
+                || builtHeight != height) {
             builtFrom = pair[0];
             builtTo = pair[1];
-            builtWidth = width;
-            FILL.setShader(new LinearGradient(0, 0, width, 0,
+            builtHeight = height;
+            FILL.setShader(new LinearGradient(0, height, 0, 0,
                     pair[0], pair[1], Shader.TileMode.CLAMP));
         }
         FILL.setAlpha(alpha);
         canvas.save();
         canvas.translate(left, top);
-        canvas.drawRect(0, 0, width, bottom - top, FILL);
+        canvas.drawRect(0, 0, width, height, FILL);
         canvas.restore();
+    }
+
+    /**
+     * Чем писать поверх градиента: белым или чёрным.
+     *
+     * Считаем по воспринимаемой яркости, а не по среднему трёх чисел: глаз
+     * видит зелёное куда светлее синего той же величины, и среднее назвало бы
+     * тёмно-синий светлее травяного. Веса — обычные для яркости, 0.299 / 0.587
+     * / 0.114.
+     *
+     * Берём середину пары: краем градиента может быть и тёмное, и светлое, а
+     * текст один на всю шапку.
+     */
+    public static int ink(int[] pair) {
+        if (pair == null || pair.length < 2) {
+            return Color.WHITE;
+        }
+        final double bright = (brightness(pair[0]) + brightness(pair[1])) / 2;
+        // Порог посередине между двумя ближайшими краями, а не на глаз:
+        // серединный серый (0.502) должен получить белый текст, а чистый
+        // зелёный (0.587) — чёрный, потому что он светлый, хотя канал у него
+        // один. Ровно между ними и стоит граница.
+        return bright > 0.545 ? Color.BLACK : Color.WHITE;
+    }
+
+    private static double brightness(int color) {
+        return (0.299 * Color.red(color)
+                + 0.587 * Color.green(color)
+                + 0.114 * Color.blue(color)) / 255.0;
+    }
+
+    /**
+     * Цвет кнопок поверх градиента: он же, но приглушённый.
+     *
+     * Полупрозрачная краска, а не готовый цвет: под кнопкой градиент, и она
+     * должна темнеть (или светлеть) вместе с ним, а не одинаково по всей
+     * шапке. На светлом градиенте затемняем, на тёмном осветляем — «чуть
+     * затемнить» тёмно-синюю кнопку на тёмно-синем фоне значит стереть её.
+     */
+    public static int buttons(int[] pair) {
+        return ink(pair) == Color.BLACK ? 0x22000000 : 0x2BFFFFFF;
     }
 
     /**
