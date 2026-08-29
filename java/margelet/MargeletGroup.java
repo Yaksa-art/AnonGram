@@ -129,6 +129,52 @@ public class MargeletGroup {
         });
     }
 
+    /**
+     * Убрать служебные метки из текста, который увидит человек.
+     *
+     * Метки нужны поиску: по ним стена и собирается. Читателю они — мусор в
+     * первой строке каждого отзыва, и владелец справедливо на это указал.
+     * Вырезаем и лишний перевод строки следом, иначе отзыв начинался бы с
+     * пустоты.
+     *
+     * Само сообщение при этом не меняется: в группе метка на месте, поиск её
+     * находит. Прячем только показ.
+     */
+    public static CharSequence hideTags(CharSequence text) {
+        if (text == null || text.length() == 0) {
+            return text;
+        }
+        final String plain = text.toString();
+        if (plain.indexOf(TAG_PREFIX) < 0) {
+            return text;
+        }
+        final java.util.regex.Matcher at = TAGS.matcher(plain);
+        if (!at.find()) {
+            return text;
+        }
+        // Собираем заново, сохраняя тип: у CharSequence может быть разметка,
+        // и превращать его в простую строку значит потерять её.
+        final android.text.SpannableStringBuilder out =
+                new android.text.SpannableStringBuilder(text);
+        int shift = 0;
+        do {
+            int from = at.start() - shift;
+            int to = at.end() - shift;
+            // Съедаем перевод строки следом, чтобы не оставлять пустую первую
+            // строку там, где метка стояла отдельно.
+            while (to < out.length() && (out.charAt(to) == '\n' || out.charAt(to) == ' ')) {
+                to++;
+            }
+            out.delete(from, to);
+            shift += to - from;
+        } while (at.find());
+        return out;
+    }
+
+    private static final String TAG_PREFIX = "#margy_";
+    private static final java.util.regex.Pattern TAGS =
+            java.util.regex.Pattern.compile("#margy_(wall_\\d+|banner)\\b");
+
     /** Пишем ли мы сейчас на чью-то стену. */
     public static boolean writing() {
         return wallPeer != 0;

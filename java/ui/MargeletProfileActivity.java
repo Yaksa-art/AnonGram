@@ -98,7 +98,8 @@ public class MargeletProfileActivity extends UniversalFragment {
             listView.adapter.update(true);
         } else if (item.id == ID_MY_WALL) {
             final long me = UserConfig.getInstance(currentAccount).getClientUserId();
-            MargeletWallActivity.open(this, me);
+            presentFragment(new MargeletWallActivity(me,
+                    LocaleController.getString(R.string.MargeletWallMine)));
         } else if (item.id == ID_GROUP) {
             Browser.openUrl(getContext(), "https://t.me/" + MargeletGroup.USERNAME);
         }
