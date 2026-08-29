@@ -1564,7 +1564,7 @@ index 00000000..a775cdbc
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
 new file mode 100644
-index 00000000..552b835f
+index 00000000..866d60f6
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
 @@ -0,0 +1,446 @@
@@ -1610,7 +1610,7 @@ index 00000000..552b835f
 +     * 0.99, а не 1.0, нарочно: настоящая единица должна остаться свободной
 +     * под настоящий выпуск, а пререлиз обязан быть строго меньше её.
 +     */
-+    public static final String APP_VERSION = "0.99.9";
++    public static final String APP_VERSION = "0.99.10";
 +
 +    /** Как выпуск называется для человека: «Пререлиз 1.0», «Бета 1.1». */
 +    public static String versionLabel() {
@@ -2876,10 +2876,10 @@ index 00000000..33ff716b
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletGroup.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletGroup.java
 new file mode 100644
-index 00000000..006c45c7
+index 00000000..20b61f2b
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletGroup.java
-@@ -0,0 +1,666 @@
+@@ -0,0 +1,681 @@
 +package org.telegram.margelet;
 +
 +import org.telegram.messenger.AccountInstance;
@@ -3078,9 +3078,9 @@ index 00000000..006c45c7
 +            if (message == null || message.messageOwner == null) {
 +                continue;
 +            }
-+            // Сперва смотрим в вырезанное, потом в сам текст: до вырезания
-+            // метка лежит в тексте, после — только здесь.
-+            if (contains(message.margeletTags, tag) || hasTag(message.messageOwner, tag)) {
++            // Метка на месте: мы её не вырезаем, только прячем при показе.
++            // Поэтому отбирать можно по самому тексту, как и задумано.
++            if (hasTag(message.messageOwner, tag)) {
 +                out.add(message);
 +            }
 +        }
@@ -3088,32 +3088,24 @@ index 00000000..006c45c7
 +    }
 +
 +    /**
-+     * Вырезать служебные метки из самого сообщения — вместе с разметкой.
++     * Где в сообщении стоят служебные метки.
 +     *
-+     * Вырезать только из текста было мало, и это вылезло сразу: отсчёты
-+     * разметки остались прежними, а текст стал короче, поэтому «хэштежность»
-+     * съезжала на соседние слова. Человек видел цветной кликабельный кусок,
-+     * который никуда не ведёт. Правим то и другое разом, здесь, до того как
-+     * из сообщения соберут показ.
++     * Само сообщение НЕ трогаем, и это главное. Сперва я вырезал метку прямо
++     * из него — и получил «ящик Пандоры»: правленое сообщение уходит в базу,
++     * дальше часть сообщений приезжает из сети с меткой, часть из базы уже
++     * без неё, и стена показывала то всё, то одно сообщение. Метка нужна для
++     * отбора, значит трогать её нельзя; прятать надо только при показе.
 +     *
-+     * Само сообщение на сервере не меняется: правим свою копию в памяти.
++     * Возвращает отрезки для скрытия или null, если прятать нечего.
 +     */
-+    public static String cutTags(TLRPC.Message message) {
-+        if (message == null) {
++    public static java.util.List<int[]> cutsIn(TLRPC.Message message) {
++        if (message == null || message.message == null
++                || message.message.indexOf(TAG_PREFIX) < 0) {
 +            return null;
 +        }
-+        if (message.message == null || message.message.indexOf(TAG_PREFIX) < 0) {
-+            // Метки в тексте нет — либо её и не было, либо мы уже вырезали её
-+            // раньше. Разобрать одно и то же сообщение могут не один раз, а
-+            // второй раз вырезать уже нечего: отдаём запомненное, иначе стена
-+            // потеряет сообщение на ровном месте.
-+            return message.params != null ? message.params.get(KEY_TAGS) : null;
-+        }
 +        final java.util.regex.Matcher at = TAGS.matcher(message.message);
-+        final java.util.List<int[]> cuts = new ArrayList<>();
-+        final StringBuilder found = new StringBuilder();
++        java.util.List<int[]> cuts = null;
 +        while (at.find()) {
-+            found.append(at.group()).append(' ');
 +            int to = at.end();
 +            // Съедаем пробелы и перевод строки следом: иначе отзыв начинался
 +            // бы с пустой строки там, где метка стояла отдельно.
@@ -3121,27 +3113,29 @@ index 00000000..006c45c7
 +                    && (message.message.charAt(to) == '\n' || message.message.charAt(to) == ' ')) {
 +                to++;
 +            }
++            if (cuts == null) {
++                cuts = new ArrayList<>();
++            }
 +            cuts.add(new int[]{at.start(), to});
 +        }
-+        if (cuts.isEmpty()) {
-+            return null;
++        return cuts;
++    }
++
++    /** Убрать отрезки из показываемого текста. */
++    public static CharSequence applyCuts(CharSequence text, java.util.List<int[]> cuts) {
++        if (text == null || cuts == null || cuts.isEmpty()) {
++            return text;
 +        }
-+        final StringBuilder text = new StringBuilder(message.message);
++        final android.text.SpannableStringBuilder out =
++                new android.text.SpannableStringBuilder(text);
 +        for (int i = cuts.size() - 1; i >= 0; i--) {
-+            text.delete(cuts.get(i)[0], cuts.get(i)[1]);
++            final int from = Math.min(cuts.get(i)[0], out.length());
++            final int to = Math.min(cuts.get(i)[1], out.length());
++            if (from < to) {
++                out.delete(from, to);
++            }
 +        }
-+        message.message = text.toString();
-+        message.entities = shift(message.entities, cuts);
-+        // params — место для клиентских данных о сообщении; складываем туда,
-+        // чтобы вырезанное пережило повторный разбор.
-+        if (message.params == null) {
-+            message.params = new java.util.HashMap<>();
-+        }
-+        message.params.put(KEY_TAGS, found.toString());
-+        // Отдаём вырезанное обратно. Отбор сообщений идёт по метке, а метки к
-+        // тому времени в тексте уже нет — я вырезал её раньше, чем по ней
-+        // отбирают, и стена опустела, хотя сообщения на месте.
-+        return found.toString();
++        return out;
 +    }
 +
 +    /**
@@ -3151,7 +3145,7 @@ index 00000000..006c45c7
 +     * сдвигает те, что ещё не обработаны. Разметку, целиком попавшую в
 +     * вырезанное, выбрасываем: она относилась к тому, чего больше нет.
 +     */
-+    private static ArrayList<TLRPC.MessageEntity> shift(
++    public static ArrayList<TLRPC.MessageEntity> shiftEntities(
 +            ArrayList<TLRPC.MessageEntity> entities, java.util.List<int[]> cuts) {
 +        if (entities == null || entities.isEmpty()) {
 +            return entities;
@@ -3183,9 +3177,13 @@ index 00000000..006c45c7
 +            if (gone || to <= from) {
 +                continue;
 +            }
-+            entity.offset = from;
-+            entity.length = to - from;
-+            out.add(entity);
++            // Именно копия: разметка принадлежит сообщению, а сообщение общее
++            // — сдвинув её на месте, мы испортили бы его для всех остальных
++            // экранов, где метка должна остаться.
++            final TLRPC.MessageEntity moved = copyWith(entity, from, to - from);
++            if (moved != null) {
++                out.add(moved);
++            }
 +        }
 +        return out;
 +    }
@@ -3415,6 +3413,23 @@ index 00000000..006c45c7
 +            out.add(object);
 +        }
 +        return out;
++    }
++
++    /** Та же разметка, но с другими отсчётами. Null — скопировать не вышло. */
++    private static TLRPC.MessageEntity copyWith(TLRPC.MessageEntity entity, int offset, int length) {
++        try {
++            final TLRPC.MessageEntity copy = entity.getClass().newInstance();
++            copy.flags = entity.flags;
++            copy.offset = offset;
++            copy.length = length;
++            copy.url = entity.url;
++            copy.language = entity.language;
++            copy.collapsed = entity.collapsed;
++            return copy;
++        } catch (Throwable t) {
++            FileLog.e(t);
++            return null;
++        }
 +    }
 +
 +    /** Есть ли ровно эта метка среди вырезанных. */
@@ -8601,25 +8616,26 @@ index 95495c32..5d00f2d9 100644
  
          // trim again in case some whitespace inside tags
 diff --git a/TMessagesProj/src/main/java/org/telegram/messenger/MessageObject.java b/TMessagesProj/src/main/java/org/telegram/messenger/MessageObject.java
-index 77870805..a6612d01 100644
+index 77870805..3bd4e9c8 100644
 --- a/TMessagesProj/src/main/java/org/telegram/messenger/MessageObject.java
 +++ b/TMessagesProj/src/main/java/org/telegram/messenger/MessageObject.java
-@@ -339,6 +339,14 @@ public class MessageObject {
+@@ -339,6 +339,15 @@ public class MessageObject {
  
      public int currentAccount;
  
 +    /**
-+     * Служебные метки форка, вырезанные из этого сообщения.
++     * Где в этом сообщении стоят служебные метки форка.
 +     *
-+     * Держим их отдельно, потому что из текста они убраны: по ним собирается
-+     * стена, а текст к моменту отбора уже почищен.
++     * Само сообщение остаётся с метками: по ним собирается стена, и вырезать
++     * их из него нельзя — правленое сообщение уходит в базу, и метка пропала
++     * бы навсегда. Прячем только при показе, по этим отсчётам.
 +     */
-+    public String margeletTags;
++    public java.util.List<int[]> margeletCuts;
 +
      public TLRPC.TL_channelAdminLogEvent currentEvent;
  
      public boolean forceUpdate;
-@@ -1921,6 +1929,11 @@ public class MessageObject {
+@@ -1921,6 +1930,11 @@ public class MessageObject {
  
          currentAccount = accountNum;
          messageOwner = message;
@@ -8627,57 +8643,65 @@ index 77870805..a6612d01 100644
 +        // соберут текст и разметку: вырезать их потом, из готового текста,
 +        // значит оставить отсчёты разметки на прежних местах — и «хэштежность»
 +        // уезжает на соседние слова цветным куском, который никуда не ведёт.
-+        margeletTags = org.telegram.margelet.MargeletGroup.cutTags(messageOwner);
++        margeletCuts = org.telegram.margelet.MargeletGroup.cutsIn(messageOwner);
          replyMessageObject = replyToMessage;
          eventId = eid;
          wasUnread = !messageOwner.out && messageOwner.unread;
-@@ -3529,6 +3542,13 @@ public class MessageObject {
+@@ -3529,6 +3543,10 @@ public class MessageObject {
          if (messageText == null) {
              messageText = "";
          }
-+        // Служебные метки форка человеку читать незачем: #margy_wall_123 стоит
-+        // в сообщении ради поиска, а не ради глаз. Здесь все ветки выше
-+        // сходятся в одну — значит, и вырезать надо здесь, а не на экранах:
-+        // экранов много, и про один я бы забыл. Так и вышло: в прошлый раз я
-+        // поставил это в applyNewText, куда обычное сообщение не заходит,
-+        // и метки остались видны.
-+        messageText = org.telegram.margelet.MargeletGroup.hideTags(messageText);
++        // Прячем служебные метки: читать их человеку незачем. Здесь все
++        // ветки выше сходятся в одну — значит, и прятать надо здесь, а не на
++        // экранах: экранов много, и про один я бы забыл.
++        messageText = org.telegram.margelet.MargeletGroup.applyCuts(messageText, margeletCuts);
  
          TextPaint paint;
          if (getMedia(messageOwner) instanceof TLRPC.TL_messageMediaGame) {
-@@ -3748,6 +3768,10 @@ public class MessageObject {
+@@ -3748,6 +3766,10 @@ public class MessageObject {
      }
  
      public void applyNewText(CharSequence text) {
 +        if (TextUtils.isEmpty(text)) {
 +            return;
 +        }
-+        text = org.telegram.margelet.MargeletGroup.hideTags(text);
++        text = org.telegram.margelet.MargeletGroup.applyCuts(text, margeletCuts);
          if (TextUtils.isEmpty(text)) {
              return;
          }
-@@ -6078,6 +6102,10 @@ public class MessageObject {
+@@ -6078,6 +6100,9 @@ public class MessageObject {
          if (messageText == null) {
              messageText = "";
          }
 +        // И здесь тоже: это второе место, где сходятся ветки разбора текста, а
-+        // проходит сообщение то через одно, то через другое. Вырезание дешёвое
-+        // — без нашей метки оно сразу возвращает текст как есть.
-+        messageText = org.telegram.margelet.MargeletGroup.hideTags(messageText);
++        // проходит сообщение то через одно, то через другое.
++        messageText = org.telegram.margelet.MargeletGroup.applyCuts(messageText, margeletCuts);
  
          isEmbedVideoCached = null;
          cachedStartsTimestamp = null;
-@@ -7630,6 +7658,10 @@ public class MessageObject {
+@@ -7630,6 +7655,10 @@ public class MessageObject {
              captionTranslated = false;
          }
          if (!isMediaEmpty() && !(getMedia(messageOwner) instanceof TLRPC.TL_messageMediaGame) && !TextUtils.isEmpty(text)) {
 +            // Метка баннера живёт в подписи к фотографии, а подпись готовится
-+            // отдельно от текста. Режем до разбора смайликов и разметки: после
-+            // отсчёты уже посчитаны и вырезание их сдвинет.
-+            text = String.valueOf(org.telegram.margelet.MargeletGroup.hideTags(text));
++            // отдельно от текста. Прячем до разбора смайликов и разметки:
++            // после отсчёты уже посчитаны, и вырезание их сдвинет.
++            text = String.valueOf(org.telegram.margelet.MargeletGroup.applyCuts(text, margeletCuts));
              caption = Emoji.replaceEmoji(text, Theme.chat_msgTextPaint.getFontMetricsInt(), false);
              caption = replaceAnimatedEmoji(caption, entities, Theme.chat_msgTextPaint.getFontMetricsInt(), false);
  
+@@ -7975,7 +8004,10 @@ public class MessageObject {
+                 return messageOwner.translatedText != null ? messageOwner.translatedText.entities : null;
+             }
+         }
+-        return messageOwner.entities;
++        // Отсчёты сдвигаем ровно настолько, насколько спрятали текста. Здесь,
++        // а не на каждом экране: это единственное место, откуда разметку
++        // берут для показа.
++        return org.telegram.margelet.MargeletGroup.shiftEntities(messageOwner.entities, margeletCuts);
+     }
+ 
+     public Spannable replaceAnimatedEmoji(CharSequence text, Paint.FontMetricsInt fontMetricsInt) {
 @@ -8053,6 +8085,24 @@ public class MessageObject {
          }
          text = FormattedDateSpan.restoreFormatedDateEntities(text);
@@ -9548,7 +9572,7 @@ index ac402db5..415b7e37 100644
              parentFragment.showQuoteMessageUpdate();
              return false;
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/Components/ChatAvatarContainer.java b/TMessagesProj/src/main/java/org/telegram/ui/Components/ChatAvatarContainer.java
-index 7066dfae..5b092639 100644
+index 7066dfae..fa97eaf4 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/Components/ChatAvatarContainer.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/Components/ChatAvatarContainer.java
 @@ -981,6 +981,8 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
@@ -9655,6 +9679,19 @@ index 7066dfae..5b092639 100644
          avatarDrawable.setInfo(currentAccount, user);
          if (UserObject.isReplyUser(user)) {
              avatarDrawable.setAvatarType(AvatarDrawable.AVATAR_TYPE_REPLIES);
+@@ -1410,6 +1485,12 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
+         if (parentFragment == null) {
+             return;
+         }
++        if (margeletLocked) {
++            // Третий путь к аватарке, и он же тот, которым её ставили мимо
++            // замка: я запер два входа и решил, что запер все. Стена ставит
++            // аватарку сама, телеграму сюда нельзя.
++            return;
++        }
+ 
+         TLRPC.User user = parentFragment.getCurrentUser();
+         TLRPC.Chat chat = parentFragment.getCurrentChat();
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/Components/EditTextCaption.java b/TMessagesProj/src/main/java/org/telegram/ui/Components/EditTextCaption.java
 index 6a21a20e..a8a7f46f 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/Components/EditTextCaption.java
@@ -22612,7 +22649,7 @@ index 03d0ba33..17f98fa6 100644
      <string name="English">Inglês</string>
      <string name="LanguageNameInEnglish">Portuguese (Brazil)</string>
 diff --git a/TMessagesProj/src/main/res/values-ru/strings.xml b/TMessagesProj/src/main/res/values-ru/strings.xml
-index 24c56292..e888e884 100644
+index 24c56292..a3427806 100644
 --- a/TMessagesProj/src/main/res/values-ru/strings.xml
 +++ b/TMessagesProj/src/main/res/values-ru/strings.xml
 @@ -1,7 +1,7 @@
@@ -22646,7 +22683,7 @@ index 24c56292..e888e884 100644
 +    <string name="MargeletUpdatesOff">Никогда</string>
 +    <string name="MargeletUpdatesAbout">Приложение спрашивает гитхаб, не вышла ли версия новее и не изменился ли список значков. Новую версию предлагает полоской внизу списка чатов; само ничего не качает и не ставит.</string>
 +    <string name="MargeletUpdatesNow">Проверить сейчас</string>
-+    <string name="MargeletVersionLabel">Пререлиз 1.0.9</string>
++    <string name="MargeletVersionLabel">Пререлиз 1.0.10</string>
 +    <string name="MargeletWall">Стена</string>
 +    <string name="MargeletWallOf">Стена %1$s</string>
 +    <string name="MargeletWallSubtitle">что написали другие</string>
@@ -22889,7 +22926,7 @@ index d4683443..57d10109 100644
      <string name="LanguageNameInEnglish">Ukrainian</string>
 diff --git a/TMessagesProj/src/main/res/values-zh/strings.xml b/TMessagesProj/src/main/res/values-zh/strings.xml
 new file mode 100644
-index 00000000..3aba43d7
+index 00000000..ec19be96
 --- /dev/null
 +++ b/TMessagesProj/src/main/res/values-zh/strings.xml
 @@ -0,0 +1,245 @@
@@ -22912,7 +22949,7 @@ index 00000000..3aba43d7
 +    <string name="MargeletUpdatesOff">从不</string>
 +    <string name="MargeletUpdatesAbout">应用会去 GitHub 问有没有更新的版本、徽章列表有没有变化。新版本会在聊天列表底部用一条横幅提示；应用不会自行下载或安装。</string>
 +    <string name="MargeletUpdatesNow">立即检查</string>
-+    <string name="MargeletVersionLabel">预发布 1.0.9</string>
++    <string name="MargeletVersionLabel">预发布 1.0.10</string>
 +    <string name="MargeletWall">留言墙</string>
 +    <string name="MargeletWallOf">%1$s 的留言墙</string>
 +    <string name="MargeletWallSubtitle">别人写下的内容</string>
@@ -23155,7 +23192,7 @@ index cc49d135..a8a51c3a 100644
      <item name="menu_regular" type="id"/>
      <item name="menu_bold" type="id"/>
 diff --git a/TMessagesProj/src/main/res/values/strings.xml b/TMessagesProj/src/main/res/values/strings.xml
-index ffa4d566..6d65b371 100644
+index ffa4d566..2c034a55 100644
 --- a/TMessagesProj/src/main/res/values/strings.xml
 +++ b/TMessagesProj/src/main/res/values/strings.xml
 @@ -1,7 +1,7 @@
@@ -23189,7 +23226,7 @@ index ffa4d566..6d65b371 100644
 +    <string name="MargeletUpdatesOff">Never</string>
 +    <string name="MargeletUpdatesAbout">The app asks GitHub whether a newer version is out and whether the badge list has changed. A new version is offered in a bar at the bottom of the chat list; nothing is downloaded or installed on its own.</string>
 +    <string name="MargeletUpdatesNow">Check now</string>
-+    <string name="MargeletVersionLabel">Prerelease 1.0.9</string>
++    <string name="MargeletVersionLabel">Prerelease 1.0.10</string>
 +    <string name="MargeletWall">Wall</string>
 +    <string name="MargeletWallOf">%1$s\'s wall</string>
 +    <string name="MargeletWallSubtitle">what other people wrote</string>
@@ -34520,7 +34557,7 @@ index 528fd746..8b64b0f8 100644
  }
  repositories {
 diff --git a/gradle.properties b/gradle.properties
-index 83408dc5..37adb3c6 100644
+index 83408dc5..bed2a1eb 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -13,9 +13,9 @@
@@ -34528,7 +34565,7 @@ index 83408dc5..37adb3c6 100644
  # org.gradle.parallel=true
  #Sat Mar 12 05:53:50 MSK 2016
 -APP_VERSION_CODE=7031
-+APP_VERSION_CODE=7045
++APP_VERSION_CODE=7046
  APP_VERSION_NAME=12.10.0
 -APP_PACKAGE=org.telegram.messenger
 +APP_PACKAGE=cat.narezany.margelet

@@ -196,9 +196,9 @@ public class MargeletGroup {
             if (message == null || message.messageOwner == null) {
                 continue;
             }
-            // Сперва смотрим в вырезанное, потом в сам текст: до вырезания
-            // метка лежит в тексте, после — только здесь.
-            if (contains(message.margeletTags, tag) || hasTag(message.messageOwner, tag)) {
+            // Метка на месте: мы её не вырезаем, только прячем при показе.
+            // Поэтому отбирать можно по самому тексту, как и задумано.
+            if (hasTag(message.messageOwner, tag)) {
                 out.add(message);
             }
         }
@@ -206,32 +206,24 @@ public class MargeletGroup {
     }
 
     /**
-     * Вырезать служебные метки из самого сообщения — вместе с разметкой.
+     * Где в сообщении стоят служебные метки.
      *
-     * Вырезать только из текста было мало, и это вылезло сразу: отсчёты
-     * разметки остались прежними, а текст стал короче, поэтому «хэштежность»
-     * съезжала на соседние слова. Человек видел цветной кликабельный кусок,
-     * который никуда не ведёт. Правим то и другое разом, здесь, до того как
-     * из сообщения соберут показ.
+     * Само сообщение НЕ трогаем, и это главное. Сперва я вырезал метку прямо
+     * из него — и получил «ящик Пандоры»: правленое сообщение уходит в базу,
+     * дальше часть сообщений приезжает из сети с меткой, часть из базы уже
+     * без неё, и стена показывала то всё, то одно сообщение. Метка нужна для
+     * отбора, значит трогать её нельзя; прятать надо только при показе.
      *
-     * Само сообщение на сервере не меняется: правим свою копию в памяти.
+     * Возвращает отрезки для скрытия или null, если прятать нечего.
      */
-    public static String cutTags(TLRPC.Message message) {
-        if (message == null) {
+    public static java.util.List<int[]> cutsIn(TLRPC.Message message) {
+        if (message == null || message.message == null
+                || message.message.indexOf(TAG_PREFIX) < 0) {
             return null;
         }
-        if (message.message == null || message.message.indexOf(TAG_PREFIX) < 0) {
-            // Метки в тексте нет — либо её и не было, либо мы уже вырезали её
-            // раньше. Разобрать одно и то же сообщение могут не один раз, а
-            // второй раз вырезать уже нечего: отдаём запомненное, иначе стена
-            // потеряет сообщение на ровном месте.
-            return message.params != null ? message.params.get(KEY_TAGS) : null;
-        }
         final java.util.regex.Matcher at = TAGS.matcher(message.message);
-        final java.util.List<int[]> cuts = new ArrayList<>();
-        final StringBuilder found = new StringBuilder();
+        java.util.List<int[]> cuts = null;
         while (at.find()) {
-            found.append(at.group()).append(' ');
             int to = at.end();
             // Съедаем пробелы и перевод строки следом: иначе отзыв начинался
             // бы с пустой строки там, где метка стояла отдельно.
@@ -239,27 +231,29 @@ public class MargeletGroup {
                     && (message.message.charAt(to) == '\n' || message.message.charAt(to) == ' ')) {
                 to++;
             }
+            if (cuts == null) {
+                cuts = new ArrayList<>();
+            }
             cuts.add(new int[]{at.start(), to});
         }
-        if (cuts.isEmpty()) {
-            return null;
+        return cuts;
+    }
+
+    /** Убрать отрезки из показываемого текста. */
+    public static CharSequence applyCuts(CharSequence text, java.util.List<int[]> cuts) {
+        if (text == null || cuts == null || cuts.isEmpty()) {
+            return text;
         }
-        final StringBuilder text = new StringBuilder(message.message);
+        final android.text.SpannableStringBuilder out =
+                new android.text.SpannableStringBuilder(text);
         for (int i = cuts.size() - 1; i >= 0; i--) {
-            text.delete(cuts.get(i)[0], cuts.get(i)[1]);
+            final int from = Math.min(cuts.get(i)[0], out.length());
+            final int to = Math.min(cuts.get(i)[1], out.length());
+            if (from < to) {
+                out.delete(from, to);
+            }
         }
-        message.message = text.toString();
-        message.entities = shift(message.entities, cuts);
-        // params — место для клиентских данных о сообщении; складываем туда,
-        // чтобы вырезанное пережило повторный разбор.
-        if (message.params == null) {
-            message.params = new java.util.HashMap<>();
-        }
-        message.params.put(KEY_TAGS, found.toString());
-        // Отдаём вырезанное обратно. Отбор сообщений идёт по метке, а метки к
-        // тому времени в тексте уже нет — я вырезал её раньше, чем по ней
-        // отбирают, и стена опустела, хотя сообщения на месте.
-        return found.toString();
+        return out;
     }
 
     /**
@@ -269,7 +263,7 @@ public class MargeletGroup {
      * сдвигает те, что ещё не обработаны. Разметку, целиком попавшую в
      * вырезанное, выбрасываем: она относилась к тому, чего больше нет.
      */
-    private static ArrayList<TLRPC.MessageEntity> shift(
+    public static ArrayList<TLRPC.MessageEntity> shiftEntities(
             ArrayList<TLRPC.MessageEntity> entities, java.util.List<int[]> cuts) {
         if (entities == null || entities.isEmpty()) {
             return entities;
@@ -301,9 +295,13 @@ public class MargeletGroup {
             if (gone || to <= from) {
                 continue;
             }
-            entity.offset = from;
-            entity.length = to - from;
-            out.add(entity);
+            // Именно копия: разметка принадлежит сообщению, а сообщение общее
+            // — сдвинув её на месте, мы испортили бы его для всех остальных
+            // экранов, где метка должна остаться.
+            final TLRPC.MessageEntity moved = copyWith(entity, from, to - from);
+            if (moved != null) {
+                out.add(moved);
+            }
         }
         return out;
     }
@@ -533,6 +531,23 @@ public class MargeletGroup {
             out.add(object);
         }
         return out;
+    }
+
+    /** Та же разметка, но с другими отсчётами. Null — скопировать не вышло. */
+    private static TLRPC.MessageEntity copyWith(TLRPC.MessageEntity entity, int offset, int length) {
+        try {
+            final TLRPC.MessageEntity copy = entity.getClass().newInstance();
+            copy.flags = entity.flags;
+            copy.offset = offset;
+            copy.length = length;
+            copy.url = entity.url;
+            copy.language = entity.language;
+            copy.collapsed = entity.collapsed;
+            return copy;
+        } catch (Throwable t) {
+            FileLog.e(t);
+            return null;
+        }
     }
 
     /** Есть ли ровно эта метка среди вырезанных. */
