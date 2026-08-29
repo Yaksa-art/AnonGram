@@ -1,11 +1,8 @@
 package org.telegram.ui;
 
-import android.content.Context;
 import android.os.Bundle;
-import android.view.View;
 
 import org.telegram.margelet.MargeletGroup;
-import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.R;
 import org.telegram.ui.ActionBar.BaseFragment;
@@ -66,18 +63,10 @@ public class MargeletWallActivity extends ChatActivity {
             // канала; ChatActivity ждёт голый номер чата.
             args.putLong("chat_id", -dialogId);
             args.putString("margeletWallTag", MargeletGroup.tagWall(peerId));
+            args.putString("margeletWallName", peerName == null ? "" : peerName);
+            args.putLong("margeletWallPeer", peerId);
             from.presentFragment(new MargeletWallActivity(args, peerId, peerName));
         });
-    }
-
-    @Override
-    public View createView(Context context) {
-        final View view = super.createView(context);
-        // Заголовок свой: имя группы над чужой стеной сбивало бы с толку —
-        // человек пришёл читать про конкретного человека. Меняем только
-        // подпись, сам заголовок остаётся их же.
-        dressUp();
-        return view;
     }
 
     @Override
@@ -96,39 +85,6 @@ public class MargeletWallActivity extends ChatActivity {
     public void onResume() {
         super.onResume();
         MargeletGroup.writingTo(peerId);
-        // Телеграм обновляет шапку сам — например, когда пересчитает
-        // участников. Возвращаем свою после него, а не вместо него.
-        AndroidUtilities.runOnUIThread(this::dressUp, 200);
-    }
-
-    /**
-     * Своя шапка: имя и аватарка того, чья это стена.
-     *
-     * Аватарка тоже: без неё сверху висела картинка группы, и было непонятно,
-     * у кого ты в гостях. Заголовок без аватарки — половина ответа.
-     */
-    private void dressUp() {
-        if (avatarContainer == null) {
-            return;
-        }
-        avatarContainer.setTitle(LocaleController.formatString(R.string.MargeletWallOf, peerName));
-        avatarContainer.setSubtitle(LocaleController.getString(R.string.MargeletWallSubtitle));
-        try {
-            if (peerId > 0) {
-                final org.telegram.tgnet.TLRPC.User who = getMessagesController().getUser(peerId);
-                if (who != null) {
-                    avatarContainer.setUserAvatar(who, true);
-                }
-            } else {
-                final org.telegram.tgnet.TLRPC.Chat where =
-                        getMessagesController().getChat(-peerId);
-                if (where != null) {
-                    avatarContainer.setChatAvatar(where);
-                }
-            }
-        } catch (Throwable t) {
-            org.telegram.messenger.FileLog.e(t);
-        }
     }
 
     @Override

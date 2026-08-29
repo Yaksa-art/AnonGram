@@ -89,6 +89,20 @@ public class MargeletMarkup {
     public static final String HEADER = "<! Message looks better with @margeletter! >";
 
     /** Размер: от 0,6 до 2,0 обычного. Границы жёсткие с обеих сторон. */
+    /**
+     * Потолок размера букв при показе, в точках экрана.
+     *
+     * Обычный текст сообщения — примерно 16, самый крупный по ползунку вдвое
+     * больше. Потолок чуть выше него: своё оформление не режем, а вот
+     * перемноженные метки дальше этой черты не пускаем.
+     */
+    public static float maxTextSize() {
+        // Считаем при вызове, а не при загрузке класса: плотность экрана к
+        // моменту загрузки может быть ещё не выставлена, и потолок вышел бы
+        // нулевым — то есть весь текст схлопнулся бы в точку.
+        return org.telegram.messenger.AndroidUtilities.dp(36);
+    }
+
     private static final float SIZE_MIN = 0.6f;
     private static final float SIZE_MAX = 2.0f;
 
