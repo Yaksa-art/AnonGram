@@ -10,6 +10,7 @@ import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
 
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -64,6 +65,104 @@ public class MargeletRemote {
     private static SharedPreferences prefs() {
         return ApplicationLoader.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
     }
+
+    /**
+     * Перечитать файл, если прошлый ответ старше указанного срока.
+     *
+     * Списку котов не нужна свежесть до секунды, а лишний запрос при каждом
+     * открытии экрана — это трафик человека за наше удобство. Поэтому спрашиваем
+     * по возрасту: старее срока — идём в сеть, иначе живём с тем, что есть.
+     */
+    public static void refreshIfOlder(String path, String key, long ageMs, Callback callback) {
+        if (System.currentTimeMillis() - cachedAt(key) < ageMs) {
+            if (callback != null) {
+                callback.onResult(null);
+            }
+            return;
+        }
+        fetch(path, key, callback);
+    }
+
+    /** Куда складываем скачанные картинки. */
+    private static File imagesDir() {
+        final File dir = new File(ApplicationLoader.applicationContext.getCacheDir(), "margelet_remote");
+        if (!dir.exists()) {
+            dir.mkdirs();
+        }
+        return dir;
+    }
+
+    public interface ImageCallback {
+        /** Файл картинки или null, если скачать не вышло. */
+        void onImage(File file);
+    }
+
+    /**
+     * Приносит картинку по адресу и отдаёт файл.
+     *
+     * Скачанное лежит в кэше под именем от адреса: тот же адрес — тот же файл,
+     * второй раз в сеть не пойдём. Кэш система вправе почистить, и это
+     * нормально: не нашли — скачаем снова.
+     */
+    public static void image(String url, ImageCallback callback) {
+        if (url == null || url.isEmpty() || callback == null) {
+            if (callback != null) {
+                callback.onImage(null);
+            }
+            return;
+        }
+        final String full = url.startsWith("http") ? url : BASE + url;
+        final File target = new File(imagesDir(), Integer.toHexString(full.hashCode()));
+        if (target.exists() && target.length() > 0) {
+            callback.onImage(target);
+            return;
+        }
+        new Thread(() -> {
+            File done = null;
+            HttpURLConnection connection = null;
+            try {
+                connection = (HttpURLConnection) new URL(full).openConnection();
+                connection.setConnectTimeout(TIMEOUT_MS);
+                connection.setReadTimeout(TIMEOUT_MS);
+                connection.setRequestProperty("User-Agent", MargeletConfig.APP_NAME);
+                if (connection.getResponseCode() == 200) {
+                    final File tmp = new File(target.getAbsolutePath() + ".part");
+                    long written = 0;
+                    try (InputStream in = connection.getInputStream();
+                         java.io.OutputStream out = new java.io.FileOutputStream(tmp)) {
+                        final byte[] buffer = new byte[8192];
+                        int read;
+                        while ((read = in.read(buffer)) > 0) {
+                            written += read;
+                            if (written > MAX_IMAGE_BYTES) {
+                                break;
+                            }
+                            out.write(buffer, 0, read);
+                        }
+                    }
+                    // Недокачанное не переименовываем: обрезанная картинка
+                    // хуже отсутствующей — она покажется битой и останется в
+                    // кэше навсегда.
+                    if (written > 0 && written <= MAX_IMAGE_BYTES && tmp.renameTo(target)) {
+                        done = target;
+                    } else {
+                        tmp.delete();
+                    }
+                }
+            } catch (Throwable t) {
+                FileLog.e(t);
+            } finally {
+                if (connection != null) {
+                    connection.disconnect();
+                }
+            }
+            final File result = done;
+            AndroidUtilities.runOnUIThread(() -> callback.onImage(result));
+        }).start();
+    }
+
+    /** Картинка кота — не обои: больше этого точно что-то не то. */
+    private static final int MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 
     /** Последнее удачно скачанное содержимое или null. */
     public static String cached(String key) {

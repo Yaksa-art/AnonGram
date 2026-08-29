@@ -646,6 +646,34 @@ public class MargeletGroup {
         });
     }
 
+    /**
+     * Чью стену поминает это сообщение. Ноль — ничью.
+     *
+     * Смотрим в сам текст сообщения, а не в спрятанное при показе: метка из
+     * сообщения никуда не девается, прячется только показ.
+     */
+    public static long wallOf(MessageObject message) {
+        if (message == null || message.messageOwner == null
+                || message.messageOwner.message == null) {
+            return 0;
+        }
+        final java.util.regex.Matcher at = WALL.matcher(message.messageOwner.message);
+        if (!at.find()) {
+            return 0;
+        }
+        try {
+            final long id = Long.parseLong(at.group(2));
+            // Буква перед числом значит канал или группу: у них номер
+            // отрицательный, а минус в хэштег не входит.
+            return "c".equals(at.group(1)) ? -id : id;
+        } catch (Throwable t) {
+            return 0;
+        }
+    }
+
+    private static final java.util.regex.Pattern WALL =
+            java.util.regex.Pattern.compile("#margy_wall_(c?)(\\d+)\\b");
+
     /** Тот ли это человек, чьё сообщение мы смотрим. */
     public static long authorOf(MessageObject message) {
         if (message == null || message.messageOwner == null) {

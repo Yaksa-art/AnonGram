@@ -149,6 +149,27 @@ public class MargeletPlugins {
         return dir;
     }
 
+    /**
+     * Папка плагина, куда можно класть его файлы.
+     *
+     * Своя у каждого: файл, выбранный для одного плагина, не должен попадать
+     * в руки другому. Плагины и так выполняются внутри приложения и могут
+     * многое — но раздавать им чужое сверх этого мы не станем.
+     */
+    public static File filesOf(String pluginId) {
+        if (pluginId == null || pluginId.isEmpty()) {
+            return null;
+        }
+        // Имя плагина приходит от него самого, поэтому в путь его пускать
+        // нельзя как есть: «../» увело бы файл куда угодно.
+        final String safe = pluginId.replaceAll("[^A-Za-z0-9._-]", "_");
+        final File dir = new File(root(), safe);
+        if (!dir.exists() && !dir.mkdirs()) {
+            return null;
+        }
+        return dir;
+    }
+
     /** Все установленные плагины, по имени. */
     /** Начало имени папки, в которую распаковывают перед установкой. */
     private static final String STAGING = "tmp_";

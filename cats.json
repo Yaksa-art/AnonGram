@@ -1,0 +1,16 @@
+[
+  {
+    "photo": "res/margelet_cat_1.jpg",
+    "name": "Murzik",
+    "name_ru": "Мурзик",
+    "name_zh": "穆尔济克",
+    "from": "@narezany"
+  },
+  {
+    "photo": "res/margelet_cat_2.jpg",
+    "name": "Keks",
+    "name_ru": "Кекс",
+    "name_zh": "小蛋糕",
+    "from": "@egorkagds"
+  }
+]

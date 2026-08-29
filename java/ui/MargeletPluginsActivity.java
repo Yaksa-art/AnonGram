@@ -67,6 +67,17 @@ public class MargeletPluginsActivity extends BaseFragment {
 
     private List<MargeletPlugins.Plugin> plugins = new ArrayList<>();
 
+    /** С какой вкладки открыться. Обычно со своих, но ссылка может звать в магазин. */
+    private final int startTab;
+
+    public MargeletPluginsActivity() {
+        this(TAB_MINE);
+    }
+
+    public MargeletPluginsActivity(int startTab) {
+        this.startTab = startTab;
+    }
+
     private ViewPagerFixed pager;
     private ViewPagerFixed.TabsView tabsView;
     private UniversalRecyclerView mineView;
@@ -113,6 +124,11 @@ public class MargeletPluginsActivity extends BaseFragment {
                 Gravity.TOP | Gravity.FILL_HORIZONTAL));
         root.addView(pager, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT,
                 LayoutHelper.MATCH_PARENT, Gravity.FILL, 0, 48, 0, 0));
+        if (startTab != TAB_MINE) {
+            // Только после того, как список вкладок готов: перелистывание
+            // подсвечивает вкладку, а подсвечивать пока нечего.
+            pager.setPosition(startTab);
+        }
 
         return fragmentView = root;
     }

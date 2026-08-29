@@ -18,6 +18,7 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.R;
 import org.telegram.messenger.browser.Browser;
@@ -43,11 +44,74 @@ public class MargeletCats {
     private static final int TAPS_NEEDED = 7;
     private static final long GAP_MS = 1000;
 
-    /** Кошки. Добавить свою может кто угодно — через владельца, см. ссылку внизу. */
+    /**
+     * Вшитые кошки — запас на случай, когда список с гитхаба ещё не приехал.
+     *
+     * Раньше список жил только здесь, и чтобы добавить кота, приходилось
+     * выпускать новую сборку. Теперь он лежит рядом со значками, в cats.json,
+     * и пополняется без обновления клиента.
+     */
     private static final int[] PHOTOS = {R.drawable.margelet_cat_1, R.drawable.margelet_cat_2};
     private static final int[] NAMES = {R.string.MargeletCatOne, R.string.MargeletCatTwo};
     /** Кто принёс кота. Порядок тот же, что у фотографий. */
     private static final String[] FROM = {"@narezany", "@egorkagds"};
+
+    private static final String FILE = "cats.json";
+    private static final String CACHE_KEY = "cats";
+    /** Как часто перечитывать список. Кошки не новости, десяти минут хватит. */
+    private static final long REFRESH_MS = 10 * 60 * 1000L;
+
+    /** Один кот из списка: где картинка, как зовут и кто принёс. */
+    public static final class Cat {
+        public final String photo;
+        public final String name;
+        public final String from;
+
+        Cat(String photo, String name, String from) {
+            this.photo = photo;
+            this.name = name;
+            this.from = from;
+        }
+    }
+
+    /**
+     * Перечитать список, если он старее десяти минут.
+     *
+     * Ответа никто не ждёт: пока он едет, показывается прошлый список, а на
+     * свежей установке — вшитый. Пасхалка не то, ради чего человек должен
+     * смотреть на крутилку.
+     */
+    public static void refresh() {
+        MargeletRemote.refreshIfOlder(FILE, CACHE_KEY, REFRESH_MS, text -> { });
+    }
+
+    /** Список с гитхаба или пусто, если его ещё нет. */
+    private static java.util.List<Cat> remote() {
+        final java.util.List<Cat> out = new java.util.ArrayList<>();
+        final String text = MargeletRemote.cached(CACHE_KEY);
+        if (text == null) {
+            return out;
+        }
+        try {
+            final org.json.JSONArray array = new org.json.JSONArray(text);
+            for (int i = 0; i < array.length(); i++) {
+                final org.json.JSONObject item = array.optJSONObject(i);
+                if (item == null) {
+                    continue;
+                }
+                final String photo = item.optString("photo", "");
+                if (photo.isEmpty()) {
+                    continue;   // кот без картинки — не кот
+                }
+                out.add(new Cat(photo,
+                        MargeletRemote.localized(item, "name", ""),
+                        item.optString("from", "")));
+            }
+        } catch (Throwable t) {
+            FileLog.e(t);
+        }
+        return out;
+    }
 
     private static final String OWNER = "narezany";
 
@@ -72,6 +136,9 @@ public class MargeletCats {
             return;
         }
         try {
+            final java.util.List<Cat> cats = remote();
+            final Cat cat = cats.isEmpty()
+                    ? null : cats.get((int) (Math.random() * cats.size()));
             final int index = (int) (Math.random() * PHOTOS.length);
             final long openedAt = System.currentTimeMillis();
 
@@ -80,7 +147,24 @@ public class MargeletCats {
 
             final ImageView photo = new ImageView(activity);
             photo.setScaleType(ImageView.ScaleType.CENTER_CROP);
-            photo.setImageResource(PHOTOS[index]);
+            if (cat == null) {
+                photo.setImageResource(PHOTOS[index]);
+            } else {
+                // Пока картинка едет, показываем вшитую: пустой чёрный экран
+                // вместо кота выглядел бы поломкой, а не ожиданием.
+                photo.setImageResource(PHOTOS[index]);
+                MargeletRemote.image(cat.photo, file -> {
+                    if (file == null) {
+                        return;
+                    }
+                    try {
+                        photo.setImageBitmap(android.graphics.BitmapFactory
+                                .decodeFile(file.getAbsolutePath()));
+                    } catch (Throwable t) {
+                        FileLog.e(t);
+                    }
+                });
+            }
             root.addView(photo, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
 
             final LinearLayout caption = new LinearLayout(activity);
@@ -92,13 +176,15 @@ public class MargeletCats {
             name.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 22);
             name.setTypeface(AndroidUtilities.bold());
             name.setTextColor(Color.WHITE);
-            name.setText(LocaleController.getString(NAMES[index]));
+            name.setText(cat != null && !cat.name.isEmpty()
+                    ? cat.name : LocaleController.getString(NAMES[index]));
             caption.addView(name, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
             final TextView from = new TextView(activity);
             from.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
             from.setTextColor(0xB3FFFFFF);
-            from.setText(LocaleController.formatString(R.string.MargeletCatFrom, FROM[index]));
+            from.setText(LocaleController.formatString(R.string.MargeletCatFrom,
+                    cat != null && !cat.from.isEmpty() ? cat.from : FROM[index]));
             from.setPadding(0, dp(4), 0, 0);
             caption.addView(from, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 

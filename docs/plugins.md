@@ -113,6 +113,7 @@ A plugin does not poll the app — the app calls the plugin.
 | `margelet.on_pin(call)` | a chat is being pinned or unpinned; can be cancelled |
 | `margelet.button(title, call)` | your own line in the chat menu (the three dots) |
 | `margelet.on_settings(call)` | a setting of this plugin was changed |
+| `margelet.pick_file(call, types=)` | ask the person for a file |
 
 There are deliberately few doors, and each one has a name. A named door survives
 a Telegram update, because we are the ones who keep it, not a coincidence of
@@ -269,6 +270,38 @@ into the chat list rather than into a conversation.
 The app waits for your answer, the way it does on send: while your handler
 thinks, someone is looking at a button they just pressed. Move slow work into
 `margelet.background`.
+
+### A file from the person
+
+```python
+def on_start():
+    margelet.button("Pick a picture", pick)
+
+def pick(chat):
+    margelet.pick_file(ready, types="image/*")
+
+def ready(path):
+    if path is None:
+        margelet.toast("changed their mind")
+        return
+    margelet.log("picked:", path)
+```
+
+`types` is what the file picker shows: `"image/*"`, `"text/plain"`. Empty means
+any file.
+
+The handler is always called, including when the person backs out — then the
+path is `None`. Staying silent would be worse: the plugin would wait for an
+answer that never comes.
+
+What was picked is copied into this plugin's own folder, and the path points at
+the copy. The picker hands out an address with temporary read permission, not a
+path: it lives until the app restarts and cannot be opened from Python. The copy
+is what the plugin can actually use.
+
+Do not build an `Intent` by hand — it will not work: the Python bridge picks the
+constructor by reflection and reaches the hidden `Intent(Parcel)`, which is not
+really there. This door exists so you do not have to go there.
 
 ## Hooking any method
 
