@@ -3,6 +3,7 @@ package org.telegram.ui;
 import android.os.Bundle;
 
 import org.telegram.margelet.MargeletGroup;
+import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.R;
 import org.telegram.ui.ActionBar.BaseFragment;
@@ -30,6 +31,15 @@ import org.telegram.ui.Components.BulletinFactory;
  * взять стандартный чат и изменить его.
  */
 public class MargeletWallActivity extends ChatActivity {
+
+    /**
+     * Сколько сообщений стены забираем поиском.
+     *
+     * Сотня — предел одного запроса к серверу. Стен длиннее сотни сообщений
+     * пока не встречалось; появятся — доберём страницами, но выдумывать это
+     * заранее незачем.
+     */
+    private static final int WALL_LIMIT = 100;
 
     private final long peerId;
     private final String peerName;
@@ -65,7 +75,25 @@ public class MargeletWallActivity extends ChatActivity {
             args.putString("margeletWallTag", MargeletGroup.tagWall(peerId));
             args.putString("margeletWallName", peerName == null ? "" : peerName);
             args.putLong("margeletWallPeer", peerId);
-            from.presentFragment(new MargeletWallActivity(args, peerId, peerName));
+            final MargeletWallActivity wall = new MargeletWallActivity(args, peerId, peerName);
+            // Сообщения стены спрашиваем у сервера ДО открытия экрана, а не
+            // после. Иначе экран открывается пустым и ждёт, пока обычная
+            // догрузка переписки доберётся до нужных сообщений, — а она не
+            // доберётся: из принесённой полусотни с меткой остаётся одно, и
+            // листать телеграму нечего. Поиск по метке знает всю группу и
+            // отвечает сразу.
+            MargeletGroup.find(MargeletGroup.tagWall(peerId), WALL_LIMIT,
+                    (found, problem) -> AndroidUtilities.runOnUIThread(() -> {
+                        // Отдаём найденное, только если спросить удалось.
+                        // Пустой ответ от неответившего сервера значит «не
+                        // знаю», а не «сообщений нет», и принять его за второе
+                        // — значит показать пустую стену и объявить, что это
+                        // всё.
+                        if (problem == null) {
+                            wall.margeletFound(found);
+                        }
+                        from.presentFragment(wall);
+                    }));
         });
     }
 

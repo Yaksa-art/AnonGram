@@ -302,34 +302,86 @@ public class MargeletGradient {
      * Берём середину пары: краем градиента может быть и тёмное, и светлое, а
      * текст один на всю шапку.
      */
+    /** Наш порог: светлее — пишем чёрным, темнее — белым. */
+    public static final double LIGHT = 0.62;
+
+    /**
+     * Порог, по которому сам телеграм решает, светлая ли кнопка.
+     *
+     * Лежит в AndroidUtilities: {@code computePerceivedBrightness(color) < 0.721f}.
+     * Записан здесь потому, что от него зависит цвет подписи на кнопке, и наш
+     * цвет кнопки обязан ложиться по нужную его сторону. Разойдись эти два
+     * решения — и на тёмном градиенте выйдет тёмная кнопка с чёрной подписью.
+     */
+    public static final double TELEGRAM_LIGHT = 0.721;
+
     public static int ink(int[] pair) {
         if (pair == null || pair.length < 2) {
             return Color.WHITE;
         }
-        final double bright = (brightness(pair[0]) + brightness(pair[1])) / 2;
-        // Порог посередине между двумя ближайшими краями, а не на глаз:
-        // серединный серый (0.502) должен получить белый текст, а чистый
-        // зелёный (0.587) — чёрный, потому что он светлый, хотя канал у него
-        // один. Ровно между ними и стоит граница.
-        return bright > 0.545 ? Color.BLACK : Color.WHITE;
-    }
-
-    private static double brightness(int color) {
-        return (0.299 * Color.red(color)
-                + 0.587 * Color.green(color)
-                + 0.114 * Color.blue(color)) / 255.0;
+        return brightness(mix(pair[0], pair[1], 0.5f)) > LIGHT ? Color.BLACK : Color.WHITE;
     }
 
     /**
-     * Цвет кнопок поверх градиента: он же, но приглушённый.
+     * Воспринимаемая яркость — теми же весами, что у телеграма (Rec. 709).
      *
-     * Полупрозрачная краска, а не готовый цвет: под кнопкой градиент, и она
-     * должна темнеть (или светлеть) вместе с ним, а не одинаково по всей
-     * шапке. На светлом градиенте затемняем, на тёмном осветляем — «чуть
-     * затемнить» тёмно-синюю кнопку на тёмно-синем фоне значит стереть её.
+     * Сперва я взял привычные 0.299/0.587/0.114, и это была ошибка не в
+     * арифметике, а в согласии: подпись на кнопке телеграм считает по своим
+     * весам, и два разных счёта расходились ровно там, где важнее всего, — на
+     * границе светлого и тёмного.
+     */
+    public static double brightness(int color) {
+        return (0.2126 * Color.red(color)
+                + 0.7152 * Color.green(color)
+                + 0.0722 * Color.blue(color)) / 255.0;
+    }
+
+    /** Сдвинуть цвет к заданной яркости — к белому или к чёрному. */
+    public static int toBrightness(int color, double target) {
+        final double now = brightness(color);
+        if (target > now) {
+            return now >= 1 ? color
+                    : mix(color, Color.WHITE, (float) ((target - now) / (1 - now)));
+        }
+        return now <= 0 ? color
+                : mix(color, Color.BLACK, (float) (1 - target / now));
+    }
+
+    /**
+     * Цвет кнопок поверх градиента — его собственный, только приглушённый.
+     *
+     * Сперва здесь была полупрозрачная белая или чёрная краска. Она и правда
+     * «чуть затемняет», но выглядит это как белая плашка на зелёном, а не как
+     * кнопка того же цвета: владелец увидел ровно это и сказал, что фон должен
+     * подстраиваться под градиент, а не быть белым или чёрным.
+     *
+     * Поэтому берём середину пары — цвет самого градиента — и сдвигаем её от
+     * фона: светлый градиент затемняем, тёмный осветляем. Кнопка остаётся его
+     * цвета и при этом видна.
      */
     public static int buttons(int[] pair) {
-        return ink(pair) == Color.BLACK ? 0x22000000 : 0x2BFFFFFF;
+        if (pair == null || pair.length < 2) {
+            return 0x22000000;
+        }
+        final int middle = mix(pair[0], pair[1], 0.5f);
+        final double now = brightness(middle);
+        // Цель по яркости, а не «смешать на столько-то»: кнопка обязана лечь
+        // по ту же сторону телеграмовского порога, что и наш выбор цвета
+        // текста. Иначе выходит тёмная кнопка с чёрной подписью — ровно то,
+        // что владелец и увидел.
+        final double target = ink(pair) == Color.BLACK
+                ? Math.max(now - 0.06, TELEGRAM_LIGHT + 0.08)
+                : Math.min(now + 0.10, TELEGRAM_LIGHT - 0.14);
+        return toBrightness(middle, target);
+    }
+
+    /** Смешать два цвета: 0 — весь первый, 1 — весь второй. */
+    public static int mix(int from, int to, float part) {
+        return Color.argb(
+                (int) (Color.alpha(from) + (Color.alpha(to) - Color.alpha(from)) * part),
+                (int) (Color.red(from) + (Color.red(to) - Color.red(from)) * part),
+                (int) (Color.green(from) + (Color.green(to) - Color.green(from)) * part),
+                (int) (Color.blue(from) + (Color.blue(to) - Color.blue(from)) * part));
     }
 
     /**
