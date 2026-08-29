@@ -376,32 +376,114 @@ public class MargeletGradient {
     }
 
     /**
-     * Цвет карточки на странице профиля: тема, подведённая под градиент.
+     * Цвет карточки на странице профиля — сам градиент, только темнее.
      *
-     * Берётся цвет градиента там, где карточка стоит, и подмешивается к цвету
-     * темы, а не заменяет его. Полная замена читалась бы красиво ровно до
-     * первой светлой темы: текст в строках берёт цвет у темы, и тёмно-зелёная
-     * карточка со светлой темой означала бы тёмный текст на тёмном.
+     * Тема здесь больше не участвует, и это не упрощение, а требование: при
+     * включённом градиенте профиль должен выглядеть одинаково на любой теме.
+     * Прежде цвет темы подмешивался, и на светлой теме тёмный градиент давал
+     * серую карточку с сероватым текстом — владелец назвал это ужасным, и был
+     * прав: смесь чёрного с белым и есть серый.
      *
-     * Поэтому яркость ещё и придерживается: на тёмной теме карточка не
-     * светлеет выше 0.35, на светлой не темнеет ниже 0.55. Владелец просил
-     * «чуть темнее градиента» — это и делается, но не ценой нечитаемого текста.
+     * Читаемость держится не придерживанием яркости, а тем, что цвет текста мы
+     * теперь тоже назначаем сами — см. {@link Palette}.
      */
-    public static int card(int themeColor, int[] pair, float y, float height) {
+    public static int card(int[] pair) {
         if (pair == null || pair.length < 2) {
-            return themeColor;
+            return Color.BLACK;
         }
-        final float part = height <= 0 ? 0.5f
-                : Math.max(0f, Math.min(1f, 1f - y / height));
-        final int under = mix(pair[0], pair[1], part);
-        final int mixed = mix(themeColor, under, 0.45f);
-        double want = brightness(mixed) * 0.94;
-        if (brightness(themeColor) < 0.5) {
-            want = Math.min(want, 0.35);
-        } else {
-            want = Math.max(want, 0.55);
+        final int middle = mix(pair[0], pair[1], 0.5f);
+        return toBrightness(middle, brightness(middle) * 0.86);
+    }
+
+    /**
+     * Палитра профиля: пока стоит градиент, цвета берутся у него, а не у темы.
+     *
+     * «Профили должны выглядеть абсолютно одинаково на всех темах, и все цвета
+     * текстов тоже» — это требование владельца, и оно же снимает противоречие,
+     * из-за которого прежний вид разваливался. Пока карточку красили мы, а
+     * текст на ней — тема, приходилось придерживать яркость карточки, чтобы
+     * чужой текст остался виден; на светлой теме от этого получался серый на
+     * сером. Как только цвет текста тоже наш, придерживать нечего.
+     *
+     * Это обёртка над обычным поставщиком цветов телеграма, а не подмена темы:
+     * ключи, которых здесь нет, спрашиваются у него как раньше. И работает она
+     * только там, куда её передали, — на странице профиля.
+     */
+    public static final class Palette implements org.telegram.ui.ActionBar.Theme.ResourcesProvider {
+
+        private final org.telegram.ui.ActionBar.Theme.ResourcesProvider under;
+        private final long userId;
+
+        public Palette(org.telegram.ui.ActionBar.Theme.ResourcesProvider under, long userId) {
+            this.under = under;
+            this.userId = userId;
         }
-        return toBrightness(mixed, want);
+
+        private int base(int key) {
+            return under != null ? under.getColor(key)
+                    : org.telegram.ui.ActionBar.Theme.getColor(key);
+        }
+
+        @Override
+        public int getColor(int key) {
+            final int[] pair = userId == 0 ? null : of(userId, null);
+            if (pair == null) {
+                return base(key);
+            }
+            final org.telegram.ui.ActionBar.Theme.ResourcesProvider none = null;
+            final int текст = ink(pair);
+            if (key == org.telegram.ui.ActionBar.Theme.key_windowBackgroundWhite) {
+                return card(pair);
+            }
+            if (key == org.telegram.ui.ActionBar.Theme.key_windowBackgroundGray) {
+                return mix(pair[0], pair[1], 0.5f);
+            }
+            if (key == org.telegram.ui.ActionBar.Theme.key_windowBackgroundWhiteBlackText) {
+                return текст;
+            }
+            if (key == org.telegram.ui.ActionBar.Theme.key_windowBackgroundWhiteValueText
+                    || key == org.telegram.ui.ActionBar.Theme.key_windowBackgroundWhiteBlueText
+                    || key == org.telegram.ui.ActionBar.Theme.key_windowBackgroundWhiteLinkText) {
+                // Ссылки и значения — тем же цветом, но заметно ярче обычного
+                // текста, иначе их не отличить от подписей.
+                return alpha(текст, 0.92f);
+            }
+            if (key == org.telegram.ui.ActionBar.Theme.key_windowBackgroundWhiteGrayText
+                    || key == org.telegram.ui.ActionBar.Theme.key_windowBackgroundWhiteGrayText2
+                    || key == org.telegram.ui.ActionBar.Theme.key_windowBackgroundWhiteGrayText3
+                    || key == org.telegram.ui.ActionBar.Theme.key_windowBackgroundWhiteGrayText4
+                    || key == org.telegram.ui.ActionBar.Theme.key_windowBackgroundWhiteGrayText5
+                    || key == org.telegram.ui.ActionBar.Theme.key_windowBackgroundWhiteGrayText6
+                    || key == org.telegram.ui.ActionBar.Theme.key_windowBackgroundWhiteGrayText7
+                    || key == org.telegram.ui.ActionBar.Theme.key_windowBackgroundWhiteGrayText8
+                    || key == org.telegram.ui.ActionBar.Theme.key_windowBackgroundWhiteHintText) {
+                return alpha(текст, 0.60f);
+            }
+            if (key == org.telegram.ui.ActionBar.Theme.key_divider) {
+                return alpha(текст, 0.15f);
+            }
+            if (key == org.telegram.ui.ActionBar.Theme.key_listSelector
+                    || key == org.telegram.ui.ActionBar.Theme.key_settings_listSelector) {
+                return alpha(текст, 0.10f);
+            }
+            return base(key);
+        }
+
+        @Override
+        public boolean isDark() {
+            final int[] pair = userId == 0 ? null : of(userId, null);
+            // Пока стоит градиент, «тёмная ли тема» решает он, а не тема: иначе
+            // то, что спрашивает об этом, оденется по чужой теме и разойдётся
+            // со всем остальным на экране.
+            return pair == null ? org.telegram.ui.ActionBar.Theme.isCurrentThemeDark()
+                    : ink(pair) == Color.WHITE;
+        }
+    }
+
+    /** Тот же цвет, но прозрачнее. */
+    public static int alpha(int color, float part) {
+        return Color.argb((int) (255 * Math.max(0, Math.min(1, part))),
+                Color.red(color), Color.green(color), Color.blue(color));
     }
 
     /** Смешать два цвета: 0 — весь первый, 1 — весь второй. */
