@@ -1,4 +1,4 @@
-# Margelet plugins
+# Margy plugins
 
 **English** · [Русский](plugins.ru.md) · [中文](plugins.zh.md)
 
@@ -56,7 +56,7 @@ margelet_example.marp
 | `version` | Version, as a string. |
 | `author` | Who wrote it. |
 | `description` | A line or two: what it does. |
-| `min_version` | The oldest Margelet the plugin works on. On anything older it will not install at all — with an explanation, not silently. Optional. |
+| `min_version` | The oldest Margy the plugin works on. On anything older it will not install at all — with an explanation, not silently. Optional. |
 | `permissions` | What the plugin declares about itself. The list is below. |
 | `name_en`, `name_zh`, `description_en`, … | The same in another language. The app picks by its own language and falls back to the plain field. |
 
@@ -419,7 +419,7 @@ titles = jarray(CharSequence)(["First", "Second"])
 on it; a button on the settings screen is not. From there any window has to be
 opened through `margelet.ui`, or nothing opens.
 
-Errors like these are visible only in the console: Settings → Margelet →
+Errors like these are visible only in the console: Settings → Margy →
 Plugins → Console. It has both the line and the reason.
 
 ## What else is available
@@ -438,20 +438,20 @@ everything" means — it is not a figure of speech.
 
 ## The console
 
-Settings → Margelet → Plugins → Console. Everything the plugins print goes
+Settings → Margy → Plugins → Console. Everything the plugins print goes
 there, and their errors in red. Python fails silently, so without this screen
 an author learns about a typo only from "nothing works".
 
 ## Installing
 
-Settings → Margelet → Plugins → Install from file. The install dialog shows the
+Settings → Margy → Plugins → Install from file. The install dialog shows the
 author and the declared permissions.
 
 You can also tap a `.marp` file right in a chat — the app will offer to install
 it.
 
 The install dialog has two buttons. "Install" installs the plugin disabled.
-"Install and run" installs it, turns it on and restarts Margelet right away, so
+"Install and run" installs it, turns it on and restarts Margy right away, so
 the plugin starts working without waiting for the app to be closed by hand.
 
 If the plugin declares a `min_version` above yours it will not install, and you
@@ -466,8 +466,29 @@ Hold the row for the plugin's card and for deleting.
 
 Turning a plugin off means "do not start it again". There is no way to stop
 Python code that is already running — it lives until the app is restarted. That
-is what the "Restart Margelet" button on the plugins screen is for: switch it
+is what the "Restart Margy" button on the plugins screen is for: switch it
 off, tap, and the plugin is gone.
+
+### The store
+
+The second tab on the same screen lists plugins from the
+[@margelet_marps](https://t.me/margelet_marps) channel. One tap installs them,
+through the same dialog and the same questions: a channel does not make someone
+else's code checked. Nobody looked at these — we did not either. Read the code.
+
+To get a plugin into the store, post the `.marp` as a file to the channel. The
+file name becomes the name in the list, the caption becomes the description.
+The order is by time, newest first.
+
+### What gets turned on with a plugin
+
+"Enable after installing" means "let it run". If the plugin system itself is
+off, it gets turned on: otherwise the request cannot be carried out, and before
+this the plugin simply did nothing with no way to guess why.
+
+If the plugin uses hooks, the install dialog says so on its own line, and
+enabling the plugin enables hooks too. Hooks are announced not out of politeness
+— [above](#hooking-any-method) says what they cost.
 
 ## The example
 
