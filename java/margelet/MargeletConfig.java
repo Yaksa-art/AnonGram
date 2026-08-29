@@ -40,7 +40,7 @@ public class MargeletConfig {
      * 0.99, а не 1.0, нарочно: настоящая единица должна остаться свободной
      * под настоящий выпуск, а пререлиз обязан быть строго меньше её.
      */
-    public static final String APP_VERSION = "0.99.16";
+    public static final String APP_VERSION = "0.99.17";
 
     /** Как выпуск называется для человека: «Пререлиз 1.0», «Бета 1.1». */
     public static String versionLabel() {
@@ -192,18 +192,6 @@ public class MargeletConfig {
     }
 
     /**
-     * Показывать ли строку со ссылкой на форк в чужих сообщениях. По умолчанию
-     * нет: внутри форка она и так ни к чему, она для тех, у кого форка нет.
-     */
-    public static boolean showWatermarks() {
-        return prefs().getBoolean("watermarks", false);
-    }
-
-    public static void setShowWatermarks(boolean on) {
-        prefs().edit().putBoolean("watermarks", on).apply();
-    }
-
-    /**
      * Разметка значками по видам: **жирный**, __курсив__ и прочие, включая
      * свои — ++подчёркнутый++ и цитаты через «больше». Всё включено по
      * умолчанию; выключенный вид остаётся в тексте как есть.
@@ -216,22 +204,6 @@ public class MargeletConfig {
         prefs().edit().putBoolean("markdown_" + kind, on).apply();
     }
 
-    /**
-     * Держать ли канал форка первой строкой в списке чатов. По умолчанию да:
-     * узнать о том, что происходит с форком, больше особо неоткуда.
-     */
-    public static boolean channelOnTop() {
-        return prefs().getBoolean("channel_on_top", true);
-    }
-
-    public static void setChannelOnTop(boolean on) {
-        prefs().edit().putBoolean("channel_on_top", on).apply();
-    }
-
-    /**
-     * Дописывать ли строку со ссылкой на форк в свои оформленные сообщения.
-     * По умолчанию да: форк живёт тем, что о нём узнают.
-     */
     /** Показывать баннеры за аватарками. */
     public static boolean bannersEnabled() {
         return prefs().getBoolean("profile_banners", true);
@@ -241,6 +213,15 @@ public class MargeletConfig {
         prefs().edit().putBoolean("profile_banners", on).apply();
     }
 
+    /** Показывать чужие градиенты профиля. */
+    public static boolean gradientsEnabled() {
+        return prefs().getBoolean("profile_gradients", true);
+    }
+
+    public static void setGradientsEnabled(boolean on) {
+        prefs().edit().putBoolean("profile_gradients", on).apply();
+    }
+
     /** Показывать стены в профилях. */
     public static boolean wallEnabled() {
         return prefs().getBoolean("profile_wall", true);
@@ -248,14 +229,6 @@ public class MargeletConfig {
 
     public static void setWallEnabled(boolean on) {
         prefs().edit().putBoolean("profile_wall", on).apply();
-    }
-
-    public static boolean watermarkOnSend() {
-        return prefs().getBoolean("watermark_send", false);
-    }
-
-    public static void setWatermarkOnSend(boolean on) {
-        prefs().edit().putBoolean("watermark_send", on).apply();
     }
 
     /** Премиум-значки без премиума: видны только в форке. */

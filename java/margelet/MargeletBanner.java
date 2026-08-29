@@ -295,19 +295,6 @@ public class MargeletBanner {
         });
     }
 
-    /** Чем кончилось удаление. */
-    public interface Removed {
-        /**
-         * @param what {@code REMOVED} — убрали, {@code NOTHING} — нечего было
-         *             убирать, {@code FAILED} — не смогли спросить группу.
-         */
-        void onRemoved(int what);
-    }
-
-    public static final int REMOVED = 1;
-    public static final int NOTHING = 2;
-    public static final int FAILED = 3;
-
     /**
      * Убрать свой баннер — то есть удалить своё сообщение из группы.
      *
@@ -316,10 +303,10 @@ public class MargeletBanner {
      * повторялось то же самое. Сообщение об успехе, которое печатается всегда,
      * не сообщает ничего.
      */
-    public static void clear(Removed done) {
+    public static void clear(MargeletGroup.Removed done) {
         final long id = me();
         if (id <= 0) {
-            answer(done, FAILED);
+            answer(done, MargeletGroup.FAILED);
             return;
         }
         final Integer known = ownMessage.get(id);
@@ -327,14 +314,14 @@ public class MargeletBanner {
             MargeletGroup.remove(known);
             ownMessage.remove(id);
             forget(id);
-            answer(done, REMOVED);
+            answer(done, MargeletGroup.REMOVED);
             return;
         }
         // Номера сообщения не знаем — найдём и удалим. Ответ даём после
         // поиска, а не до: до него мы попросту не знаем, что сказать.
         MargeletGroup.find(MargeletGroup.TAG_BANNER, id, 20, (messages, problem) -> {
             if (problem != null) {
-                answer(done, FAILED);
+                answer(done, MargeletGroup.FAILED);
                 return;
             }
             int removed = 0;
@@ -343,11 +330,11 @@ public class MargeletBanner {
                 removed++;
             }
             forget(id);
-            answer(done, removed > 0 ? REMOVED : NOTHING);
+            answer(done, removed > 0 ? MargeletGroup.REMOVED : MargeletGroup.NOTHING);
         });
     }
 
-    private static void answer(Removed done, int what) {
+    private static void answer(MargeletGroup.Removed done, int what) {
         if (done != null) {
             AndroidUtilities.runOnUIThread(() -> done.onRemoved(what));
         }

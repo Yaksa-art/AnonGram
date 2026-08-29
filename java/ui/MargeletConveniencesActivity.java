@@ -21,7 +21,6 @@ import java.util.ArrayList;
  */
 public class MargeletConveniencesActivity extends UniversalFragment {
 
-    private static final int ID_CHANNEL_TOP = 1;
     private static final int ID_TRACKS = 2;
     private static final int ID_SEIZURE = 3;
     private static final int ID_FONTS = 4;
@@ -41,9 +40,6 @@ public class MargeletConveniencesActivity extends UniversalFragment {
 
     @Override
     protected void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
-        items.add(UItem.asCheck(ID_CHANNEL_TOP, LocaleController.getString(R.string.MargeletChannelOnTop))
-                .setChecked(MargeletConfig.channelOnTop()));
-        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletChannelOnTopAbout)));
         items.add(UItem.asCheck(ID_TRACKS, LocaleController.getString(R.string.MargeletTracksEnabled))
                 .setChecked(MargeletConfig.tagsEnabled()));
         items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletTracksEnabledAbout)));
@@ -57,10 +53,7 @@ public class MargeletConveniencesActivity extends UniversalFragment {
 
     @Override
     protected void onClick(UItem item, View view, int position, float x, float y) {
-        if (item.id == ID_CHANNEL_TOP) {
-            MargeletConfig.setChannelOnTop(!MargeletConfig.channelOnTop());
-            listView.adapter.update(true);
-        } else if (item.id == ID_TRACKS) {
+        if (item.id == ID_TRACKS) {
             MargeletConfig.setTagsEnabled(!MargeletConfig.tagsEnabled());
             listView.adapter.update(true);
         } else if (item.id == ID_SEIZURE) {

@@ -9,7 +9,9 @@ import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.FileLog;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Запуск плагинов и консоль.
@@ -130,6 +132,25 @@ public class MargeletPluginHost {
         h.post(() -> run(plugin));
     }
 
+    /**
+     * Чей код уже исполнялся в этом запуске приложения.
+     *
+     * Отмечаем ФАКТ запуска, а не намерение: галочка «включён» говорит лишь
+     * «запускать впредь», а нам нужно знать, лежит ли чужой модуль в памяти
+     * прямо сейчас. Выгрузить его нечем, поэтому запись живёт до перезапуска
+     * приложения и не стирается ни выключением плагина, ни его удалением.
+     */
+    private static final Set<String> ran = new HashSet<>();
+
+    /** Работает ли этот плагин прямо сейчас — то есть был ли он запущен. */
+    public static synchronized boolean isRunning(String id) {
+        return id != null && ran.contains(id);
+    }
+
+    private static synchronized void remember(String id) {
+        ran.add(id);
+    }
+
     private static void run(MargeletPlugins.Plugin plugin) {
         if (plugin == null || !plugin.entry().exists()) {
             log(plugin == null ? "?" : plugin.name, "нет main.py", true);
@@ -138,6 +159,9 @@ public class MargeletPluginHost {
         try {
             python("run", new Class<?>[]{String.class, String.class, String.class},
                     plugin.id, plugin.name, plugin.folder.getAbsolutePath());
+            // Помечаем после вызова, а не до: не поднявшийся плагин в памяти
+            // не лежит, и требовать из-за него перезапуск незачем.
+            remember(plugin.id);
         } catch (Throwable t) {
             FileLog.e(t);
             log(plugin.name, String.valueOf(t), true);

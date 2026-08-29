@@ -566,10 +566,14 @@ public class MargeletPlugins {
                         ? R.string.MargeletPluginUpdateOk : R.string.MargeletPluginInstallOk), (d, w) -> {
                     final Plugin ready = commit(staged[0]);
                     staged[0] = null;
-                    // Включение перезапуска не требует: поднять плагин можно
-                    // прямо сейчас. Перезапуск нужен обратному — выключить уже
-                    // работающий питон нечем, — и просят о нём там, где
-                    // выключают, а не здесь.
+                    // Заменённый плагин новым от замены не станет: его код уже
+                    // лежит в памяти питона, а выгрузить его нечем. Раньше
+                    // здесь молча запускалась вторая копия — поверх работающей
+                    // первой, — и человек оставался со старым поведением, ничем
+                    // этого не объясняя. Спрашиваем прямо, как и при выключении.
+                    final boolean wasRunning = ready != null
+                            && MargeletPluginHost.isRunning(ready.id);
+                    boolean restart = false;
                     if (startNow[0] && ready != null) {
                         MargeletConfig.setPluginEnabled(ready.id, true);
                         // Галочка «включить после установки» означает «пусть
@@ -578,7 +582,6 @@ public class MargeletPlugins {
                         // плагинов оставалась выключена — и плагин не делал
                         // ничего, ничем этого не объясняя. Включаем то, без
                         // чего просьба невыполнима.
-                        boolean restart = false;
                         if (!MargeletConfig.pluginsEnabled()) {
                             MargeletConfig.setPluginsEnabled(true);
                             MargeletPluginHost.start();
@@ -589,17 +592,24 @@ public class MargeletPlugins {
                             MargeletHookEngine.setEnabled(true);
                             restart = true;
                         }
-                        if (!restart) {
+                        if (!restart && !wasRunning) {
                             MargeletPluginHost.launch(ready);
-                        } else {
-                            AndroidUtilities.runOnUIThread(() -> new AlertDialog.Builder(context)
-                                    .setTitle(ready.name)
-                                    .setMessage(LocaleController.getString(R.string.MargeletPluginHooksOn))
-                                    .setPositiveButton(LocaleController.getString(R.string.MargeletPluginsRestart),
-                                            (dd, ww) -> restart(context))
-                                    .setNegativeButton(LocaleController.getString(R.string.MargeletLater), null)
-                                    .show(), 200);
                         }
+                    }
+                    if (restart || wasRunning) {
+                        // Про хуки говорим про хуки, про замену — про замену:
+                        // причина у перезапуска разная, и подменять одну другой
+                        // значит объяснять человеку не то, что произошло.
+                        final int why = restart
+                                ? R.string.MargeletPluginHooksOn
+                                : R.string.MargeletPluginReplacedRestart;
+                        AndroidUtilities.runOnUIThread(() -> new AlertDialog.Builder(context)
+                                .setTitle(ready.name)
+                                .setMessage(LocaleController.getString(why))
+                                .setPositiveButton(LocaleController.getString(R.string.MargeletPluginsRestart),
+                                        (dd, ww) -> restart(context))
+                                .setNegativeButton(LocaleController.getString(R.string.MargeletLater), null)
+                                .show(), 200);
                     }
                     if (whenInstalled != null) {
                         whenInstalled.run();

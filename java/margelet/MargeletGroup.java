@@ -178,7 +178,8 @@ public class MargeletGroup {
     /** Под каким именем храним вырезанные метки в клиентских данных. */
     private static final String KEY_TAGS = "margy_tags";
     private static final java.util.regex.Pattern TAGS =
-            java.util.regex.Pattern.compile("#margy_(wall_c?\\d+|banner)\\b");
+            java.util.regex.Pattern.compile(
+                    "#margy_(wall_c?\\d+|banner|gradient(\\s+[0-9A-Fa-f]{6}-[0-9A-Fa-f]{6})?)\\b");
 
     /**
      * Оставить из списка только сообщения этой стены.
@@ -626,6 +627,21 @@ public class MargeletGroup {
             }
         });
     }
+
+    /**
+     * Чем кончилось удаление своего сообщения из группы.
+     *
+     * Живёт здесь, а не у баннера, потому что это не про баннер, а про
+     * группу: убрали, нечего было убирать, не смогли спросить. Три разных
+     * исхода, и отвечать на все три одинаково значит не ответить.
+     */
+    public interface Removed {
+        void onRemoved(int what);
+    }
+
+    public static final int REMOVED = 1;
+    public static final int NOTHING = 2;
+    public static final int FAILED = 3;
 
     /** Убрать своё сообщение из группы. Чужие удалять нечем — и не надо. */
     public static void remove(int messageId) {
