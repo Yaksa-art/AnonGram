@@ -1,7 +1,7 @@
 {
-  "version": "0.99.21",
-  "apk": "https://github.com/narezany/margelet/raw/apk/margelet-0.99.21.apk",
-  "about": "Pre-release 1.0.21. The profile gradient now really does colour the whole page — the theme update used to quietly wipe it. Buttons take the gradient's own colour instead of a white plate, and their labels are readable again: the label colour is Telegram's own decision, and ours now uses the same brightness formula. The wall takes its messages from the tag search instead of digging them out of the group history.",
-  "about_ru": "Пререлиз 1.0.21. Градиент профиля наконец красит всю страницу — прежде его молча затирало обновление темы. Кнопки берут цвет самого градиента вместо белой плашки, и подписи на них снова читаются: их цвет выбирает сам телеграм, и теперь мы считаем яркость по его же формуле. Стена берёт сообщения из поиска по метке, а не выуживает их из истории группы.",
-  "about_zh": "预发布 1.0.21。个人资料渐变这次真的会给整页上色了——之前主题刷新会悄悄把它覆盖掉。按钮改用渐变本身的颜色，不再是一块白板，上面的字也重新看得清了：字色是 Telegram 自己定的，我们现在用的是它那套亮度算法。留言墙改为从标签搜索取消息，而不是从群组历史里翻。"
+  "version": "0.99.22",
+  "apk": "https://github.com/narezany/margelet/raw/apk/margelet-0.99.22.apk",
+  "about": "Pre-release 1.0.22. The cards on the profile page now take the colour of your gradient at the point where they sit, a little darker — on the light theme too, instead of turning almost white. Their brightness is held back just enough that the row text stays readable in either theme.",
+  "about_ru": "Пререлиз 1.0.22. Карточки на странице профиля берут цвет вашего градиента там, где стоят, и чуть темнее его — на светлой теме тоже, а не становятся почти белыми. Яркость при этом придерживается ровно настолько, чтобы текст в строках оставался читаемым в любой теме.",
+  "about_zh": "预发布 1.0.22。资料页上的卡片会取所在位置的渐变颜色，并略微加深——浅色主题下也一样，不再变成近乎全白。亮度会被适当收住，好让两种主题下的行内文字都保持可读。"
 }
