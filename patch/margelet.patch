@@ -1564,7 +1564,7 @@ index 00000000..a775cdbc
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
 new file mode 100644
-index 00000000..7f94ec73
+index 00000000..fc539f4b
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
 @@ -0,0 +1,446 @@
@@ -1610,7 +1610,7 @@ index 00000000..7f94ec73
 +     * 0.99, а не 1.0, нарочно: настоящая единица должна остаться свободной
 +     * под настоящий выпуск, а пререлиз обязан быть строго меньше её.
 +     */
-+    public static final String APP_VERSION = "0.99.6";
++    public static final String APP_VERSION = "0.99.7";
 +
 +    /** Как выпуск называется для человека: «Пререлиз 1.0», «Бета 1.1». */
 +    public static String versionLabel() {
@@ -2876,10 +2876,10 @@ index 00000000..33ff716b
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletGroup.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletGroup.java
 new file mode 100644
-index 00000000..56de1012
+index 00000000..169758f0
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletGroup.java
-@@ -0,0 +1,536 @@
+@@ -0,0 +1,624 @@
 +package org.telegram.margelet;
 +
 +import org.telegram.messenger.AccountInstance;
@@ -2921,7 +2921,10 @@ index 00000000..56de1012
 +
 +    /** Метка стены. Номер — того, О КОМ пишут, а не того, кто пишет. */
 +    public static String tagWall(long peerId) {
-+        return "#margy_wall_" + peerId;
++        // У каналов и групп номер отрицательный, а минус в хэштег не входит —
++        // телеграм оборвал бы метку на нём, и стена канала слилась бы со
++        // стеной человека с тем же числом. Поэтому им отдельная буква.
++        return peerId >= 0 ? "#margy_wall_" + peerId : "#margy_wall_c" + (-peerId);
 +    }
 +
 +    private static long groupId;
@@ -3055,7 +3058,7 @@ index 00000000..56de1012
 +
 +    private static final String TAG_PREFIX = "#margy_";
 +    private static final java.util.regex.Pattern TAGS =
-+            java.util.regex.Pattern.compile("#margy_(wall_\\d+|banner)\\b");
++            java.util.regex.Pattern.compile("#margy_(wall_c?\\d+|banner)\\b");
 +
 +    /**
 +     * Оставить из списка только сообщения этой стены.
@@ -3074,6 +3077,91 @@ index 00000000..56de1012
 +                    && hasTag(message.messageOwner, tag)) {
 +                out.add(message);
 +            }
++        }
++        return out;
++    }
++
++    /**
++     * Вырезать служебные метки из самого сообщения — вместе с разметкой.
++     *
++     * Вырезать только из текста было мало, и это вылезло сразу: отсчёты
++     * разметки остались прежними, а текст стал короче, поэтому «хэштежность»
++     * съезжала на соседние слова. Человек видел цветной кликабельный кусок,
++     * который никуда не ведёт. Правим то и другое разом, здесь, до того как
++     * из сообщения соберут показ.
++     *
++     * Само сообщение на сервере не меняется: правим свою копию в памяти.
++     */
++    public static void cutTags(TLRPC.Message message) {
++        if (message == null || message.message == null
++                || message.message.indexOf(TAG_PREFIX) < 0) {
++            return;
++        }
++        final java.util.regex.Matcher at = TAGS.matcher(message.message);
++        final java.util.List<int[]> cuts = new ArrayList<>();
++        while (at.find()) {
++            int to = at.end();
++            // Съедаем пробелы и перевод строки следом: иначе отзыв начинался
++            // бы с пустой строки там, где метка стояла отдельно.
++            while (to < message.message.length()
++                    && (message.message.charAt(to) == '\n' || message.message.charAt(to) == ' ')) {
++                to++;
++            }
++            cuts.add(new int[]{at.start(), to});
++        }
++        if (cuts.isEmpty()) {
++            return;
++        }
++        final StringBuilder text = new StringBuilder(message.message);
++        for (int i = cuts.size() - 1; i >= 0; i--) {
++            text.delete(cuts.get(i)[0], cuts.get(i)[1]);
++        }
++        message.message = text.toString();
++        message.entities = shift(message.entities, cuts);
++    }
++
++    /**
++     * Переносит разметку через вырезанные куски.
++     *
++     * Отсчёты считаем от конца к началу — так каждый следующий вырез не
++     * сдвигает те, что ещё не обработаны. Разметку, целиком попавшую в
++     * вырезанное, выбрасываем: она относилась к тому, чего больше нет.
++     */
++    private static ArrayList<TLRPC.MessageEntity> shift(
++            ArrayList<TLRPC.MessageEntity> entities, java.util.List<int[]> cuts) {
++        if (entities == null || entities.isEmpty()) {
++            return entities;
++        }
++        final ArrayList<TLRPC.MessageEntity> out = new ArrayList<>();
++        for (TLRPC.MessageEntity entity : entities) {
++            int from = entity.offset;
++            int to = entity.offset + entity.length;
++            boolean gone = false;
++            for (int i = cuts.size() - 1; i >= 0; i--) {
++                final int cutFrom = cuts.get(i)[0];
++                final int cutTo = cuts.get(i)[1];
++                if (from >= cutFrom && to <= cutTo) {
++                    gone = true;      // разметка была на самой метке
++                    break;
++                }
++                final int size = cutTo - cutFrom;
++                if (from >= cutTo) {
++                    from -= size;
++                    to -= size;
++                } else if (to > cutFrom) {
++                    // Пересеклись частично: оставляем то, что уцелело.
++                    to -= Math.min(size, to - cutFrom);
++                    if (from > cutFrom) {
++                        from = cutFrom;
++                    }
++                }
++            }
++            if (gone || to <= from) {
++                continue;
++            }
++            entity.offset = from;
++            entity.length = to - from;
++            out.add(entity);
 +        }
 +        return out;
 +    }
@@ -8441,10 +8529,22 @@ index 95495c32..5d00f2d9 100644
  
          // trim again in case some whitespace inside tags
 diff --git a/TMessagesProj/src/main/java/org/telegram/messenger/MessageObject.java b/TMessagesProj/src/main/java/org/telegram/messenger/MessageObject.java
-index 77870805..06fa5f2a 100644
+index 77870805..6d74bdb9 100644
 --- a/TMessagesProj/src/main/java/org/telegram/messenger/MessageObject.java
 +++ b/TMessagesProj/src/main/java/org/telegram/messenger/MessageObject.java
-@@ -3529,6 +3529,13 @@ public class MessageObject {
+@@ -1921,6 +1921,11 @@ public class MessageObject {
+ 
+         currentAccount = accountNum;
+         messageOwner = message;
++        // Служебные метки форка убираем здесь, до того как из сообщения
++        // соберут текст и разметку: вырезать их потом, из готового текста,
++        // значит оставить отсчёты разметки на прежних местах — и «хэштежность»
++        // уезжает на соседние слова цветным куском, который никуда не ведёт.
++        org.telegram.margelet.MargeletGroup.cutTags(messageOwner);
+         replyMessageObject = replyToMessage;
+         eventId = eid;
+         wasUnread = !messageOwner.out && messageOwner.unread;
+@@ -3529,6 +3534,13 @@ public class MessageObject {
          if (messageText == null) {
              messageText = "";
          }
@@ -8458,7 +8558,7 @@ index 77870805..06fa5f2a 100644
  
          TextPaint paint;
          if (getMedia(messageOwner) instanceof TLRPC.TL_messageMediaGame) {
-@@ -3748,6 +3755,10 @@ public class MessageObject {
+@@ -3748,6 +3760,10 @@ public class MessageObject {
      }
  
      public void applyNewText(CharSequence text) {
@@ -8469,7 +8569,7 @@ index 77870805..06fa5f2a 100644
          if (TextUtils.isEmpty(text)) {
              return;
          }
-@@ -6078,6 +6089,10 @@ public class MessageObject {
+@@ -6078,6 +6094,10 @@ public class MessageObject {
          if (messageText == null) {
              messageText = "";
          }
@@ -8480,7 +8580,7 @@ index 77870805..06fa5f2a 100644
  
          isEmbedVideoCached = null;
          cachedStartsTimestamp = null;
-@@ -7630,6 +7645,10 @@ public class MessageObject {
+@@ -7630,6 +7650,10 @@ public class MessageObject {
              captionTranslated = false;
          }
          if (!isMediaEmpty() && !(getMedia(messageOwner) instanceof TLRPC.TL_messageMediaGame) && !TextUtils.isEmpty(text)) {
@@ -8491,7 +8591,7 @@ index 77870805..06fa5f2a 100644
              caption = Emoji.replaceEmoji(text, Theme.chat_msgTextPaint.getFontMetricsInt(), false);
              caption = replaceAnimatedEmoji(caption, entities, Theme.chat_msgTextPaint.getFontMetricsInt(), false);
  
-@@ -8053,6 +8072,24 @@ public class MessageObject {
+@@ -8053,6 +8077,24 @@ public class MessageObject {
          }
          text = FormattedDateSpan.restoreFormatedDateEntities(text);
          Spannable spannable = (Spannable) text;
@@ -8653,7 +8753,7 @@ index cd393c4d..4173e938 100644
  
          dialogsCount = array.size();
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/Cells/ChatMessageCell.java b/TMessagesProj/src/main/java/org/telegram/ui/Cells/ChatMessageCell.java
-index bcc7fe85..5eee2c80 100644
+index bcc7fe85..7d86fe49 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/Cells/ChatMessageCell.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/Cells/ChatMessageCell.java
 @@ -2401,7 +2401,12 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
@@ -8753,6 +8853,57 @@ index bcc7fe85..5eee2c80 100644
                          Spannable buffer = (Spannable) currentCaption;
                          CharacterStyle[] link = buffer.getSpans(off, off, ClickableSpan.class);
                          boolean isMono = false;
+@@ -22189,6 +22251,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
+             Theme.chat_namePaint.setAlpha((int) (oldAlpha * nameAlpha));
+             nameLayout.draw(canvas);
+             Theme.chat_namePaint.setAlpha(oldAlpha);
++            drawMargeletBadge(canvas, nameLayout, nameAlpha);
+             canvas.restore();
+ 
+             float end;
+@@ -29193,6 +29256,42 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
+         return Theme.isCurrentThemeDark();
+     }
+ 
++    private android.graphics.drawable.Drawable margeletBadge;
++    private long margeletBadgeFor;
++
++    /**
++     * Значок форка рядом с именем автора над сообщением.
++     *
++     * Раньше значок был виден только в списке чатов и в профиле — то есть
++     * везде, кроме того места, где на человека и смотрят: в группе, под его
++     * сообщением. Рисуем сразу за именем, тем же ходом, что и само имя, чтобы
++     * он ехал вместе с ним и гас вместе с ним.
++     *
++     * Холст уже сдвинут в начало имени, поэтому считаем от нуля.
++     */
++    private void drawMargeletBadge(Canvas canvas, StaticLayout name, float alpha) {
++        if (name == null || currentMessageObject == null || alpha <= 0) {
++            return;
++        }
++        final long peerId = currentMessageObject.getFromChatId();
++        if (peerId == 0) {
++            return;
++        }
++        if (margeletBadge == null || margeletBadgeFor != peerId) {
++            margeletBadgeFor = peerId;
++            margeletBadge = org.telegram.margelet.MargeletBadge.iconDrawable(getContext(), peerId);
++        }
++        if (margeletBadge == null) {
++            return;
++        }
++        final int size = dp(14);
++        final int x = (int) name.getLineWidth(0) + dp(4);
++        final int y = (int) ((name.getHeight() - size) / 2f);
++        margeletBadge.setBounds(x, y, x + size, y + size);
++        margeletBadge.setAlpha((int) (0xFF * alpha));
++        margeletBadge.draw(canvas);
++    }
++
+     public boolean needDrawAvatar() {
+         return (
+             isChat && !isSavedPreviewChat && (!isThreadPost || isForum) && (
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/Cells/DialogCell.java b/TMessagesProj/src/main/java/org/telegram/ui/Cells/DialogCell.java
 index 790e4493..1d03f089 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/Cells/DialogCell.java
@@ -9262,6 +9413,67 @@ index ac402db5..415b7e37 100644
          if (replyingQuote != null && parentFragment != null && replyingQuote.outdated) {
              parentFragment.showQuoteMessageUpdate();
              return false;
+diff --git a/TMessagesProj/src/main/java/org/telegram/ui/Components/ChatAvatarContainer.java b/TMessagesProj/src/main/java/org/telegram/ui/Components/ChatAvatarContainer.java
+index 7066dfae..70b1d5d4 100644
+--- a/TMessagesProj/src/main/java/org/telegram/ui/Components/ChatAvatarContainer.java
++++ b/TMessagesProj/src/main/java/org/telegram/ui/Components/ChatAvatarContainer.java
+@@ -981,6 +981,8 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
+         } else {
+             titleTextView.setRightDrawable(null);
+             rightDrawableContentDescription = null;
++            // Место справа освободилось — сюда и встаёт наш значок.
++            applyMargeletBadge();
+         }
+         checkActionBar(animated);
+     }
+@@ -1366,7 +1368,38 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
+         return lastSubtitleColorKey;
+     }
+ 
++    /**
++     * Чей значок форка показывать в шапке. Ноль — ничей.
++     *
++     * Значок был виден в списке чатов и в профиле, но не в самой переписке —
++     * то есть исчезал ровно там, где человек с этим человеком и разговаривает.
++     */
++    private long margeletPeer;
++
++    /**
++     * Ставит значок форка справа от имени, если место справа свободно.
++     *
++     * Свободно — значит там нет ни премиум-статуса, ни эмодзи-статуса: их
++     * ставит сам телеграм, и вытеснять их своим значком нельзя. Наш значок
++     * дополняет чужой интерфейс, а не спорит с ним.
++     */
++    private void applyMargeletBadge() {
++        if (titleTextView == null || margeletPeer == 0) {
++            return;
++        }
++        if (titleTextView.getRightDrawable() != null) {
++            return;
++        }
++        final Drawable badge = org.telegram.margelet.MargeletBadge
++                .iconDrawable(getContext(), margeletPeer);
++        if (badge != null) {
++            titleTextView.setRightDrawable(badge);
++        }
++    }
++
+     public void setChatAvatar(TLRPC.Chat chat) {
++        margeletPeer = chat != null ? org.telegram.margelet.MargeletBadge.chatPeer(chat.id) : 0;
++        applyMargeletBadge();
+         avatarDrawable.setInfo(currentAccount, chat);
+         if (avatarImageView != null) {
+             avatarImageView.setForUserOrChat(chat, avatarDrawable);
+@@ -1379,6 +1412,8 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
+     }
+ 
+     public void setUserAvatar(TLRPC.User user, boolean showSelf) {
++        margeletPeer = user != null ? user.id : 0;
++        applyMargeletBadge();
+         avatarDrawable.setInfo(currentAccount, user);
+         if (UserObject.isReplyUser(user)) {
+             avatarDrawable.setAvatarType(AvatarDrawable.AVATAR_TYPE_REPLIES);
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/Components/EditTextCaption.java b/TMessagesProj/src/main/java/org/telegram/ui/Components/EditTextCaption.java
 index 6a21a20e..a8a7f46f 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/Components/EditTextCaption.java
@@ -12398,10 +12610,10 @@ index 00000000..6fd6827d
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletStoreCell.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletStoreCell.java
 new file mode 100644
-index 00000000..01e17fc5
+index 00000000..d4569b50
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletStoreCell.java
-@@ -0,0 +1,153 @@
+@@ -0,0 +1,188 @@
 +package org.telegram.ui;
 +
 +import static org.telegram.messenger.AndroidUtilities.dp;
@@ -12415,6 +12627,7 @@ index 00000000..01e17fc5
 +import android.widget.ImageView;
 +import android.widget.TextView;
 +
++import org.telegram.margelet.MargeletPlugins;
 +import org.telegram.margelet.MargeletStore;
 +import org.telegram.messenger.AndroidUtilities;
 +import org.telegram.messenger.LocaleController;
@@ -12502,7 +12715,13 @@ index 00000000..01e17fc5
 +            return;
 +        }
 +        titleView.setText(item.name);
++        final boolean have = installed(item) != null;
 +        subtitleView.setText(subtitleOf(item));
++        subtitleView.setTextColor(Theme.getColor(have
++                ? Theme.key_windowBackgroundWhiteGreenText
++                : Theme.key_windowBackgroundWhiteGrayText2));
++        // У стоящего плагина стрелка «принести» не к месту: приносить нечего.
++        arrowView.setImageResource(have ? R.drawable.msg_check_s : R.drawable.msg_download);
 +        final String letter = item.name.isEmpty() ? "?" : item.name.substring(0, 1).toUpperCase();
 +        plateView.setText(letter);
 +        plateView.setBackground(Theme.createRoundRectDrawable(dp(10), colorOf(item.name)));
@@ -12511,16 +12730,44 @@ index 00000000..01e17fc5
 +    /**
 +     * Что написать под именем.
 +     *
-+     * Подпись автора, если она есть, — она и есть описание. Нет подписи —
-+     * пишем размер и дату: сказать «нет описания» значит занять строку ничем.
++     * Сначала — стоит ли он уже. Это первое, что человек хочет знать, глядя на
++     * список: описание он прочитает в окне установки, а «у меня это уже есть»
++     * должно быть видно сразу, не открывая ничего.
++     *
++     * Какая версия лежит в канале, отсюда не узнать: она внутри архива, а
++     * качать архив ради строчки списка — значит качать весь канал. Поэтому
++     * говорим то, что знаем точно: что стоит у нас. Сравнит версии окно
++     * установки, когда файл будет на руках.
 +     */
 +    private String subtitleOf(MargeletStore.Item item) {
++        final MargeletPlugins.Plugin mine = installed(item);
++        if (mine != null) {
++            return LocaleController.formatString(R.string.MargeletStoreInstalled, mine.version);
++        }
 +        final String about = item.about == null ? "" : item.about.replace('\n', ' ').trim();
 +        if (!about.isEmpty()) {
 +            return about;
 +        }
 +        return AndroidUtilities.formatFileSize(item.size) + " · "
 +                + LocaleController.formatDateAudio(item.date, true);
++    }
++
++    /**
++     * Стоит ли уже такой плагин.
++     *
++     * Сличаем по имени: номера плагина у файла в канале нет, он лежит внутри
++     * архива. Имя файла — единственное, что видно снаружи.
++     */
++    private MargeletPlugins.Plugin installed(MargeletStore.Item item) {
++        if (item.name == null || item.name.isEmpty()) {
++            return null;
++        }
++        for (MargeletPlugins.Plugin plugin : MargeletPlugins.installed()) {
++            if (plugin.name != null && plugin.name.equalsIgnoreCase(item.name)) {
++                return plugin;
++            }
++        }
++        return null;
 +    }
 +
 +    /** Цвет плашки из имени: не случайный, значит всегда один и тот же. */
@@ -13273,10 +13520,10 @@ index 00000000..82162ac5
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletWallActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletWallActivity.java
 new file mode 100644
-index 00000000..83d01090
+index 00000000..878de5a7
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletWallActivity.java
-@@ -0,0 +1,129 @@
+@@ -0,0 +1,147 @@
 +package org.telegram.ui;
 +
 +import android.content.Context;
@@ -13355,10 +13602,7 @@ index 00000000..83d01090
 +        // Заголовок свой: имя группы над чужой стеной сбивало бы с толку —
 +        // человек пришёл читать про конкретного человека. Меняем только
 +        // подпись, сам заголовок остаётся их же.
-+        if (avatarContainer != null) {
-+            avatarContainer.setTitle(LocaleController.formatString(R.string.MargeletWallOf, peerName));
-+            avatarContainer.setSubtitle(LocaleController.getString(R.string.MargeletWallSubtitle));
-+        }
++        dressUp();
 +        return view;
 +    }
 +
@@ -13378,17 +13622,38 @@ index 00000000..83d01090
 +    public void onResume() {
 +        super.onResume();
 +        MargeletGroup.writingTo(peerId);
-+        if (avatarContainer != null) {
-+            // Телеграм обновляет подпись сам — например, когда пересчитает
-+            // участников. Возвращаем свою после него, а не вместо него.
-+            AndroidUtilities.runOnUIThread(() -> {
-+                if (avatarContainer != null) {
-+                    avatarContainer.setTitle(LocaleController.formatString(
-+                            R.string.MargeletWallOf, peerName));
-+                    avatarContainer.setSubtitle(LocaleController.getString(
-+                            R.string.MargeletWallSubtitle));
++        // Телеграм обновляет шапку сам — например, когда пересчитает
++        // участников. Возвращаем свою после него, а не вместо него.
++        AndroidUtilities.runOnUIThread(this::dressUp, 200);
++    }
++
++    /**
++     * Своя шапка: имя и аватарка того, чья это стена.
++     *
++     * Аватарка тоже: без неё сверху висела картинка группы, и было непонятно,
++     * у кого ты в гостях. Заголовок без аватарки — половина ответа.
++     */
++    private void dressUp() {
++        if (avatarContainer == null) {
++            return;
++        }
++        avatarContainer.setTitle(LocaleController.formatString(R.string.MargeletWallOf, peerName));
++        avatarContainer.setSubtitle(LocaleController.getString(R.string.MargeletWallSubtitle));
++        try {
++            if (peerId > 0) {
++                final org.telegram.tgnet.TLRPC.User who = getMessagesController().getUser(peerId);
++                if (who != null) {
++                    avatarContainer.setUserAvatar(who, true);
 +                }
-+            }, 200);
++            } else {
++                final org.telegram.tgnet.TLRPC.Chat where =
++                        getMessagesController().getChat(-peerId);
++                if (where != null) {
++                    avatarContainer.setChatAvatar(where);
++                }
++            }
++        } catch (Throwable t) {
++            org.telegram.messenger.FileLog.e(t);
 +        }
 +    }
 +
@@ -13407,7 +13672,7 @@ index 00000000..83d01090
 +    }
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java
-index 40634647..6dec8914 100644
+index 40634647..4acbc698 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java
 @@ -626,6 +626,30 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
@@ -13496,16 +13761,22 @@ index 40634647..6dec8914 100644
                  if (hasEmoji) {
                      final float loadedScale = emojiLoadedT.set(isEmojiLoaded());
                      boolean shoudIgnore = openAnimationInProgress && playProfileAnimation == 2;
-@@ -4536,6 +4601,19 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -4536,6 +4601,25 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                  presentFragment(new PrivacySettingsActivity().setCurrentPassword(currentPassword));
              } else if (position == dataRow) {
                  presentFragment(new DataSettingsActivity());
 +            } else if (margeletBadgesStartRow != -1 && position >= margeletBadgesStartRow && position < margeletBadgesEndRow) {
 +                org.telegram.margelet.MargeletBadge.show(getContext(), margeletBadgeAt(position));
 +            } else if (position == margeletWallRow) {
-+                final TLRPC.User who = getMessagesController().getUser(userId);
-+                MargeletWallActivity.open(ProfileActivity.this, userId,
-+                        who != null ? UserObject.getFirstName(who) : "");
++                if (userId != 0) {
++                    final TLRPC.User who = getMessagesController().getUser(userId);
++                    MargeletWallActivity.open(ProfileActivity.this, userId,
++                            who != null ? UserObject.getFirstName(who) : "");
++                } else {
++                    final TLRPC.Chat where = getMessagesController().getChat(chatId);
++                    MargeletWallActivity.open(ProfileActivity.this, -chatId,
++                            where != null ? where.title : "");
++                }
 +            } else if (position == margeletIdRow) {
 +                // Нажатие копирует айди: строка нужна ровно для этого.
 +                AndroidUtilities.addToClipboard(String.valueOf(userId != 0 ? userId : chatId));
@@ -13516,7 +13787,7 @@ index 40634647..6dec8914 100644
              } else if (position == chatRow) {
                  presentFragment(new ThemeActivity(ThemeActivity.THEME_TYPE_BASIC));
              } else if (position == filtersRow) {
-@@ -10469,6 +10547,12 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -10469,6 +10553,12 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
          settingsSectionRow2 = -1;
          notificationRow = -1;
          languageRow = -1;
@@ -13529,7 +13800,7 @@ index 40634647..6dec8914 100644
          premiumRow = -1;
          starsRow = -1;
          tonRow = -1;
-@@ -10638,6 +10722,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -10638,6 +10728,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                  }
  
                  settingsSectionRow2 = rowCount++;
@@ -13537,14 +13808,16 @@ index 40634647..6dec8914 100644
                  chatRow = rowCount++;
                  privacyRow = rowCount++;
                  notificationRow = rowCount++;
-@@ -10733,9 +10818,25 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -10733,9 +10824,27 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                  if (isBot && user != null && user.bot_has_main_app) {
                      botAppRow = rowCount++;
                  }
 +                if (org.telegram.margelet.MargeletConfig.showIds() && userId != 0) {
 +                    margeletIdRow = rowCount++;
 +                }
-+                if (org.telegram.margelet.MargeletConfig.wallEnabled() && userId != 0 && !isBot) {
++                if (org.telegram.margelet.MargeletConfig.wallEnabled() && userId != 0) {
++                    // И у ботов тоже. Бот обманывает ровно так же, как человек,
++                    // а жаловаться на него было некуда.
 +                    margeletWallRow = rowCount++;
 +                }
                  infoEndRow = rowCount - 1;
@@ -13563,12 +13836,15 @@ index 40634647..6dec8914 100644
                  if (user != null && user.linked_community_id != 0) {
                      linkedCommunityRow = rowCount++;
                      linkedCommunityDividerRow = rowCount++;
-@@ -10885,9 +10986,19 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -10885,9 +10994,22 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                  }
                  notificationsRow = rowCount++;
              }
 +            if (org.telegram.margelet.MargeletConfig.showIds() && chatId != 0) {
 +                margeletIdRow = rowCount++;
++            }
++            if (org.telegram.margelet.MargeletConfig.wallEnabled() && chatId != 0) {
++                margeletWallRow = rowCount++;
 +            }
              if (rowCount > 0) {
                  infoSectionRow = rowCount++;
@@ -13583,7 +13859,7 @@ index 40634647..6dec8914 100644
  
              if (currentChat != null && currentChat.linked_community_id != 0) {
                  linkedCommunityRow = rowCount++;
-@@ -11420,7 +11531,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -11420,7 +11542,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                      nameTextView[a].setRightDrawable2(titleTextView.getRightDrawable2());
                  } else if (a == 0 && user.id != getUserConfig().getClientUserId() && !MessagesController.isSupportUser(user) && user.phone != null && user.phone.length() != 0 && getContactsController().contactsDict.get(user.id) == null &&
                          (getContactsController().contactsDict.size() != 0 || !getContactsController().isLoadingContacts())) {
@@ -13592,7 +13868,7 @@ index 40634647..6dec8914 100644
                  } else {
                      nameTextView[a].setText(newString);
                  }
-@@ -11459,9 +11570,23 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -11459,9 +11581,23 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                      } else if (getMessagesController().isDialogMuted(dialogId != 0 ? dialogId : userId, topicId)) {
                          nameTextView[a].setRightDrawable2(getThemedDrawable(Theme.key_drawable_muteIconDrawable));
                          nameTextViewRightDrawable2ContentDescription = LocaleController.getString(R.string.NotificationsMuted);
@@ -13616,7 +13892,7 @@ index 40634647..6dec8914 100644
                      }
                      if (user != null/* && !getMessagesController().premiumFeaturesBlocked()*/ && !MessagesController.isSupportUser(user) && DialogObject.getEmojiStatusDocumentId(user.emoji_status) != 0) {
                          rightIconIsStatus = true;
-@@ -11482,8 +11607,18 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -11482,8 +11618,18 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                          nameTextView[a].setRightDrawable2(getScamDrawable(user.scam ? 0 : 1));
                      } else if (user.verified) {
                          nameTextView[a].setRightDrawable2(getVerifiedCrossfadeDrawable(a));
@@ -13635,7 +13911,7 @@ index 40634647..6dec8914 100644
                      }
                      if (/*!getMessagesController().premiumFeaturesBlocked() && */user != null && !MessagesController.isSupportUser(user) && DialogObject.getEmojiStatusDocumentId(user.emoji_status) != 0) {
                          rightIconIsStatus = true;
-@@ -11775,6 +11910,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -11775,6 +11921,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                      } else if (chat.verified) {
                          nameTextView[a].setRightDrawable2(getVerifiedCrossfadeDrawable(a));
                          nameTextViewRightDrawableContentDescription = LocaleController.getString(R.string.AccDescrVerified);
@@ -13649,7 +13925,7 @@ index 40634647..6dec8914 100644
                      } else {
                          nameTextView[a].setRightDrawable2(null);
                          nameTextViewRightDrawableContentDescription = null;
-@@ -11805,6 +11947,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -11805,6 +11958,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                          nameTextView[a].setRightDrawable2(getVerifiedCrossfadeDrawable(a));
                      } else if (getMessagesController().isDialogMuted(-chatId, topicId)) {
                          nameTextView[a].setRightDrawable2(getThemedDrawable(Theme.key_drawable_muteIconDrawable));
@@ -13660,7 +13936,7 @@ index 40634647..6dec8914 100644
                      } else {
                          nameTextView[a].setRightDrawable2(null);
                      }
-@@ -13456,7 +13602,28 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -13456,7 +13613,28 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                      TextDetailCell detailCell = (TextDetailCell) holder.itemView;
                      boolean containsQr = false;
                      boolean containsGift = false;
@@ -13690,7 +13966,7 @@ index 40634647..6dec8914 100644
                          TLRPC.UserFull userFull = getMessagesController().getUserFull(userId);
                          if (userFull != null && userFull.birthday != null) {
                              final boolean today = BirthdayController.isToday(userFull);
-@@ -13491,7 +13658,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -13491,7 +13669,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                              text = PhoneFormat.getInstance().format("+" + vcardPhone);
                              phoneNumber = vcardPhone;
                          } else if (user != null && !TextUtils.isEmpty(user.phone)) {
@@ -13699,7 +13975,7 @@ index 40634647..6dec8914 100644
                              phoneNumber = user.phone;
                          } else {
                              text = LocaleController.getString(R.string.PhoneHidden);
-@@ -13585,7 +13752,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -13585,7 +13763,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                          TLRPC.User user = UserConfig.getInstance(currentAccount).getCurrentUser();
                          String value;
                          if (user != null && user.phone != null && user.phone.length() != 0) {
@@ -13708,7 +13984,7 @@ index 40634647..6dec8914 100644
                          } else {
                              value = LocaleController.getString(R.string.NumberUnknown);
                          }
-@@ -13610,13 +13777,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -13610,13 +13788,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                              if (username == null || TextUtils.isEmpty(username)) {
                                  text = LocaleController.getString(R.string.UsernameEmpty);
                              } else {
@@ -13724,7 +14000,7 @@ index 40634647..6dec8914 100644
                              } else {
                                  text = LocaleController.getString(R.string.UsernameEmpty);
                              }
-@@ -13624,7 +13791,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -13624,7 +13802,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                          detailCell.setTextAndValue(text, value, true);
                          detailCell.setContentDescriptionValueFirst(true);
                      }
@@ -13739,7 +14015,7 @@ index 40634647..6dec8914 100644
                          Drawable drawable = ContextCompat.getDrawable(detailCell.getContext(), R.drawable.msg_input_gift);
                          drawable.setColorFilter(new PorterDuffColorFilter(dontApplyPeerColor(getThemedColor(Theme.key_switch2TrackChecked), false), PorterDuff.Mode.MULTIPLY));
                          if (UserObject.areGiftsDisabled(userInfo)) {
-@@ -13839,6 +14012,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -13839,6 +14023,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                          textCell.setTextAndIcon(LocaleController.getString(R.string.PrivacySettings), R.drawable.msg2_secret, true);
                      } else if (position == dataRow) {
                          textCell.setTextAndIcon(LocaleController.getString(R.string.DataSettings), R.drawable.msg2_data, true);
@@ -13748,7 +14024,7 @@ index 40634647..6dec8914 100644
                      } else if (position == chatRow) {
                          textCell.setTextAndIcon(LocaleController.getString(R.string.ChatSettings), R.drawable.msg2_discussion, true);
                      } else if (position == filtersRow) {
-@@ -14286,7 +14461,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -14286,7 +14472,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                          position == clearLogsRow || position == switchBackendRow || position == setAvatarRow ||
                          position == addToGroupButtonRow || position == premiumRow || position == premiumGiftingRow ||
                          position == businessRow || position == liteModeRow || position == birthdayRow || position == channelRow ||
@@ -13759,7 +14035,7 @@ index 40634647..6dec8914 100644
              }
              if (holder.itemView instanceof UserCell) {
                  UserCell userCell = (UserCell) holder.itemView;
-@@ -14314,7 +14491,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -14314,7 +14502,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
              if (position == infoHeaderRow || position == membersHeaderRow || position == settingsSectionRow2 ||
                      position == numberSectionRow || position == helpHeaderRow || position == debugHeaderRow || position == botPermissionsHeader) {
                  return VIEW_TYPE_HEADER;
@@ -13769,7 +14045,7 @@ index 40634647..6dec8914 100644
                  return VIEW_TYPE_TEXT_DETAIL;
              } else if (position == usernameRow || position == setUsernameRow) {
                  return VIEW_TYPE_TEXT_DETAIL_MULTILINE;
-@@ -14332,7 +14510,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -14332,7 +14521,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                      position == clearLogsRow || position == switchBackendRow || position == setAvatarRow || position == addToGroupButtonRow ||
                      position == addToContactsRow || position == liteModeRow || position == premiumGiftingRow || position == businessRow ||
                      position == botStarsBalanceRow || position == botTonBalanceRow || position == channelBalanceRow || position == botPermissionLocation ||
@@ -13779,7 +14055,7 @@ index 40634647..6dec8914 100644
              ) {
                  return VIEW_TYPE_TEXT;
              } else if (position == notificationsDividerRow) {
-@@ -14346,7 +14525,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -14346,7 +14536,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                      position == helpSectionCell || position == setAvatarSectionRow || position == passwordSuggestionSectionRow ||
                      position == phoneSuggestionSectionRow || position == premiumSectionsRow || position == reportDividerRow ||
                      position == channelDividerRow || position == graceSuggestionSectionRow || position == balanceDividerRow ||
@@ -22199,7 +22475,7 @@ index 03d0ba33..17f98fa6 100644
      <string name="English">Inglês</string>
      <string name="LanguageNameInEnglish">Portuguese (Brazil)</string>
 diff --git a/TMessagesProj/src/main/res/values-ru/strings.xml b/TMessagesProj/src/main/res/values-ru/strings.xml
-index 24c56292..6081210b 100644
+index 24c56292..90474ab9 100644
 --- a/TMessagesProj/src/main/res/values-ru/strings.xml
 +++ b/TMessagesProj/src/main/res/values-ru/strings.xml
 @@ -1,7 +1,7 @@
@@ -22212,7 +22488,7 @@ index 24c56292..6081210b 100644
      <string name="LanguageName">Русский</string>
      <string name="English">Английский</string>
      <string name="LanguageNameInEnglish">Russian</string>
-@@ -263,4 +263,245 @@
+@@ -263,4 +263,246 @@
      <string name="RemindTodayAt">\'Отправить сегодня в\' HH:mm</string>
      <string name="RemindDayAt">\'Отправить\' d MMM \'в\' HH:mm</string>
      <string name="RemindDayYearAt">\'Напомнить\' d MMM yyyy \'в\' HH:mm</string>
@@ -22233,7 +22509,7 @@ index 24c56292..6081210b 100644
 +    <string name="MargeletUpdatesOff">Никогда</string>
 +    <string name="MargeletUpdatesAbout">Приложение спрашивает гитхаб, не вышла ли версия новее и не изменился ли список значков. Новую версию предлагает полоской внизу списка чатов; само ничего не качает и не ставит.</string>
 +    <string name="MargeletUpdatesNow">Проверить сейчас</string>
-+    <string name="MargeletVersionLabel">Пререлиз 1.0.6</string>
++    <string name="MargeletVersionLabel">Пререлиз 1.0.7</string>
 +    <string name="MargeletWall">Стена</string>
 +    <string name="MargeletWallOf">Стена %1$s</string>
 +    <string name="MargeletWallSubtitle">что написали другие</string>
@@ -22405,6 +22681,7 @@ index 24c56292..6081210b 100644
 +    <string name="MargeletStoreAbout">Плагины из канала @margelet_marps. Выкладывает туда только автор форка, и то, что выложил, он смотрел сам. Окно установки всё равно покажет, что плагин просит, — прочитай.</string>
 +    <string name="MargeletStoreEmpty">В канале пока пусто.</string>
 +    <string name="MargeletStoreFailed">Не удалось прочитать канал. Дело в связи, а не в том, что там пусто.</string>
++    <string name="MargeletStoreInstalled">Уже установлено, версия %1$s</string>
 +    <string name="MargeletStoreNoFile">Не удалось скачать этот плагин. Попробуй, когда связь вернётся.</string>
 +    <string name="MargeletStoreOpenChannel">Открыть канал</string>
 +    <string name="MargeletPluginsInfo">Свой код внутри форка</string>
@@ -22475,10 +22752,10 @@ index d4683443..57d10109 100644
      <string name="LanguageNameInEnglish">Ukrainian</string>
 diff --git a/TMessagesProj/src/main/res/values-zh/strings.xml b/TMessagesProj/src/main/res/values-zh/strings.xml
 new file mode 100644
-index 00000000..4a9c0361
+index 00000000..bd9686ab
 --- /dev/null
 +++ b/TMessagesProj/src/main/res/values-zh/strings.xml
-@@ -0,0 +1,244 @@
+@@ -0,0 +1,245 @@
 +<?xml version="1.0" encoding="utf-8"?>
 +<resources>
 +    <string name="MargeletSettings">分支设置</string>
@@ -22498,7 +22775,7 @@ index 00000000..4a9c0361
 +    <string name="MargeletUpdatesOff">从不</string>
 +    <string name="MargeletUpdatesAbout">应用会去 GitHub 问有没有更新的版本、徽章列表有没有变化。新版本会在聊天列表底部用一条横幅提示；应用不会自行下载或安装。</string>
 +    <string name="MargeletUpdatesNow">立即检查</string>
-+    <string name="MargeletVersionLabel">预发布 1.0.6</string>
++    <string name="MargeletVersionLabel">预发布 1.0.7</string>
 +    <string name="MargeletWall">留言墙</string>
 +    <string name="MargeletWallOf">%1$s 的留言墙</string>
 +    <string name="MargeletWallSubtitle">别人写下的内容</string>
@@ -22670,6 +22947,7 @@ index 00000000..4a9c0361
 +    <string name="MargeletStoreAbout">来自 @margelet_marps 频道的插件。只有本分支的作者往那里发，发之前他自己看过。安装窗口仍然会告诉你每个插件要什么——读一读。</string>
 +    <string name="MargeletStoreEmpty">频道里还什么都没有。</string>
 +    <string name="MargeletStoreFailed">没能读取那个频道。问题出在网络，不是频道里没东西。</string>
++    <string name="MargeletStoreInstalled">已安装，版本 %1$s</string>
 +    <string name="MargeletStoreNoFile">没能下载这个插件。等网络恢复了再试。</string>
 +    <string name="MargeletStoreOpenChannel">打开频道</string>
 +    <string name="MargeletPluginsInfo">分支里你自己的代码</string>
@@ -22740,7 +23018,7 @@ index cc49d135..a8a51c3a 100644
      <item name="menu_regular" type="id"/>
      <item name="menu_bold" type="id"/>
 diff --git a/TMessagesProj/src/main/res/values/strings.xml b/TMessagesProj/src/main/res/values/strings.xml
-index ffa4d566..a7eaafd6 100644
+index ffa4d566..ad0dc313 100644
 --- a/TMessagesProj/src/main/res/values/strings.xml
 +++ b/TMessagesProj/src/main/res/values/strings.xml
 @@ -1,7 +1,7 @@
@@ -22753,7 +23031,7 @@ index ffa4d566..a7eaafd6 100644
      <string name="LanguageName">English</string>
      <string name="English">English</string>
      <string name="LanguageNameInEnglish">English</string>
-@@ -11221,4 +11221,245 @@
+@@ -11221,4 +11221,246 @@
      <string name="UnsupportedMessageTitle">Unsupported Message</string>
      <string name="UnsupportedMessageMessage">Update Telegram to view this message</string>
      <string name="UnsupportedUpdate">Update</string>
@@ -22774,7 +23052,7 @@ index ffa4d566..a7eaafd6 100644
 +    <string name="MargeletUpdatesOff">Never</string>
 +    <string name="MargeletUpdatesAbout">The app asks GitHub whether a newer version is out and whether the badge list has changed. A new version is offered in a bar at the bottom of the chat list; nothing is downloaded or installed on its own.</string>
 +    <string name="MargeletUpdatesNow">Check now</string>
-+    <string name="MargeletVersionLabel">Prerelease 1.0.6</string>
++    <string name="MargeletVersionLabel">Prerelease 1.0.7</string>
 +    <string name="MargeletWall">Wall</string>
 +    <string name="MargeletWallOf">%1$s\'s wall</string>
 +    <string name="MargeletWallSubtitle">what other people wrote</string>
@@ -22946,6 +23224,7 @@ index ffa4d566..a7eaafd6 100644
 +    <string name="MargeletStoreAbout">Plugins from the @margelet_marps channel. Only the fork\'s author posts there, and he looks at what he posts. The install dialog still shows you what each one asks for — read it.</string>
 +    <string name="MargeletStoreEmpty">Nothing in the channel yet.</string>
 +    <string name="MargeletStoreFailed">Could not read the channel. It is the connection, not an empty channel.</string>
++    <string name="MargeletStoreInstalled">Installed, version %1$s</string>
 +    <string name="MargeletStoreNoFile">Could not download this plugin. Try again when the connection is back.</string>
 +    <string name="MargeletStoreOpenChannel">Open the channel</string>
 +    <string name="MargeletPluginsInfo">Your own code inside the fork</string>
@@ -34104,7 +34383,7 @@ index 528fd746..8b64b0f8 100644
  }
  repositories {
 diff --git a/gradle.properties b/gradle.properties
-index 83408dc5..aa8ba1a0 100644
+index 83408dc5..4be9406a 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -13,9 +13,9 @@
@@ -34112,7 +34391,7 @@ index 83408dc5..aa8ba1a0 100644
  # org.gradle.parallel=true
  #Sat Mar 12 05:53:50 MSK 2016
 -APP_VERSION_CODE=7031
-+APP_VERSION_CODE=7042
++APP_VERSION_CODE=7043
  APP_VERSION_NAME=12.10.0
 -APP_PACKAGE=org.telegram.messenger
 +APP_PACKAGE=cat.narezany.margelet

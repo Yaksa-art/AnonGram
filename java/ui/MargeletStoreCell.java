@@ -11,6 +11,7 @@ import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.TextView;
 
+import org.telegram.margelet.MargeletPlugins;
 import org.telegram.margelet.MargeletStore;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.LocaleController;
@@ -98,7 +99,13 @@ public class MargeletStoreCell extends FrameLayout implements Theme.Colorable {
             return;
         }
         titleView.setText(item.name);
+        final boolean have = installed(item) != null;
         subtitleView.setText(subtitleOf(item));
+        subtitleView.setTextColor(Theme.getColor(have
+                ? Theme.key_windowBackgroundWhiteGreenText
+                : Theme.key_windowBackgroundWhiteGrayText2));
+        // У стоящего плагина стрелка «принести» не к месту: приносить нечего.
+        arrowView.setImageResource(have ? R.drawable.msg_check_s : R.drawable.msg_download);
         final String letter = item.name.isEmpty() ? "?" : item.name.substring(0, 1).toUpperCase();
         plateView.setText(letter);
         plateView.setBackground(Theme.createRoundRectDrawable(dp(10), colorOf(item.name)));
@@ -107,16 +114,44 @@ public class MargeletStoreCell extends FrameLayout implements Theme.Colorable {
     /**
      * Что написать под именем.
      *
-     * Подпись автора, если она есть, — она и есть описание. Нет подписи —
-     * пишем размер и дату: сказать «нет описания» значит занять строку ничем.
+     * Сначала — стоит ли он уже. Это первое, что человек хочет знать, глядя на
+     * список: описание он прочитает в окне установки, а «у меня это уже есть»
+     * должно быть видно сразу, не открывая ничего.
+     *
+     * Какая версия лежит в канале, отсюда не узнать: она внутри архива, а
+     * качать архив ради строчки списка — значит качать весь канал. Поэтому
+     * говорим то, что знаем точно: что стоит у нас. Сравнит версии окно
+     * установки, когда файл будет на руках.
      */
     private String subtitleOf(MargeletStore.Item item) {
+        final MargeletPlugins.Plugin mine = installed(item);
+        if (mine != null) {
+            return LocaleController.formatString(R.string.MargeletStoreInstalled, mine.version);
+        }
         final String about = item.about == null ? "" : item.about.replace('\n', ' ').trim();
         if (!about.isEmpty()) {
             return about;
         }
         return AndroidUtilities.formatFileSize(item.size) + " · "
                 + LocaleController.formatDateAudio(item.date, true);
+    }
+
+    /**
+     * Стоит ли уже такой плагин.
+     *
+     * Сличаем по имени: номера плагина у файла в канале нет, он лежит внутри
+     * архива. Имя файла — единственное, что видно снаружи.
+     */
+    private MargeletPlugins.Plugin installed(MargeletStore.Item item) {
+        if (item.name == null || item.name.isEmpty()) {
+            return null;
+        }
+        for (MargeletPlugins.Plugin plugin : MargeletPlugins.installed()) {
+            if (plugin.name != null && plugin.name.equalsIgnoreCase(item.name)) {
+                return plugin;
+            }
+        }
+        return null;
     }
 
     /** Цвет плашки из имени: не случайный, значит всегда один и тот же. */

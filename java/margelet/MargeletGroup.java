@@ -39,7 +39,10 @@ public class MargeletGroup {
 
     /** Метка стены. Номер — того, О КОМ пишут, а не того, кто пишет. */
     public static String tagWall(long peerId) {
-        return "#margy_wall_" + peerId;
+        // У каналов и групп номер отрицательный, а минус в хэштег не входит —
+        // телеграм оборвал бы метку на нём, и стена канала слилась бы со
+        // стеной человека с тем же числом. Поэтому им отдельная буква.
+        return peerId >= 0 ? "#margy_wall_" + peerId : "#margy_wall_c" + (-peerId);
     }
 
     private static long groupId;
@@ -173,7 +176,7 @@ public class MargeletGroup {
 
     private static final String TAG_PREFIX = "#margy_";
     private static final java.util.regex.Pattern TAGS =
-            java.util.regex.Pattern.compile("#margy_(wall_\\d+|banner)\\b");
+            java.util.regex.Pattern.compile("#margy_(wall_c?\\d+|banner)\\b");
 
     /**
      * Оставить из списка только сообщения этой стены.
@@ -192,6 +195,91 @@ public class MargeletGroup {
                     && hasTag(message.messageOwner, tag)) {
                 out.add(message);
             }
+        }
+        return out;
+    }
+
+    /**
+     * Вырезать служебные метки из самого сообщения — вместе с разметкой.
+     *
+     * Вырезать только из текста было мало, и это вылезло сразу: отсчёты
+     * разметки остались прежними, а текст стал короче, поэтому «хэштежность»
+     * съезжала на соседние слова. Человек видел цветной кликабельный кусок,
+     * который никуда не ведёт. Правим то и другое разом, здесь, до того как
+     * из сообщения соберут показ.
+     *
+     * Само сообщение на сервере не меняется: правим свою копию в памяти.
+     */
+    public static void cutTags(TLRPC.Message message) {
+        if (message == null || message.message == null
+                || message.message.indexOf(TAG_PREFIX) < 0) {
+            return;
+        }
+        final java.util.regex.Matcher at = TAGS.matcher(message.message);
+        final java.util.List<int[]> cuts = new ArrayList<>();
+        while (at.find()) {
+            int to = at.end();
+            // Съедаем пробелы и перевод строки следом: иначе отзыв начинался
+            // бы с пустой строки там, где метка стояла отдельно.
+            while (to < message.message.length()
+                    && (message.message.charAt(to) == '\n' || message.message.charAt(to) == ' ')) {
+                to++;
+            }
+            cuts.add(new int[]{at.start(), to});
+        }
+        if (cuts.isEmpty()) {
+            return;
+        }
+        final StringBuilder text = new StringBuilder(message.message);
+        for (int i = cuts.size() - 1; i >= 0; i--) {
+            text.delete(cuts.get(i)[0], cuts.get(i)[1]);
+        }
+        message.message = text.toString();
+        message.entities = shift(message.entities, cuts);
+    }
+
+    /**
+     * Переносит разметку через вырезанные куски.
+     *
+     * Отсчёты считаем от конца к началу — так каждый следующий вырез не
+     * сдвигает те, что ещё не обработаны. Разметку, целиком попавшую в
+     * вырезанное, выбрасываем: она относилась к тому, чего больше нет.
+     */
+    private static ArrayList<TLRPC.MessageEntity> shift(
+            ArrayList<TLRPC.MessageEntity> entities, java.util.List<int[]> cuts) {
+        if (entities == null || entities.isEmpty()) {
+            return entities;
+        }
+        final ArrayList<TLRPC.MessageEntity> out = new ArrayList<>();
+        for (TLRPC.MessageEntity entity : entities) {
+            int from = entity.offset;
+            int to = entity.offset + entity.length;
+            boolean gone = false;
+            for (int i = cuts.size() - 1; i >= 0; i--) {
+                final int cutFrom = cuts.get(i)[0];
+                final int cutTo = cuts.get(i)[1];
+                if (from >= cutFrom && to <= cutTo) {
+                    gone = true;      // разметка была на самой метке
+                    break;
+                }
+                final int size = cutTo - cutFrom;
+                if (from >= cutTo) {
+                    from -= size;
+                    to -= size;
+                } else if (to > cutFrom) {
+                    // Пересеклись частично: оставляем то, что уцелело.
+                    to -= Math.min(size, to - cutFrom);
+                    if (from > cutFrom) {
+                        from = cutFrom;
+                    }
+                }
+            }
+            if (gone || to <= from) {
+                continue;
+            }
+            entity.offset = from;
+            entity.length = to - from;
+            out.add(entity);
         }
         return out;
     }
