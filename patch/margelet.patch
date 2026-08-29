@@ -45,10 +45,10 @@ index 7cc3a8e3..90805001 100644
              buildConfigField "String", "APP_CENTER_HASH", "\"\""
              buildConfigField "String", "BETA_URL", "\"" + getProps("BETA_PRIVATE_URL") + "\""
 diff --git a/TMessagesProj/proguard-rules.pro b/TMessagesProj/proguard-rules.pro
-index aeab02b2..0b6688fb 100644
+index aeab02b2..e0279334 100644
 --- a/TMessagesProj/proguard-rules.pro
 +++ b/TMessagesProj/proguard-rules.pro
-@@ -111,6 +111,28 @@
+@@ -111,6 +111,32 @@
  -keep class ru.noties.jlatexmath.** { *; }
  -dontwarn org.scilab.forge.jlatexmath.**
  
@@ -70,6 +70,10 @@ index aeab02b2..0b6688fb 100644
 +-keep class de.robv.android.xposed.** { *; }
 +-keep class top.canyie.pine.** { *; }
 +-keep class org.telegram.margelet.MargeletHookEngine { *; }
++# Интерфейс обработчика хуков: питон подставляет под него свой объект
++# по имени. Переименует R8 его методы — плагин соберётся, поставится
++# и не сработает, ровно как было с абстрактным классом.
++-keep interface org.telegram.margelet.MargeletHookCall { *; }
 +-dontwarn top.canyie.pine.**
 +-keep class com.chaquo.python.** { *; }
 +-dontwarn com.chaquo.python.**
@@ -1560,7 +1564,7 @@ index 00000000..a775cdbc
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
 new file mode 100644
-index 00000000..419a867a
+index 00000000..617744c0
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
 @@ -0,0 +1,446 @@
@@ -1606,7 +1610,7 @@ index 00000000..419a867a
 +     * 0.99, а не 1.0, нарочно: настоящая единица должна остаться свободной
 +     * под настоящий выпуск, а пререлиз обязан быть строго меньше её.
 +     */
-+    public static final String APP_VERSION = "0.99.4";
++    public static final String APP_VERSION = "0.99.5";
 +
 +    /** Как выпуск называется для человека: «Пререлиз 1.0», «Бета 1.1». */
 +    public static String versionLabel() {
@@ -2872,10 +2876,10 @@ index 00000000..33ff716b
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletGroup.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletGroup.java
 new file mode 100644
-index 00000000..78bc7fe5
+index 00000000..56de1012
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletGroup.java
-@@ -0,0 +1,515 @@
+@@ -0,0 +1,536 @@
 +package org.telegram.margelet;
 +
 +import org.telegram.messenger.AccountInstance;
@@ -3052,6 +3056,27 @@ index 00000000..78bc7fe5
 +    private static final String TAG_PREFIX = "#margy_";
 +    private static final java.util.regex.Pattern TAGS =
 +            java.util.regex.Pattern.compile("#margy_(wall_\\d+|banner)\\b");
++
++    /**
++     * Оставить из списка только сообщения этой стены.
++     *
++     * Пустая метка — значит это обычная переписка, и трогать нечего: возвращаем
++     * тот же список, ничего не копируя.
++     */
++    public static java.util.ArrayList<MessageObject> onlyWall(
++            java.util.ArrayList<MessageObject> messages, String tag) {
++        if (tag == null || tag.length() == 0 || messages == null || messages.isEmpty()) {
++            return messages;
++        }
++        final java.util.ArrayList<MessageObject> out = new java.util.ArrayList<>();
++        for (MessageObject message : messages) {
++            if (message != null && message.messageOwner != null
++                    && hasTag(message.messageOwner, tag)) {
++                out.add(message);
++            }
++        }
++        return out;
++    }
 +
 +    /** Пишем ли мы сейчас на чью-то стену. */
 +    public static boolean writing() {
@@ -3391,12 +3416,45 @@ index 00000000..78bc7fe5
 +        return MargeletLinks.clean(text, hidden);
 +    }
 +}
+diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletHookCall.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletHookCall.java
+new file mode 100644
+index 00000000..3a37575e
+--- /dev/null
++++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletHookCall.java
+@@ -0,0 +1,27 @@
++package org.telegram.margelet;
++
++import de.robv.android.xposed.XC_MethodHook;
++
++/**
++ * Обработчик подмены со стороны питона.
++ *
++ * Интерфейс, а не наследник {@link XC_MethodHook}, — и это не украшение.
++ * Мост питона умеет подставлять свои объекты только под интерфейсы java;
++ * абстрактный класс он не берёт и падает с «is not a Java interface». Из-за
++ * этого margelet.hook не выполнялся ни разу с самого выпуска: код был, окно
++ * настроек было, а первый же плагин, который им воспользовался, получил
++ * ошибку. Нашёл это не я, а автор чужого плагина.
++ *
++ * Отсюда правило, уже записанное кровью один раз: у каждой новой возможности
++ * должно быть хоть что-то, что ею пользуется. Пример плагина зовёт хуки — но
++ * зовёт из питона только с этой версии, а до неё проверялось всё, кроме той
++ * единственной строки, где питон встречается с java.
++ */
++public interface MargeletHookCall {
++
++    /** До вызова. Можно поменять доводы или решить за метод. */
++    void before(XC_MethodHook.MethodHookParam param);
++
++    /** После вызова. Можно подменить ответ. */
++    void after(XC_MethodHook.MethodHookParam param);
++}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletHookEngine.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletHookEngine.java
 new file mode 100644
-index 00000000..8e6c7354
+index 00000000..0b8ac254
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletHookEngine.java
-@@ -0,0 +1,125 @@
+@@ -0,0 +1,173 @@
 +package org.telegram.margelet;
 +
 +import android.content.Context;
@@ -3519,6 +3577,54 @@ index 00000000..8e6c7354
 +                prefs().edit().putBoolean(KEY_TRYING, false).apply();
 +            }
 +        } catch (Throwable ignored) {
++        }
++    }
++
++    /**
++     * Подменить метод обработчиком из питона.
++     *
++     * Всю возню с Xposed-обёрткой делаем здесь, на стороне java: питону
++     * достаётся простой интерфейс с двумя методами, который его мост умеет
++     * подставлять. Раньше питон пытался наследовать абстрактный класс сам — и
++     * не мог, о чём честно сообщал ошибкой, которую никто не читал.
++     *
++     * @param where  имя класса
++     * @param method имя метода
++     * @param args   типы доводов, если метод перегружен; может быть null
++     * @param call   что звать до и после
++     * @return удалось ли подменить
++     */
++    public static boolean hook(String where, String method, Object[] args,
++                               final MargeletHookCall call) {
++        if (call == null || where == null || method == null) {
++            return false;
++        }
++        if (!working()) {
++            MargeletPluginHost.log("хуки", "не работают: " + (enabled()
++                    ? String.valueOf(failure()) : "выключены в настройках"), true);
++            return false;
++        }
++        final de.robv.android.xposed.XC_MethodHook wrap = new de.robv.android.xposed.XC_MethodHook() {
++            @Override
++            protected void beforeHookedMethod(MethodHookParam param) {
++                call.before(param);
++            }
++
++            @Override
++            protected void afterHookedMethod(MethodHookParam param) {
++                call.after(param);
++            }
++        };
++        final Object[] tail = new Object[(args == null ? 0 : args.length) + 1];
++        if (args != null) {
++            System.arraycopy(args, 0, tail, 0, args.length);
++        }
++        tail[tail.length - 1] = wrap;
++        try {
++            return de.robv.android.xposed.XposedHelpers.findAndHookMethod(where, null, method, tail) != null;
++        } catch (Throwable t) {
++            MargeletPluginHost.log("хуки", String.valueOf(t), true);
++            return false;
 +        }
 +    }
 +}
@@ -8326,26 +8432,57 @@ index 95495c32..5d00f2d9 100644
  
          // trim again in case some whitespace inside tags
 diff --git a/TMessagesProj/src/main/java/org/telegram/messenger/MessageObject.java b/TMessagesProj/src/main/java/org/telegram/messenger/MessageObject.java
-index 77870805..cede65be 100644
+index 77870805..06fa5f2a 100644
 --- a/TMessagesProj/src/main/java/org/telegram/messenger/MessageObject.java
 +++ b/TMessagesProj/src/main/java/org/telegram/messenger/MessageObject.java
-@@ -3748,6 +3748,15 @@ public class MessageObject {
+@@ -3529,6 +3529,13 @@ public class MessageObject {
+         if (messageText == null) {
+             messageText = "";
+         }
++        // Служебные метки форка человеку читать незачем: #margy_wall_123 стоит
++        // в сообщении ради поиска, а не ради глаз. Здесь все ветки выше
++        // сходятся в одну — значит, и вырезать надо здесь, а не на экранах:
++        // экранов много, и про один я бы забыл. Так и вышло: в прошлый раз я
++        // поставил это в applyNewText, куда обычное сообщение не заходит,
++        // и метки остались видны.
++        messageText = org.telegram.margelet.MargeletGroup.hideTags(messageText);
+ 
+         TextPaint paint;
+         if (getMedia(messageOwner) instanceof TLRPC.TL_messageMediaGame) {
+@@ -3748,6 +3755,10 @@ public class MessageObject {
      }
  
      public void applyNewText(CharSequence text) {
 +        if (TextUtils.isEmpty(text)) {
 +            return;
 +        }
-+        // Служебные метки форка человеку читать незачем: #margy_wall_123 стоит
-+        // в сообщении ради поиска, а не ради глаз. Прячем их здесь, в
-+        // единственном месте, через которое проходит текст любого сообщения
-+        // перед показом, — иначе пришлось бы вырезать их на каждом экране, и
-+        // где-нибудь я бы забыл.
 +        text = org.telegram.margelet.MargeletGroup.hideTags(text);
          if (TextUtils.isEmpty(text)) {
              return;
          }
-@@ -8053,6 +8062,24 @@ public class MessageObject {
+@@ -6078,6 +6089,10 @@ public class MessageObject {
+         if (messageText == null) {
+             messageText = "";
+         }
++        // И здесь тоже: это второе место, где сходятся ветки разбора текста, а
++        // проходит сообщение то через одно, то через другое. Вырезание дешёвое
++        // — без нашей метки оно сразу возвращает текст как есть.
++        messageText = org.telegram.margelet.MargeletGroup.hideTags(messageText);
+ 
+         isEmbedVideoCached = null;
+         cachedStartsTimestamp = null;
+@@ -7630,6 +7645,10 @@ public class MessageObject {
+             captionTranslated = false;
+         }
+         if (!isMediaEmpty() && !(getMedia(messageOwner) instanceof TLRPC.TL_messageMediaGame) && !TextUtils.isEmpty(text)) {
++            // Метка баннера живёт в подписи к фотографии, а подпись готовится
++            // отдельно от текста. Режем до разбора смайликов и разметки: после
++            // отсчёты уже посчитаны и вырезание их сдвинет.
++            text = String.valueOf(org.telegram.margelet.MargeletGroup.hideTags(text));
+             caption = Emoji.replaceEmoji(text, Theme.chat_msgTextPaint.getFontMetricsInt(), false);
+             caption = replaceAnimatedEmoji(caption, entities, Theme.chat_msgTextPaint.getFontMetricsInt(), false);
+ 
+@@ -8053,6 +8072,24 @@ public class MessageObject {
          }
          text = FormattedDateSpan.restoreFormatedDateEntities(text);
          Spannable spannable = (Spannable) text;
@@ -8768,10 +8905,26 @@ index 7804a161..fddfd674 100644
                      }
                  });
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
-index 6b8cddfe..961a95e4 100644
+index 6b8cddfe..c548b82d 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
-@@ -1199,6 +1199,9 @@ public class ChatActivity extends BaseFragment implements
+@@ -490,6 +490,15 @@ public class ChatActivity extends BaseFragment implements
+     private ChatBigEmptyView bigEmptyView;
+     private ArrayList<View> actionModeViews = new ArrayList<>();
+     public ChatAvatarContainer avatarContainer;
++
++    /**
++     * Метка стены, если этот экран открыт как стена. Пусто — обычная переписка.
++     *
++     * Стена — это и есть обычная переписка, у которой убрано всё чужое: тот же
++     * список, то же поле ввода, то же меню сообщения. Отдельного экрана для неё
++     * нет нарочно; я трижды пробовал сделать свой и трижды получал подделку.
++     */
++    private String margeletWallTag;
+     private AnimatedTextView selectedMessagesCountTextView;
+     private RecyclerListView.OnItemClickListener mentionsOnItemClickListener;
+     private SuggestEmojiView suggestEmojiPanel;
+@@ -1199,6 +1208,9 @@ public class ChatActivity extends BaseFragment implements
      public final static int OPTION_DELETE = 1;
      public final static int OPTION_FORWARD = 2;
      public final static int OPTION_COPY = 3;
@@ -8781,7 +8934,7 @@ index 6b8cddfe..961a95e4 100644
      public final static int OPTION_SAVE_TO_GALLERY = 4;
      public final static int OPTION_APPLY_LOCALIZATION_OR_THEME = 5;
      public final static int OPTION_SHARE = 6;
-@@ -1690,6 +1693,12 @@ public class ChatActivity extends BaseFragment implements
+@@ -1690,6 +1702,12 @@ public class ChatActivity extends BaseFragment implements
  
      private final static int id_chat_compose_panel = 1000;
  
@@ -8794,7 +8947,15 @@ index 6b8cddfe..961a95e4 100644
      RecyclerListView.OnItemLongClickListenerExtended onItemLongClickListener = new RecyclerListView.OnItemLongClickListenerExtended() {
          @Override
          public boolean onItemClick(View view, int position, float x, float y) {
-@@ -3695,6 +3704,11 @@ public class ChatActivity extends BaseFragment implements
+@@ -2666,6 +2684,7 @@ public class ChatActivity extends BaseFragment implements
+ 
+     @Override
+     public boolean onFragmentCreate() {
++        margeletWallTag = arguments.getString("margeletWallTag", null);
+         final long chatId = arguments.getLong("chat_id", 0);
+         final long userId = arguments.getLong("user_id", 0);
+         final int encId = arguments.getInt("enc_id", 0);
+@@ -3695,6 +3714,11 @@ public class ChatActivity extends BaseFragment implements
          actionBar.setActionBarMenuOnItemClick(new ActionBar.ActionBarMenuOnItemClick() {
              @Override
              public void onItemClick(final int id) {
@@ -8806,7 +8967,7 @@ index 6b8cddfe..961a95e4 100644
                  if (id == -1) {
                      if (isInPollAddOptionMode()) {
                          pollAddOptionModeClose();
-@@ -4514,6 +4528,16 @@ public class ChatActivity extends BaseFragment implements
+@@ -4514,6 +4538,16 @@ public class ChatActivity extends BaseFragment implements
              closeTopicItem = headerItem.lazilyAddSubItem(topic_close, R.drawable.msg_topic_close, LocaleController.getString(R.string.CloseTopic));
              closeTopicItem.setVisibility(currentChat != null && ChatObject.canManageTopic(currentAccount, currentChat, forumTopic) && forumTopic != null && !forumTopic.closed ? View.VISIBLE : View.GONE);
          }
@@ -8823,7 +8984,7 @@ index 6b8cddfe..961a95e4 100644
          menu.setVisibility(inMenuMode ? View.GONE : View.VISIBLE);
  
          updateTitle(false);
-@@ -10880,18 +10904,33 @@ public class ChatActivity extends BaseFragment implements
+@@ -10880,18 +10914,33 @@ public class ChatActivity extends BaseFragment implements
      }
  
      private void updatePagedownButtonsPosition() {
@@ -8861,7 +9022,7 @@ index 6b8cddfe..961a95e4 100644
          }
      }
  
-@@ -12018,13 +12057,23 @@ public class ChatActivity extends BaseFragment implements
+@@ -12018,13 +12067,23 @@ public class ChatActivity extends BaseFragment implements
          if (isInsideContainer && parentChatActivity == null) {
              paddingBottom = AndroidUtilities.navigationBarHeight;
          } else {
@@ -8887,7 +9048,7 @@ index 6b8cddfe..961a95e4 100644
          if (topicsTabs != null) {
              topicsTabs.setSideMenuBackgroundMarginTop(0);//Math.max(0, paddingTop - blurredViewTopOffset - dp(5)));
          }
-@@ -19520,7 +19569,7 @@ public class ChatActivity extends BaseFragment implements
+@@ -19520,7 +19579,7 @@ public class ChatActivity extends BaseFragment implements
                  avatarContainer.setTitle(LocaleController.getString(R.string.SavedMessages));
              } else if (!MessagesController.isSupportUser(currentUser) && getContactsController().contactsDict.get(currentUser.id) == null && (getContactsController().contactsDict.size() != 0 || !getContactsController().isLoadingContacts())) {
                  if (!TextUtils.isEmpty(currentUser.phone)) {
@@ -8896,7 +9057,27 @@ index 6b8cddfe..961a95e4 100644
                  } else {
                      avatarContainer.setTitle(AndroidUtilities.removeRTL(AndroidUtilities.removeDiacritics(UserObject.getUserName(currentUser))), currentUser.scam, currentUser.fake, currentUser.verified, getMessagesController().isPremiumUser(currentUser), currentUser.emoji_status, animated);
                  }
-@@ -27588,6 +27637,18 @@ public class ChatActivity extends BaseFragment implements
+@@ -20524,6 +20583,11 @@ public class ChatActivity extends BaseFragment implements
+             postponedScrollToLastMessageQueryIndex = 0;
+         }
+         ArrayList<MessageObject> messArr = (ArrayList<MessageObject>) args[2];
++        // Стена: из принесённого оставляем только помеченное. Отбираем здесь,
++        // на входе, а не при показе: дальше по коду сообщения расходятся по
++        // десятку списков, и вычесть их оттуда потом было бы куда труднее, чем
++        // не положить сюда.
++        messArr = org.telegram.margelet.MargeletGroup.onlyWall(messArr, margeletWallTag);
+ 
+         boolean universalNotify = false;
+         HashMap<Integer, MessageObject> oldMessages = null;
+@@ -21950,6 +22014,7 @@ public class ChatActivity extends BaseFragment implements
+             FileLog.d("ChatActivity didReceiveNewMessages start");
+             long did = (Long) args[0];
+             ArrayList<MessageObject> arr = (ArrayList<MessageObject>) args[1];
++            arr = org.telegram.margelet.MargeletGroup.onlyWall(arr, margeletWallTag);
+             if (isInsideContainer) return;
+             if (did == dialog_id) {
+                 boolean scheduled = (Boolean) args[2];
+@@ -27588,6 +27653,18 @@ public class ChatActivity extends BaseFragment implements
          if (includeSpoilers) {
              menu.add(R.id.menu_groupbolditalic, R.id.menu_spoiler, order++, LocaleController.getString(R.string.Spoiler));
          }
@@ -8915,7 +9096,7 @@ index 6b8cddfe..961a95e4 100644
  
          SpannableStringBuilder stringBuilder = new SpannableStringBuilder(LocaleController.getString(R.string.Bold));
          stringBuilder.setSpan(new TypefaceSpan(AndroidUtilities.bold()), 0, stringBuilder.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-@@ -29727,6 +29788,10 @@ public class ChatActivity extends BaseFragment implements
+@@ -29727,6 +29804,10 @@ public class ChatActivity extends BaseFragment implements
      @Override
      public void onResume() {
          super.onResume();
@@ -8926,7 +9107,7 @@ index 6b8cddfe..961a95e4 100644
          checkShowBlur(false);
          activityResumeTime = System.currentTimeMillis();
          if (openImport && getSendMessagesHelper().getImportingHistory(dialog_id) != null) {
-@@ -33379,6 +33444,19 @@ public class ChatActivity extends BaseFragment implements
+@@ -33379,6 +33460,19 @@ public class ChatActivity extends BaseFragment implements
                  undoView.showWithAction(0, UndoView.ACTION_MESSAGE_COPIED, null);
                  break;
              }
@@ -8946,7 +9127,7 @@ index 6b8cddfe..961a95e4 100644
              case OPTION_SAVE_TO_GALLERY: {
                  if (Build.VERSION.SDK_INT >= 23 && (Build.VERSION.SDK_INT <= 28 || BuildVars.NO_SCOPED_STORAGE) && getParentActivity().checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
                      getParentActivity().requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 4);
-@@ -41614,7 +41692,7 @@ public class ChatActivity extends BaseFragment implements
+@@ -41614,7 +41708,7 @@ public class ChatActivity extends BaseFragment implements
              } else if (BuildVars.isHuaweiStoreApp()) {
                  Browser.openUrl(getContext(), BuildVars.HUAWEI_STORE_URL);
              } else {
@@ -8955,7 +9136,7 @@ index 6b8cddfe..961a95e4 100644
              }
          }
  
-@@ -46097,6 +46175,33 @@ public class ChatActivity extends BaseFragment implements
+@@ -46097,6 +46191,33 @@ public class ChatActivity extends BaseFragment implements
                      }
                  }
  
@@ -11637,7 +11818,7 @@ index 00000000..81c30136
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletProfileActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletProfileActivity.java
 new file mode 100644
-index 00000000..524dd8fd
+index 00000000..0ab9a795
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletProfileActivity.java
 @@ -0,0 +1,147 @@
@@ -11741,8 +11922,8 @@ index 00000000..524dd8fd
 +            listView.adapter.update(true);
 +        } else if (item.id == ID_MY_WALL) {
 +            final long me = UserConfig.getInstance(currentAccount).getClientUserId();
-+            presentFragment(new MargeletWallActivity(me,
-+                    LocaleController.getString(R.string.MargeletWallMine)));
++            MargeletWallActivity.open(this, me,
++                    LocaleController.getString(R.string.MargeletWallMine));
 +        } else if (item.id == ID_GROUP) {
 +            Browser.openUrl(getContext(), "https://t.me/" + MargeletGroup.USERNAME);
 +        }
@@ -13064,27 +13245,22 @@ index 00000000..82162ac5
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletWallActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletWallActivity.java
 new file mode 100644
-index 00000000..43d3812d
+index 00000000..83d01090
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletWallActivity.java
-@@ -0,0 +1,127 @@
+@@ -0,0 +1,129 @@
 +package org.telegram.ui;
 +
 +import android.content.Context;
 +import android.os.Bundle;
-+import android.view.Gravity;
 +import android.view.View;
-+import android.widget.FrameLayout;
 +
 +import org.telegram.margelet.MargeletGroup;
-+import org.telegram.messenger.HashtagSearchController;
++import org.telegram.messenger.AndroidUtilities;
 +import org.telegram.messenger.LocaleController;
 +import org.telegram.messenger.R;
-+import org.telegram.ui.ActionBar.ActionBar;
-+import org.telegram.ui.ActionBar.ActionBarMenuItem;
 +import org.telegram.ui.ActionBar.BaseFragment;
-+import org.telegram.ui.ActionBar.Theme;
-+import org.telegram.ui.Components.LayoutHelper;
++import org.telegram.ui.Components.BulletinFactory;
 +
 +/**
 + * Стена: что о человеке написали другие.
@@ -13094,109 +13270,116 @@ index 00000000..43d3812d
 + * снять не можешь. Поэтому стена и работает против разводил — обманутый
 + * пишет, обманщик не стирает, а видят все.
 + *
-+ * Показывает её сам телеграм. У него есть готовый режим — поиск по метке
-+ * внутри одной группы, тот самый, которым он показывает найденное по хэштегу
-+ * в канале, — и он отдаёт ровно список нужных сообщений, а не всю переписку.
++ * Это обычный экран переписки, у которого убрано всё, кроме сообщений с
++ * меткой этой стены. Не похожий на него, не собранный из его деталей и не
++ * его режим поиска — он сам. Отбор стоит внутри {@link ChatActivity}, на
++ * входе списка сообщений; всё остальное — список, поле ввода, меню
++ * сообщения, реакции — работает ровно так же, как в любой переписке.
 + *
-+ * До этого я трижды подходил не с той стороны: сначала своими карточками,
-+ * потом чужими ячейками на своём экране, потом открывал всю группу с включённой
-+ * строкой поиска — а поиск в переписке не отбирает сообщения, он подсвечивает и
-+ * прыгает по ним. Владелец каждый раз это видел раньше меня. Правильный ход
-+ * был первым же: искать, чем это делает сам телеграм, а не собирать своё из
-+ * его деталей.
++ * Дошло до этого с четвёртого раза. Сначала свои карточки, потом чужие
++ * ячейки на своём экране, потом чужой экран с включённым поиском, который не
++ * отбирает сообщения, а подсвечивает их, потом экран результатов поиска —
++ * список строчек вместо переписки. Каждый раз это выглядело работой, и
++ * каждый раз владелец видел подделку раньше меня. Он же и сказал, как надо:
++ * взять стандартный чат и изменить его.
 + */
-+public class MargeletWallActivity extends BaseFragment {
++public class MargeletWallActivity extends ChatActivity {
 +
-+    /** О ком стена. Метка считается от него, а не от того, кто пишет. */
 +    private final long peerId;
 +    private final String peerName;
 +
-+    private ChatActivityContainer container;
-+
-+    private static final int ID_WRITE = 1;
-+
-+    public MargeletWallActivity(long peerId, String peerName) {
++    private MargeletWallActivity(Bundle args, long peerId, String peerName) {
++        super(args);
 +        this.peerId = peerId;
 +        this.peerName = peerName == null ? "" : peerName;
 +    }
 +
-+    @Override
-+    public View createView(Context context) {
-+        actionBar.setBackButtonImage(R.drawable.ic_ab_back);
-+        actionBar.setAllowOverlayTitle(true);
-+        actionBar.setTitle(LocaleController.formatString(R.string.MargeletWallOf, peerName));
-+        actionBar.setSubtitle(LocaleController.getString(R.string.MargeletWallSubtitle));
-+        actionBar.setActionBarMenuOnItemClick(new ActionBar.ActionBarMenuOnItemClick() {
-+            @Override
-+            public void onItemClick(int id) {
-+                if (id == -1) {
-+                    finishFragment();
-+                } else if (id == ID_WRITE) {
-+                    write();
-+                }
-+            }
-+        });
-+        final ActionBarMenuItem write = actionBar.createMenu()
-+                .addItem(ID_WRITE, R.drawable.msg_edit);
-+        write.setContentDescription(LocaleController.getString(R.string.MargeletWallWrite));
-+
-+        final FrameLayout root = new FrameLayout(context);
-+        root.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundGray));
-+
-+        // Дальше всё чужое. Свои здесь только доводы: какую метку искать и в
-+        // какой группе. Рисует, листает, показывает реакции и меню сообщения
-+        // сам телеграм — тем же кодом, которым показывает найденное по
-+        // хэштегу в любом канале.
-+        HashtagSearchController.getInstance(currentAccount)
-+                .clearSearchResults(ChatActivity.SEARCH_CHANNEL_POSTS);
-+        final Bundle args = new Bundle();
-+        args.putInt("chatMode", ChatActivity.MODE_SEARCH);
-+        args.putInt("searchType", ChatActivity.SEARCH_CHANNEL_POSTS);
-+        // Метка с «собакой» и именем группы — так этот поиск понимает, что
-+        // искать надо не везде, а в одном месте.
-+        args.putString("searchHashtag",
-+                MargeletGroup.tagWall(peerId) + "@" + MargeletGroup.USERNAME);
-+        container = new ChatActivityContainer(context, getParentLayout(), args);
-+        root.addView(container, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT,
-+                LayoutHelper.MATCH_PARENT, Gravity.FILL));
-+
-+        return fragmentView = root;
-+    }
-+
 +    /**
-+     * Написать на стену.
++     * Открыть чью-то стену.
 +     *
-+     * Экран поиска только показывает — писать в нём нечем, и приделывать к
-+     * нему своё поле ввода значило бы снова подделывать чужой экран. Поэтому
-+     * открываем саму группу: там настоящее поле, а метку допишет отправка,
-+     * пока стена считается открытой. Человеку про метку знать не надо — он её
-+     * даже не увидит, она прячется при показе.
++     * Через статический метод, а не через конструктор: адрес группы сперва
++     * надо выяснить, а это поездка на сервер. Конструктор, умеющий ждать,
++     * обманывает вызывающего — он вернёт экран, который ещё не знает, что
++     * показывать.
 +     */
-+    private void write() {
++    public static void open(BaseFragment from, long peerId, String peerName) {
++        if (from == null || peerId == 0) {
++            return;
++        }
 +        MargeletGroup.resolve(dialogId -> {
 +            if (dialogId == 0) {
-+                org.telegram.ui.Components.BulletinFactory.of(this)
-+                        .createSimpleBulletin(R.raw.error, LocaleController.getString(
-+                                R.string.MargeletGroupUnreachable)).show();
++                BulletinFactory.of(from).createSimpleBulletin(R.raw.error,
++                        LocaleController.getString(R.string.MargeletGroupUnreachable)).show();
 +                return;
 +            }
-+            MargeletGroup.writingTo(peerId);
 +            final Bundle args = new Bundle();
++            // Группа приходит номером переписки — со знаком минус и приставкой
++            // канала; ChatActivity ждёт голый номер чата.
 +            args.putLong("chat_id", -dialogId);
-+            presentFragment(new ChatActivity(args));
++            args.putString("margeletWallTag", MargeletGroup.tagWall(peerId));
++            from.presentFragment(new MargeletWallActivity(args, peerId, peerName));
 +        });
++    }
++
++    @Override
++    public View createView(Context context) {
++        final View view = super.createView(context);
++        // Заголовок свой: имя группы над чужой стеной сбивало бы с толку —
++        // человек пришёл читать про конкретного человека. Меняем только
++        // подпись, сам заголовок остаётся их же.
++        if (avatarContainer != null) {
++            avatarContainer.setTitle(LocaleController.formatString(R.string.MargeletWallOf, peerName));
++            avatarContainer.setSubtitle(LocaleController.getString(R.string.MargeletWallSubtitle));
++        }
++        return view;
++    }
++
++    @Override
++    public boolean onFragmentCreate() {
++        if (!super.onFragmentCreate()) {
++            return false;
++        }
++        // Пока экран открыт, отправка дописывает метку сама. Человек пишет в
++        // обычное поле обычной переписки и про метки ничего не знает — знать
++        // ему и незачем, это наша служебная разметка, а не его забота.
++        MargeletGroup.writingTo(peerId);
++        return true;
++    }
++
++    @Override
++    public void onResume() {
++        super.onResume();
++        MargeletGroup.writingTo(peerId);
++        if (avatarContainer != null) {
++            // Телеграм обновляет подпись сам — например, когда пересчитает
++            // участников. Возвращаем свою после него, а не вместо него.
++            AndroidUtilities.runOnUIThread(() -> {
++                if (avatarContainer != null) {
++                    avatarContainer.setTitle(LocaleController.formatString(
++                            R.string.MargeletWallOf, peerName));
++                    avatarContainer.setSubtitle(LocaleController.getString(
++                            R.string.MargeletWallSubtitle));
++                }
++            }, 200);
++        }
++    }
++
++    @Override
++    public void onPause() {
++        super.onPause();
++        // Ушли с экрана — метку больше не дописываем. Иначе она уехала бы в
++        // соседнюю переписку вместе со следующим же сообщением.
++        MargeletGroup.writingTo(0);
 +    }
 +
 +    @Override
 +    public void onFragmentDestroy() {
-+        // Ушли со стены — метку больше не дописываем. Иначе она уехала бы в
-+        // соседнюю переписку вместе со следующим же сообщением.
 +        MargeletGroup.writingTo(0);
 +        super.onFragmentDestroy();
 +    }
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java
-index 40634647..867afae2 100644
+index 40634647..6dec8914 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java
 @@ -626,6 +626,30 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
@@ -13293,8 +13476,8 @@ index 40634647..867afae2 100644
 +                org.telegram.margelet.MargeletBadge.show(getContext(), margeletBadgeAt(position));
 +            } else if (position == margeletWallRow) {
 +                final TLRPC.User who = getMessagesController().getUser(userId);
-+                presentFragment(new MargeletWallActivity(userId,
-+                        who != null ? UserObject.getFirstName(who) : ""));
++                MargeletWallActivity.open(ProfileActivity.this, userId,
++                        who != null ? UserObject.getFirstName(who) : "");
 +            } else if (position == margeletIdRow) {
 +                // Нажатие копирует айди: строка нужна ровно для этого.
 +                AndroidUtilities.addToClipboard(String.valueOf(userId != 0 ? userId : chatId));
@@ -21988,7 +22171,7 @@ index 03d0ba33..17f98fa6 100644
      <string name="English">Inglês</string>
      <string name="LanguageNameInEnglish">Portuguese (Brazil)</string>
 diff --git a/TMessagesProj/src/main/res/values-ru/strings.xml b/TMessagesProj/src/main/res/values-ru/strings.xml
-index 24c56292..d43536a0 100644
+index 24c56292..199960e4 100644
 --- a/TMessagesProj/src/main/res/values-ru/strings.xml
 +++ b/TMessagesProj/src/main/res/values-ru/strings.xml
 @@ -1,7 +1,7 @@
@@ -22022,7 +22205,7 @@ index 24c56292..d43536a0 100644
 +    <string name="MargeletUpdatesOff">Никогда</string>
 +    <string name="MargeletUpdatesAbout">Приложение спрашивает гитхаб, не вышла ли версия новее и не изменился ли список значков. Новую версию предлагает полоской внизу списка чатов; само ничего не качает и не ставит.</string>
 +    <string name="MargeletUpdatesNow">Проверить сейчас</string>
-+    <string name="MargeletVersionLabel">Пререлиз 1.0.4</string>
++    <string name="MargeletVersionLabel">Пререлиз 1.0.5</string>
 +    <string name="MargeletWall">Стена</string>
 +    <string name="MargeletWallOf">Стена %1$s</string>
 +    <string name="MargeletWallSubtitle">что написали другие</string>
@@ -22262,7 +22445,7 @@ index d4683443..57d10109 100644
      <string name="LanguageNameInEnglish">Ukrainian</string>
 diff --git a/TMessagesProj/src/main/res/values-zh/strings.xml b/TMessagesProj/src/main/res/values-zh/strings.xml
 new file mode 100644
-index 00000000..168436b3
+index 00000000..7ac3286d
 --- /dev/null
 +++ b/TMessagesProj/src/main/res/values-zh/strings.xml
 @@ -0,0 +1,242 @@
@@ -22285,7 +22468,7 @@ index 00000000..168436b3
 +    <string name="MargeletUpdatesOff">从不</string>
 +    <string name="MargeletUpdatesAbout">应用会去 GitHub 问有没有更新的版本、徽章列表有没有变化。新版本会在聊天列表底部用一条横幅提示；应用不会自行下载或安装。</string>
 +    <string name="MargeletUpdatesNow">立即检查</string>
-+    <string name="MargeletVersionLabel">预发布 1.0.4</string>
++    <string name="MargeletVersionLabel">预发布 1.0.5</string>
 +    <string name="MargeletWall">留言墙</string>
 +    <string name="MargeletWallOf">%1$s 的留言墙</string>
 +    <string name="MargeletWallSubtitle">别人写下的内容</string>
@@ -22525,7 +22708,7 @@ index cc49d135..a8a51c3a 100644
      <item name="menu_regular" type="id"/>
      <item name="menu_bold" type="id"/>
 diff --git a/TMessagesProj/src/main/res/values/strings.xml b/TMessagesProj/src/main/res/values/strings.xml
-index ffa4d566..10dba29d 100644
+index ffa4d566..00a2d0c6 100644
 --- a/TMessagesProj/src/main/res/values/strings.xml
 +++ b/TMessagesProj/src/main/res/values/strings.xml
 @@ -1,7 +1,7 @@
@@ -22559,7 +22742,7 @@ index ffa4d566..10dba29d 100644
 +    <string name="MargeletUpdatesOff">Never</string>
 +    <string name="MargeletUpdatesAbout">The app asks GitHub whether a newer version is out and whether the badge list has changed. A new version is offered in a bar at the bottom of the chat list; nothing is downloaded or installed on its own.</string>
 +    <string name="MargeletUpdatesNow">Check now</string>
-+    <string name="MargeletVersionLabel">Prerelease 1.0.4</string>
++    <string name="MargeletVersionLabel">Prerelease 1.0.5</string>
 +    <string name="MargeletWall">Wall</string>
 +    <string name="MargeletWallOf">%1$s\'s wall</string>
 +    <string name="MargeletWallSubtitle">what other people wrote</string>
@@ -23200,10 +23383,10 @@ index 00000000..14308d17
 +    margelet.log("настройка", key, "теперь", value)
 diff --git a/TMessagesProj_AppStandalone/src/main/python/margelet_host.py b/TMessagesProj_AppStandalone/src/main/python/margelet_host.py
 new file mode 100644
-index 00000000..f646beeb
+index 00000000..9e94e27a
 --- /dev/null
 +++ b/TMessagesProj_AppStandalone/src/main/python/margelet_host.py
-@@ -0,0 +1,572 @@
+@@ -0,0 +1,576 @@
 +# -*- coding: utf-8 -*-
 +"""Прослойка между приложением и плагинами Margelet.
 +
@@ -23221,14 +23404,13 @@ index 00000000..f646beeb
 +import sys
 +import traceback
 +
-+from java import dynamic_proxy, jclass
++from java import dynamic_proxy, jarray, jclass
 +from java.lang import Runnable
 +
 +_Host = jclass("org.telegram.margelet.MargeletPluginHost")
 +_Hooks = jclass("org.telegram.margelet.MargeletHooks")
 +_Engine = jclass("org.telegram.margelet.MargeletHookEngine")
-+_Xposed = jclass("de.robv.android.xposed.XposedHelpers")
-+_XHook = jclass("de.robv.android.xposed.XC_MethodHook")
++_HookCall = jclass("org.telegram.margelet.MargeletHookCall")
 +_Fetch = jclass("org.telegram.margelet.MargeletHooks$FetchCallback")
 +_Android = jclass("org.telegram.messenger.AndroidUtilities")
 +
@@ -23401,15 +23583,21 @@ index 00000000..f646beeb
 +
 +        outer = self
 +
-+        class Hook(dynamic_proxy(_XHook)):
-+            def beforeHookedMethod(self, param):
++        # Наследуем интерфейс, а не абстрактный класс: мост питона умеет
++        # подставлять свои объекты только под интерфейсы java. Раньше здесь
++        # стоял XC_MethodHook, и первый же плагин, попробовавший хуки, получил
++        # «is not a Java interface». То есть возможность была выпущена и ни
++        # разу не выполнилась — ровно та ошибка, про которую у нас записано
++        # правило, и я наступил на неё второй раз.
++        class Hook(dynamic_proxy(_HookCall)):
++            def before(self, param):
 +                if before is not None:
 +                    try:
 +                        before(param)
 +                    except Exception:
 +                        _Host.log(outer.name, traceback.format_exc(), True)
 +
-+            def afterHookedMethod(self, param):
++            def after(self, param):
 +                if after is not None:
 +                    try:
 +                        after(param)
@@ -23417,12 +23605,11 @@ index 00000000..f646beeb
 +                        _Host.log(outer.name, traceback.format_exc(), True)
 +
 +        try:
-+            tail = list(args or []) + [Hook()]
-+            ok = _Xposed.findAndHookMethod(str(where), None, str(method), tail)
-+            if ok is None:
-+                self.error("метод не подменился:", where, method)
-+                return False
-+            return True
++            types = jarray(jclass("java.lang.Object"))(list(args or []))
++            if _Engine.hook(str(where), str(method), types, Hook()):
++                return True
++            self.error("метод не подменился:", where, method)
++            return False
 +        except Exception:
 +            _Host.log(self.name, traceback.format_exc(), True)
 +            return False
@@ -33883,7 +34070,7 @@ index 528fd746..8b64b0f8 100644
  }
  repositories {
 diff --git a/gradle.properties b/gradle.properties
-index 83408dc5..8618d65d 100644
+index 83408dc5..08bc8411 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -13,9 +13,9 @@
@@ -33891,7 +34078,7 @@ index 83408dc5..8618d65d 100644
  # org.gradle.parallel=true
  #Sat Mar 12 05:53:50 MSK 2016
 -APP_VERSION_CODE=7031
-+APP_VERSION_CODE=7040
++APP_VERSION_CODE=7041
  APP_VERSION_NAME=12.10.0
 -APP_PACKAGE=org.telegram.messenger
 +APP_PACKAGE=cat.narezany.margelet

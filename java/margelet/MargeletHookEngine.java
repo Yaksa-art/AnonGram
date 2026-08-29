@@ -122,4 +122,52 @@ public class MargeletHookEngine {
         } catch (Throwable ignored) {
         }
     }
+
+    /**
+     * Подменить метод обработчиком из питона.
+     *
+     * Всю возню с Xposed-обёрткой делаем здесь, на стороне java: питону
+     * достаётся простой интерфейс с двумя методами, который его мост умеет
+     * подставлять. Раньше питон пытался наследовать абстрактный класс сам — и
+     * не мог, о чём честно сообщал ошибкой, которую никто не читал.
+     *
+     * @param where  имя класса
+     * @param method имя метода
+     * @param args   типы доводов, если метод перегружен; может быть null
+     * @param call   что звать до и после
+     * @return удалось ли подменить
+     */
+    public static boolean hook(String where, String method, Object[] args,
+                               final MargeletHookCall call) {
+        if (call == null || where == null || method == null) {
+            return false;
+        }
+        if (!working()) {
+            MargeletPluginHost.log("хуки", "не работают: " + (enabled()
+                    ? String.valueOf(failure()) : "выключены в настройках"), true);
+            return false;
+        }
+        final de.robv.android.xposed.XC_MethodHook wrap = new de.robv.android.xposed.XC_MethodHook() {
+            @Override
+            protected void beforeHookedMethod(MethodHookParam param) {
+                call.before(param);
+            }
+
+            @Override
+            protected void afterHookedMethod(MethodHookParam param) {
+                call.after(param);
+            }
+        };
+        final Object[] tail = new Object[(args == null ? 0 : args.length) + 1];
+        if (args != null) {
+            System.arraycopy(args, 0, tail, 0, args.length);
+        }
+        tail[tail.length - 1] = wrap;
+        try {
+            return de.robv.android.xposed.XposedHelpers.findAndHookMethod(where, null, method, tail) != null;
+        } catch (Throwable t) {
+            MargeletPluginHost.log("хуки", String.valueOf(t), true);
+            return false;
+        }
+    }
 }

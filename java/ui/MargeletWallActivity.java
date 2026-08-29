@@ -2,19 +2,14 @@ package org.telegram.ui;
 
 import android.content.Context;
 import android.os.Bundle;
-import android.view.Gravity;
 import android.view.View;
-import android.widget.FrameLayout;
 
 import org.telegram.margelet.MargeletGroup;
-import org.telegram.messenger.HashtagSearchController;
+import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.R;
-import org.telegram.ui.ActionBar.ActionBar;
-import org.telegram.ui.ActionBar.ActionBarMenuItem;
 import org.telegram.ui.ActionBar.BaseFragment;
-import org.telegram.ui.ActionBar.Theme;
-import org.telegram.ui.Components.LayoutHelper;
+import org.telegram.ui.Components.BulletinFactory;
 
 /**
  * Стена: что о человеке написали другие.
@@ -24,103 +19,110 @@ import org.telegram.ui.Components.LayoutHelper;
  * снять не можешь. Поэтому стена и работает против разводил — обманутый
  * пишет, обманщик не стирает, а видят все.
  *
- * Показывает её сам телеграм. У него есть готовый режим — поиск по метке
- * внутри одной группы, тот самый, которым он показывает найденное по хэштегу
- * в канале, — и он отдаёт ровно список нужных сообщений, а не всю переписку.
+ * Это обычный экран переписки, у которого убрано всё, кроме сообщений с
+ * меткой этой стены. Не похожий на него, не собранный из его деталей и не
+ * его режим поиска — он сам. Отбор стоит внутри {@link ChatActivity}, на
+ * входе списка сообщений; всё остальное — список, поле ввода, меню
+ * сообщения, реакции — работает ровно так же, как в любой переписке.
  *
- * До этого я трижды подходил не с той стороны: сначала своими карточками,
- * потом чужими ячейками на своём экране, потом открывал всю группу с включённой
- * строкой поиска — а поиск в переписке не отбирает сообщения, он подсвечивает и
- * прыгает по ним. Владелец каждый раз это видел раньше меня. Правильный ход
- * был первым же: искать, чем это делает сам телеграм, а не собирать своё из
- * его деталей.
+ * Дошло до этого с четвёртого раза. Сначала свои карточки, потом чужие
+ * ячейки на своём экране, потом чужой экран с включённым поиском, который не
+ * отбирает сообщения, а подсвечивает их, потом экран результатов поиска —
+ * список строчек вместо переписки. Каждый раз это выглядело работой, и
+ * каждый раз владелец видел подделку раньше меня. Он же и сказал, как надо:
+ * взять стандартный чат и изменить его.
  */
-public class MargeletWallActivity extends BaseFragment {
+public class MargeletWallActivity extends ChatActivity {
 
-    /** О ком стена. Метка считается от него, а не от того, кто пишет. */
     private final long peerId;
     private final String peerName;
 
-    private ChatActivityContainer container;
-
-    private static final int ID_WRITE = 1;
-
-    public MargeletWallActivity(long peerId, String peerName) {
+    private MargeletWallActivity(Bundle args, long peerId, String peerName) {
+        super(args);
         this.peerId = peerId;
         this.peerName = peerName == null ? "" : peerName;
     }
 
-    @Override
-    public View createView(Context context) {
-        actionBar.setBackButtonImage(R.drawable.ic_ab_back);
-        actionBar.setAllowOverlayTitle(true);
-        actionBar.setTitle(LocaleController.formatString(R.string.MargeletWallOf, peerName));
-        actionBar.setSubtitle(LocaleController.getString(R.string.MargeletWallSubtitle));
-        actionBar.setActionBarMenuOnItemClick(new ActionBar.ActionBarMenuOnItemClick() {
-            @Override
-            public void onItemClick(int id) {
-                if (id == -1) {
-                    finishFragment();
-                } else if (id == ID_WRITE) {
-                    write();
-                }
-            }
-        });
-        final ActionBarMenuItem write = actionBar.createMenu()
-                .addItem(ID_WRITE, R.drawable.msg_edit);
-        write.setContentDescription(LocaleController.getString(R.string.MargeletWallWrite));
-
-        final FrameLayout root = new FrameLayout(context);
-        root.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundGray));
-
-        // Дальше всё чужое. Свои здесь только доводы: какую метку искать и в
-        // какой группе. Рисует, листает, показывает реакции и меню сообщения
-        // сам телеграм — тем же кодом, которым показывает найденное по
-        // хэштегу в любом канале.
-        HashtagSearchController.getInstance(currentAccount)
-                .clearSearchResults(ChatActivity.SEARCH_CHANNEL_POSTS);
-        final Bundle args = new Bundle();
-        args.putInt("chatMode", ChatActivity.MODE_SEARCH);
-        args.putInt("searchType", ChatActivity.SEARCH_CHANNEL_POSTS);
-        // Метка с «собакой» и именем группы — так этот поиск понимает, что
-        // искать надо не везде, а в одном месте.
-        args.putString("searchHashtag",
-                MargeletGroup.tagWall(peerId) + "@" + MargeletGroup.USERNAME);
-        container = new ChatActivityContainer(context, getParentLayout(), args);
-        root.addView(container, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT,
-                LayoutHelper.MATCH_PARENT, Gravity.FILL));
-
-        return fragmentView = root;
-    }
-
     /**
-     * Написать на стену.
+     * Открыть чью-то стену.
      *
-     * Экран поиска только показывает — писать в нём нечем, и приделывать к
-     * нему своё поле ввода значило бы снова подделывать чужой экран. Поэтому
-     * открываем саму группу: там настоящее поле, а метку допишет отправка,
-     * пока стена считается открытой. Человеку про метку знать не надо — он её
-     * даже не увидит, она прячется при показе.
+     * Через статический метод, а не через конструктор: адрес группы сперва
+     * надо выяснить, а это поездка на сервер. Конструктор, умеющий ждать,
+     * обманывает вызывающего — он вернёт экран, который ещё не знает, что
+     * показывать.
      */
-    private void write() {
+    public static void open(BaseFragment from, long peerId, String peerName) {
+        if (from == null || peerId == 0) {
+            return;
+        }
         MargeletGroup.resolve(dialogId -> {
             if (dialogId == 0) {
-                org.telegram.ui.Components.BulletinFactory.of(this)
-                        .createSimpleBulletin(R.raw.error, LocaleController.getString(
-                                R.string.MargeletGroupUnreachable)).show();
+                BulletinFactory.of(from).createSimpleBulletin(R.raw.error,
+                        LocaleController.getString(R.string.MargeletGroupUnreachable)).show();
                 return;
             }
-            MargeletGroup.writingTo(peerId);
             final Bundle args = new Bundle();
+            // Группа приходит номером переписки — со знаком минус и приставкой
+            // канала; ChatActivity ждёт голый номер чата.
             args.putLong("chat_id", -dialogId);
-            presentFragment(new ChatActivity(args));
+            args.putString("margeletWallTag", MargeletGroup.tagWall(peerId));
+            from.presentFragment(new MargeletWallActivity(args, peerId, peerName));
         });
+    }
+
+    @Override
+    public View createView(Context context) {
+        final View view = super.createView(context);
+        // Заголовок свой: имя группы над чужой стеной сбивало бы с толку —
+        // человек пришёл читать про конкретного человека. Меняем только
+        // подпись, сам заголовок остаётся их же.
+        if (avatarContainer != null) {
+            avatarContainer.setTitle(LocaleController.formatString(R.string.MargeletWallOf, peerName));
+            avatarContainer.setSubtitle(LocaleController.getString(R.string.MargeletWallSubtitle));
+        }
+        return view;
+    }
+
+    @Override
+    public boolean onFragmentCreate() {
+        if (!super.onFragmentCreate()) {
+            return false;
+        }
+        // Пока экран открыт, отправка дописывает метку сама. Человек пишет в
+        // обычное поле обычной переписки и про метки ничего не знает — знать
+        // ему и незачем, это наша служебная разметка, а не его забота.
+        MargeletGroup.writingTo(peerId);
+        return true;
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        MargeletGroup.writingTo(peerId);
+        if (avatarContainer != null) {
+            // Телеграм обновляет подпись сам — например, когда пересчитает
+            // участников. Возвращаем свою после него, а не вместо него.
+            AndroidUtilities.runOnUIThread(() -> {
+                if (avatarContainer != null) {
+                    avatarContainer.setTitle(LocaleController.formatString(
+                            R.string.MargeletWallOf, peerName));
+                    avatarContainer.setSubtitle(LocaleController.getString(
+                            R.string.MargeletWallSubtitle));
+                }
+            }, 200);
+        }
+    }
+
+    @Override
+    public void onPause() {
+        super.onPause();
+        // Ушли с экрана — метку больше не дописываем. Иначе она уехала бы в
+        // соседнюю переписку вместе со следующим же сообщением.
+        MargeletGroup.writingTo(0);
     }
 
     @Override
     public void onFragmentDestroy() {
-        // Ушли со стены — метку больше не дописываем. Иначе она уехала бы в
-        // соседнюю переписку вместе со следующим же сообщением.
         MargeletGroup.writingTo(0);
         super.onFragmentDestroy();
     }

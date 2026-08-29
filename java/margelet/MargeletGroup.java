@@ -175,6 +175,27 @@ public class MargeletGroup {
     private static final java.util.regex.Pattern TAGS =
             java.util.regex.Pattern.compile("#margy_(wall_\\d+|banner)\\b");
 
+    /**
+     * Оставить из списка только сообщения этой стены.
+     *
+     * Пустая метка — значит это обычная переписка, и трогать нечего: возвращаем
+     * тот же список, ничего не копируя.
+     */
+    public static java.util.ArrayList<MessageObject> onlyWall(
+            java.util.ArrayList<MessageObject> messages, String tag) {
+        if (tag == null || tag.length() == 0 || messages == null || messages.isEmpty()) {
+            return messages;
+        }
+        final java.util.ArrayList<MessageObject> out = new java.util.ArrayList<>();
+        for (MessageObject message : messages) {
+            if (message != null && message.messageOwner != null
+                    && hasTag(message.messageOwner, tag)) {
+                out.add(message);
+            }
+        }
+        return out;
+    }
+
     /** Пишем ли мы сейчас на чью-то стену. */
     public static boolean writing() {
         return wallPeer != 0;

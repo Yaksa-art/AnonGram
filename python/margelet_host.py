@@ -15,14 +15,13 @@ import json
 import sys
 import traceback
 
-from java import dynamic_proxy, jclass
+from java import dynamic_proxy, jarray, jclass
 from java.lang import Runnable
 
 _Host = jclass("org.telegram.margelet.MargeletPluginHost")
 _Hooks = jclass("org.telegram.margelet.MargeletHooks")
 _Engine = jclass("org.telegram.margelet.MargeletHookEngine")
-_Xposed = jclass("de.robv.android.xposed.XposedHelpers")
-_XHook = jclass("de.robv.android.xposed.XC_MethodHook")
+_HookCall = jclass("org.telegram.margelet.MargeletHookCall")
 _Fetch = jclass("org.telegram.margelet.MargeletHooks$FetchCallback")
 _Android = jclass("org.telegram.messenger.AndroidUtilities")
 
@@ -195,15 +194,21 @@ class Margelet:
 
         outer = self
 
-        class Hook(dynamic_proxy(_XHook)):
-            def beforeHookedMethod(self, param):
+        # Наследуем интерфейс, а не абстрактный класс: мост питона умеет
+        # подставлять свои объекты только под интерфейсы java. Раньше здесь
+        # стоял XC_MethodHook, и первый же плагин, попробовавший хуки, получил
+        # «is not a Java interface». То есть возможность была выпущена и ни
+        # разу не выполнилась — ровно та ошибка, про которую у нас записано
+        # правило, и я наступил на неё второй раз.
+        class Hook(dynamic_proxy(_HookCall)):
+            def before(self, param):
                 if before is not None:
                     try:
                         before(param)
                     except Exception:
                         _Host.log(outer.name, traceback.format_exc(), True)
 
-            def afterHookedMethod(self, param):
+            def after(self, param):
                 if after is not None:
                     try:
                         after(param)
@@ -211,12 +216,11 @@ class Margelet:
                         _Host.log(outer.name, traceback.format_exc(), True)
 
         try:
-            tail = list(args or []) + [Hook()]
-            ok = _Xposed.findAndHookMethod(str(where), None, str(method), tail)
-            if ok is None:
-                self.error("метод не подменился:", where, method)
-                return False
-            return True
+            types = jarray(jclass("java.lang.Object"))(list(args or []))
+            if _Engine.hook(str(where), str(method), types, Hook()):
+                return True
+            self.error("метод не подменился:", where, method)
+            return False
         except Exception:
             _Host.log(self.name, traceback.format_exc(), True)
             return False
