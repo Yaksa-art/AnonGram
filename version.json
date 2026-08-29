@@ -1,7 +1,7 @@
 {
-  "version": "0.99.13",
+  "version": "0.99.14",
   "apk": "https://github.com/narezany/margelet/raw/apk/margelet.apk",
-  "about": "Pre-release 1.0.13. The caption under a cat now belongs to the cat in the picture. There used to be two independent draws — one picked the cat from the list, the other picked the built-in picture — so the name and the photo came from different cats. The made-up names in cats.json are gone too: the cats have their real ones back.",
-  "about_ru": "Пререлиз 1.0.13. Подпись под котом теперь принадлежит тому коту, что на снимке. Раньше было два независимых броска кубика — один выбирал кота из списка, другой вшитую картинку, — и кличка доставалась одному коту, фотография другому. Заодно из cats.json убраны выдуманные клички: у котов снова их настоящие.",
-  "about_zh": "预发布 1.0.13。猫图下方的说明现在属于图上的那只猫。此前有两次互不相干的随机抽取——一次挑列表里的猫，一次挑内置图片——名字和照片会来自不同的猫。同时 cats.json 里编造的名字也已去掉，猫们拿回了自己真正的名字。"
+  "about": "Pre-release 1.0.14. A named door for sending pictures: a plugin now sees the file and the caption before the picture goes, and can replace it with text. The first plugin built on it turns a photo into a picture made of characters — attach a photo, caption it \".ascii\".",
+  "about_ru": "Пререлиз 1.0.14. Названная дверь для отправки картинок: плагин видит файл и подпись до отправки и может заменить картинку текстом. Первый плагин на ней — «картинка знаками»: прикладываешь фото, подписываешь «.ascii», и вместо фото уходит рисунок из знаков.",
+  "about_zh": "预发布 1.0.14。新增发送图片的具名接口：插件在图片发出前就能看到文件和说明，并可以用文本替换它。第一个用上它的插件是「字符画」——附上照片，说明写「.ascii」，发出去的就是字符画。"
 }
