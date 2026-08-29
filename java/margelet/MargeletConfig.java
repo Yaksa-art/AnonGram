@@ -40,12 +40,30 @@ public class MargeletConfig {
      * 0.99, а не 1.0, нарочно: настоящая единица должна остаться свободной
      * под настоящий выпуск, а пререлиз обязан быть строго меньше её.
      */
-    public static final String APP_VERSION = "0.99.23";
+    public static final String APP_VERSION = "0.99.24";
 
-    /** Как выпуск называется для человека: «Пререлиз 1.0», «Бета 1.1». */
+    /**
+     * Как выпуск называется для человека: «Пререлиз 1.0.23».
+     *
+     * Номер СЧИТАЕТСЯ из {@link #APP_VERSION}, а не вписывается рядом с ним
+     * второй раз. Вписанный отдельно он и устарел: я поднимал APP_VERSION
+     * каждый выпуск и забывал строку, и человек семь версий подряд видел в
+     * настройках «Пререлиз 1.0.16». Два места, где одно и то же число, — это
+     * не удвоение работы, а обещание однажды их развести.
+     *
+     * Внутри 0.99.N, снаружи 1.0.N: единица должна остаться свободной под
+     * настоящий выпуск, а пререлиз обязан быть строго меньше её.
+     */
     public static String versionLabel() {
-        return org.telegram.messenger.LocaleController.getString(
-                org.telegram.messenger.R.string.MargeletVersionLabel);
+        return org.telegram.messenger.LocaleController.formatString(
+                org.telegram.messenger.R.string.MargeletVersionLabel, shownVersion());
+    }
+
+    /** APP_VERSION в том виде, в каком выпуск называют вслух. */
+    public static String shownVersion() {
+        return APP_VERSION.startsWith("0.99.")
+                ? "1.0." + APP_VERSION.substring("0.99.".length())
+                : APP_VERSION;
     }
 
     /**
