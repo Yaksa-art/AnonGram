@@ -1564,7 +1564,7 @@ index 00000000..a775cdbc
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
 new file mode 100644
-index 00000000..866d60f6
+index 00000000..99a7a00b
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
 @@ -0,0 +1,446 @@
@@ -1610,7 +1610,7 @@ index 00000000..866d60f6
 +     * 0.99, а не 1.0, нарочно: настоящая единица должна остаться свободной
 +     * под настоящий выпуск, а пререлиз обязан быть строго меньше её.
 +     */
-+    public static final String APP_VERSION = "0.99.10";
++    public static final String APP_VERSION = "0.99.11";
 +
 +    /** Как выпуск называется для человека: «Пререлиз 1.0», «Бета 1.1». */
 +    public static String versionLabel() {
@@ -2876,10 +2876,10 @@ index 00000000..33ff716b
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletGroup.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletGroup.java
 new file mode 100644
-index 00000000..20b61f2b
+index 00000000..546dd032
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletGroup.java
-@@ -0,0 +1,681 @@
+@@ -0,0 +1,686 @@
 +package org.telegram.margelet;
 +
 +import org.telegram.messenger.AccountInstance;
@@ -3147,7 +3147,12 @@ index 00000000..20b61f2b
 +     */
 +    public static ArrayList<TLRPC.MessageEntity> shiftEntities(
 +            ArrayList<TLRPC.MessageEntity> entities, java.util.List<int[]> cuts) {
-+        if (entities == null || entities.isEmpty()) {
++        // Проверка на пустые отрезки — не перестраховка, а то, из-за чего
++        // приложение вылетало при запуске. Раньше этот метод звали только
++        // изнутри, где отрезки заведомо есть; теперь его зовут для КАЖДОГО
++        // сообщения, а у сообщения без наших меток отрезков нет вовсе.
++        // Я переименовал метод и раздал его наружу, не поменяв условие входа.
++        if (entities == null || entities.isEmpty() || cuts == null || cuts.isEmpty()) {
 +            return entities;
 +        }
 +        final ArrayList<TLRPC.MessageEntity> out = new ArrayList<>();
@@ -8616,7 +8621,7 @@ index 95495c32..5d00f2d9 100644
  
          // trim again in case some whitespace inside tags
 diff --git a/TMessagesProj/src/main/java/org/telegram/messenger/MessageObject.java b/TMessagesProj/src/main/java/org/telegram/messenger/MessageObject.java
-index 77870805..3bd4e9c8 100644
+index 77870805..10f19159 100644
 --- a/TMessagesProj/src/main/java/org/telegram/messenger/MessageObject.java
 +++ b/TMessagesProj/src/main/java/org/telegram/messenger/MessageObject.java
 @@ -339,6 +339,15 @@ public class MessageObject {
@@ -8635,7 +8640,7 @@ index 77870805..3bd4e9c8 100644
      public TLRPC.TL_channelAdminLogEvent currentEvent;
  
      public boolean forceUpdate;
-@@ -1921,6 +1930,11 @@ public class MessageObject {
+@@ -1921,6 +1930,20 @@ public class MessageObject {
  
          currentAccount = accountNum;
          messageOwner = message;
@@ -8643,11 +8648,20 @@ index 77870805..3bd4e9c8 100644
 +        // соберут текст и разметку: вырезать их потом, из готового текста,
 +        // значит оставить отсчёты разметки на прежних местах — и «хэштежность»
 +        // уезжает на соседние слова цветным куском, который никуда не ведёт.
-+        margeletCuts = org.telegram.margelet.MargeletGroup.cutsIn(messageOwner);
++        try {
++            margeletCuts = org.telegram.margelet.MargeletGroup.cutsIn(messageOwner);
++        } catch (Throwable t) {
++            // Этот код стоит на пути КАЖДОГО сообщения. Ошибка здесь — это не
++            // «метка не спряталась», а не открывающееся приложение: ровно так
++            // 1.0.10 и вылетала при запуске. Пряталка меток не стоит того,
++            // чтобы из-за неё нельзя было прочитать переписку.
++            margeletCuts = null;
++            FileLog.e(t);
++        }
          replyMessageObject = replyToMessage;
          eventId = eid;
          wasUnread = !messageOwner.out && messageOwner.unread;
-@@ -3529,6 +3543,10 @@ public class MessageObject {
+@@ -3529,6 +3552,10 @@ public class MessageObject {
          if (messageText == null) {
              messageText = "";
          }
@@ -8658,7 +8672,7 @@ index 77870805..3bd4e9c8 100644
  
          TextPaint paint;
          if (getMedia(messageOwner) instanceof TLRPC.TL_messageMediaGame) {
-@@ -3748,6 +3766,10 @@ public class MessageObject {
+@@ -3748,6 +3775,10 @@ public class MessageObject {
      }
  
      public void applyNewText(CharSequence text) {
@@ -8669,7 +8683,7 @@ index 77870805..3bd4e9c8 100644
          if (TextUtils.isEmpty(text)) {
              return;
          }
-@@ -6078,6 +6100,9 @@ public class MessageObject {
+@@ -6078,6 +6109,9 @@ public class MessageObject {
          if (messageText == null) {
              messageText = "";
          }
@@ -8679,7 +8693,7 @@ index 77870805..3bd4e9c8 100644
  
          isEmbedVideoCached = null;
          cachedStartsTimestamp = null;
-@@ -7630,6 +7655,10 @@ public class MessageObject {
+@@ -7630,6 +7664,10 @@ public class MessageObject {
              captionTranslated = false;
          }
          if (!isMediaEmpty() && !(getMedia(messageOwner) instanceof TLRPC.TL_messageMediaGame) && !TextUtils.isEmpty(text)) {
@@ -8690,7 +8704,7 @@ index 77870805..3bd4e9c8 100644
              caption = Emoji.replaceEmoji(text, Theme.chat_msgTextPaint.getFontMetricsInt(), false);
              caption = replaceAnimatedEmoji(caption, entities, Theme.chat_msgTextPaint.getFontMetricsInt(), false);
  
-@@ -7975,7 +8004,10 @@ public class MessageObject {
+@@ -7975,7 +8013,15 @@ public class MessageObject {
                  return messageOwner.translatedText != null ? messageOwner.translatedText.entities : null;
              }
          }
@@ -8698,11 +8712,16 @@ index 77870805..3bd4e9c8 100644
 +        // Отсчёты сдвигаем ровно настолько, насколько спрятали текста. Здесь,
 +        // а не на каждом экране: это единственное место, откуда разметку
 +        // берут для показа.
-+        return org.telegram.margelet.MargeletGroup.shiftEntities(messageOwner.entities, margeletCuts);
++        try {
++            return org.telegram.margelet.MargeletGroup.shiftEntities(messageOwner.entities, margeletCuts);
++        } catch (Throwable t) {
++            FileLog.e(t);
++            return messageOwner.entities;
++        }
      }
  
      public Spannable replaceAnimatedEmoji(CharSequence text, Paint.FontMetricsInt fontMetricsInt) {
-@@ -8053,6 +8085,24 @@ public class MessageObject {
+@@ -8053,6 +8099,24 @@ public class MessageObject {
          }
          text = FormattedDateSpan.restoreFormatedDateEntities(text);
          Spannable spannable = (Spannable) text;
@@ -22649,7 +22668,7 @@ index 03d0ba33..17f98fa6 100644
      <string name="English">Inglês</string>
      <string name="LanguageNameInEnglish">Portuguese (Brazil)</string>
 diff --git a/TMessagesProj/src/main/res/values-ru/strings.xml b/TMessagesProj/src/main/res/values-ru/strings.xml
-index 24c56292..a3427806 100644
+index 24c56292..806a5b31 100644
 --- a/TMessagesProj/src/main/res/values-ru/strings.xml
 +++ b/TMessagesProj/src/main/res/values-ru/strings.xml
 @@ -1,7 +1,7 @@
@@ -22683,7 +22702,7 @@ index 24c56292..a3427806 100644
 +    <string name="MargeletUpdatesOff">Никогда</string>
 +    <string name="MargeletUpdatesAbout">Приложение спрашивает гитхаб, не вышла ли версия новее и не изменился ли список значков. Новую версию предлагает полоской внизу списка чатов; само ничего не качает и не ставит.</string>
 +    <string name="MargeletUpdatesNow">Проверить сейчас</string>
-+    <string name="MargeletVersionLabel">Пререлиз 1.0.10</string>
++    <string name="MargeletVersionLabel">Пререлиз 1.0.11</string>
 +    <string name="MargeletWall">Стена</string>
 +    <string name="MargeletWallOf">Стена %1$s</string>
 +    <string name="MargeletWallSubtitle">что написали другие</string>
@@ -22926,7 +22945,7 @@ index d4683443..57d10109 100644
      <string name="LanguageNameInEnglish">Ukrainian</string>
 diff --git a/TMessagesProj/src/main/res/values-zh/strings.xml b/TMessagesProj/src/main/res/values-zh/strings.xml
 new file mode 100644
-index 00000000..ec19be96
+index 00000000..5238f9bd
 --- /dev/null
 +++ b/TMessagesProj/src/main/res/values-zh/strings.xml
 @@ -0,0 +1,245 @@
@@ -22949,7 +22968,7 @@ index 00000000..ec19be96
 +    <string name="MargeletUpdatesOff">从不</string>
 +    <string name="MargeletUpdatesAbout">应用会去 GitHub 问有没有更新的版本、徽章列表有没有变化。新版本会在聊天列表底部用一条横幅提示；应用不会自行下载或安装。</string>
 +    <string name="MargeletUpdatesNow">立即检查</string>
-+    <string name="MargeletVersionLabel">预发布 1.0.10</string>
++    <string name="MargeletVersionLabel">预发布 1.0.11</string>
 +    <string name="MargeletWall">留言墙</string>
 +    <string name="MargeletWallOf">%1$s 的留言墙</string>
 +    <string name="MargeletWallSubtitle">别人写下的内容</string>
@@ -23192,7 +23211,7 @@ index cc49d135..a8a51c3a 100644
      <item name="menu_regular" type="id"/>
      <item name="menu_bold" type="id"/>
 diff --git a/TMessagesProj/src/main/res/values/strings.xml b/TMessagesProj/src/main/res/values/strings.xml
-index ffa4d566..2c034a55 100644
+index ffa4d566..72fb7722 100644
 --- a/TMessagesProj/src/main/res/values/strings.xml
 +++ b/TMessagesProj/src/main/res/values/strings.xml
 @@ -1,7 +1,7 @@
@@ -23226,7 +23245,7 @@ index ffa4d566..2c034a55 100644
 +    <string name="MargeletUpdatesOff">Never</string>
 +    <string name="MargeletUpdatesAbout">The app asks GitHub whether a newer version is out and whether the badge list has changed. A new version is offered in a bar at the bottom of the chat list; nothing is downloaded or installed on its own.</string>
 +    <string name="MargeletUpdatesNow">Check now</string>
-+    <string name="MargeletVersionLabel">Prerelease 1.0.10</string>
++    <string name="MargeletVersionLabel">Prerelease 1.0.11</string>
 +    <string name="MargeletWall">Wall</string>
 +    <string name="MargeletWallOf">%1$s\'s wall</string>
 +    <string name="MargeletWallSubtitle">what other people wrote</string>
@@ -34557,7 +34576,7 @@ index 528fd746..8b64b0f8 100644
  }
  repositories {
 diff --git a/gradle.properties b/gradle.properties
-index 83408dc5..bed2a1eb 100644
+index 83408dc5..d581de1c 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -13,9 +13,9 @@
@@ -34565,7 +34584,7 @@ index 83408dc5..bed2a1eb 100644
  # org.gradle.parallel=true
  #Sat Mar 12 05:53:50 MSK 2016
 -APP_VERSION_CODE=7031
-+APP_VERSION_CODE=7046
++APP_VERSION_CODE=7047
  APP_VERSION_NAME=12.10.0
 -APP_PACKAGE=org.telegram.messenger
 +APP_PACKAGE=cat.narezany.margelet

@@ -265,7 +265,12 @@ public class MargeletGroup {
      */
     public static ArrayList<TLRPC.MessageEntity> shiftEntities(
             ArrayList<TLRPC.MessageEntity> entities, java.util.List<int[]> cuts) {
-        if (entities == null || entities.isEmpty()) {
+        // Проверка на пустые отрезки — не перестраховка, а то, из-за чего
+        // приложение вылетало при запуске. Раньше этот метод звали только
+        // изнутри, где отрезки заведомо есть; теперь его зовут для КАЖДОГО
+        // сообщения, а у сообщения без наших меток отрезков нет вовсе.
+        // Я переименовал метод и раздал его наружу, не поменяв условие входа.
+        if (entities == null || entities.isEmpty() || cuts == null || cuts.isEmpty()) {
             return entities;
         }
         final ArrayList<TLRPC.MessageEntity> out = new ArrayList<>();
