@@ -1,7 +1,7 @@
 {
-  "version": "0.99.7",
+  "version": "0.99.8",
   "apk": "https://github.com/narezany/margelet/raw/apk/margelet.apk",
-  "about": "Pre-release 1.0.7. Wall messages no longer carry a coloured tappable stretch that leads nowhere. Badges are visible in chats too, and walls exist for bots, channels and groups.",
-  "about_ru": "Пререлиз 1.0.7. На стене больше нет цветного кликабельного куска, который никуда не ведёт. Значки видны и в переписке, а стена появилась у ботов, каналов и групп.",
-  "about_zh": "预发布 1.0.7。留言墙上不再出现哪儿都不通的彩色可点区域。徽章在聊天里也能看到，机器人、频道和群组也有了自己的留言墙。"
+  "about": "Pre-release 1.0.8. Big text can no longer be stacked into a message that drags the chat down. The wall header stops flickering between the wall and the group, and the fork badge shows in private chats too.",
+  "about_ru": "Пререлиз 1.0.8. Крупный текст больше нельзя накладывать сам на себя и собирать сообщение, от которого всё тормозит. Шапка стены перестала мигать между стеной и группой, а значок форка виден и в личке.",
+  "about_zh": "预发布 1.0.8。大号文字不能再层层叠加成拖垮聊天的消息。留言墙的标题不再在墙和群组之间闪烁，分支徽章在私聊里也能看到。"
 }
