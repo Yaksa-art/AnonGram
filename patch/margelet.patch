@@ -1565,7 +1565,7 @@ index 00000000..a6f9b07d
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
 new file mode 100644
-index 00000000..b3613a65
+index 00000000..f99916e1
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
 @@ -0,0 +1,451 @@
@@ -1611,7 +1611,7 @@ index 00000000..b3613a65
 +     * 0.99, а не 1.0, нарочно: настоящая единица должна остаться свободной
 +     * под настоящий выпуск, а пререлиз обязан быть строго меньше её.
 +     */
-+    public static final String APP_VERSION = "0.99.24";
++    public static final String APP_VERSION = "0.99.25";
 +
 +    /**
 +     * Как выпуск называется для человека: «Пререлиз 1.0.23».
@@ -10352,6 +10352,34 @@ index cd393c4d..42446d68 100644
          int fromIndex = fixPosition(fromPosition);
          int toIndex = fixPosition(toPosition);
          TLRPC.Dialog fromDialog = dialogs.get(fromIndex);
+diff --git a/TMessagesProj/src/main/java/org/telegram/ui/Cells/AboutLinkCell.java b/TMessagesProj/src/main/java/org/telegram/ui/Cells/AboutLinkCell.java
+index 465e4b08..6e2356aa 100644
+--- a/TMessagesProj/src/main/java/org/telegram/ui/Cells/AboutLinkCell.java
++++ b/TMessagesProj/src/main/java/org/telegram/ui/Cells/AboutLinkCell.java
+@@ -197,6 +197,8 @@ public class AboutLinkCell extends FrameLayout {
+ 
+     public void updateColors() {
+         Theme.profile_aboutTextPaint.linkColor = processColor(Theme.getColor(Theme.key_chat_messageLinkIn, resourcesProvider));
++        Theme.profile_aboutTextPaint.setColor(
++                Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourcesProvider));
+     }
+ 
+     @Override
+@@ -296,6 +298,14 @@ public class AboutLinkCell extends FrameLayout {
+ 
+         try {
+             Theme.profile_aboutTextPaint.linkColor = processColor(Theme.getColor(Theme.key_chat_messageLinkIn, resourcesProvider));
++            // Цвет самого текста — тоже у поставщика, а не у общей темы.
++            // Кисть здесь одна на всё приложение, и её цвет ставится при сборке
++            // темы; поэтому на экране со своей палитрой она оставалась
++            // «как в теме», и текст «о себе» держался чёрным, пока всё вокруг
++            // уже перекрасилось. Ссылке цвет тут переназначают ровно по той же
++            // причине — строкой выше.
++            Theme.profile_aboutTextPaint.setColor(
++                    Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourcesProvider));
+             if (firstThreeLinesLayout == null || !shouldExpand) {
+                 if (textLayout != null) {
+                     textLayout.draw(canvas);
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/Cells/ChatMessageCell.java b/TMessagesProj/src/main/java/org/telegram/ui/Cells/ChatMessageCell.java
 index bcc7fe85..7d86fe49 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/Cells/ChatMessageCell.java
@@ -38746,10 +38774,10 @@ index 00000000..55ff04a5
 +105 actionable tasks: 21 executed, 84 up-to-date
 diff --git a/build8.log b/build8.log
 new file mode 100644
-index 00000000..68c6715d
+index 00000000..a179d345
 --- /dev/null
 +++ b/build8.log
-@@ -0,0 +1,281 @@
+@@ -0,0 +1,303 @@
 +Picked up JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStore=/root/.ccr/java-truststore.p12 -Djavax.net.ssl.trustStorePassword=changeit -Djavax.net.ssl.trustStoreType=PKCS12 -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=36225 -Dhttp.nonProxyHosts=localhost|127.0.0.1|::1|127.*|0.*|::|169.254.*|api.anthropic.com|api-staging.anthropic.com|api-pr-preview.anthropic.com|mcp-proxy.anthropic.com|mcp-proxy-staging.anthropic.com|registry.npmjs.org|jsr.io|npm.jsr.io|pypi.org|files.pythonhosted.org|index.crates.io|proxy.golang.org|host.docker.internal|10.*|172.16.*|172.17.*|172.18.*|172.19.*|172.20.*|172.21.*|172.22.*|172.23.*|172.24.*|172.25.*|172.26.*|172.27.*|172.28.*|172.29.*|172.30.*|172.31.*|192.168.*|100.64.0.0/10|*.svc.cluster.local|*.svc.cluster.local -Djdk.http.auth.tunneling.disabledSchemes= -Djdk.http.auth.proxying.disabledSchemes=
 +> Task :buildSrc:checkKotlinGradlePluginConfigurationErrors SKIPPED
 +> Task :buildSrc:compileKotlin UP-TO-DATE
@@ -39031,8 +39059,343 @@ index 00000000..68c6715d
 +
 +> Task :TMessagesProj_AppStandalone:mergeAfatStandaloneGeneratedProguardFiles UP-TO-DATE
 +> Task :TMessagesProj_AppStandalone:optimizeAfatStandaloneResources
++> Task :TMessagesProj:minifyStandaloneWithR8
++> Task :TMessagesProj:bundleLibRuntimeToJarStandalone
++> Task :TMessagesProj_AppStandalone:expandAfatStandaloneArtProfileWildcards
++> Task :TMessagesProj_AppStandalone:minifyAfatStandaloneWithR8
++WARNING: /root/.gradle/caches/8.11.1/transforms/8e6b1b0da443fe74e3aed4ceade5be68/transformed/jetified-play-services-recaptchabase-16.1.0-runtime.jar: R8: The companion object Companion could not be found in class com.google.android.gms.internal.recaptchabase.zzl
++WARNING: /root/.gradle/caches/8.11.1/transforms/8e6b1b0da443fe74e3aed4ceade5be68/transformed/jetified-play-services-recaptchabase-16.1.0-runtime.jar: R8: The companion object Companion could not be found in class com.google.android.gms.internal.recaptchabase.zzm
++
++> Task :TMessagesProj_AppStandalone:l8DexDesugarLibAfatStandalone
++> Task :TMessagesProj_AppStandalone:compileAfatStandaloneArtProfile
++> Task :TMessagesProj_AppStandalone:packageAfatStandalone
++> Task :TMessagesProj_AppStandalone:createAfatStandaloneApkListingFileRedirect
++> Task :TMessagesProj_AppStandalone:assembleAfatStandalone
++[Incubating] Problems report is available at: file:///tmp/claude-0/-home-user-TaioPlugin/59596ece-759e-529f-8f90-c807e90b950a/scratchpad/tg-src/build/reports/problems/problems-report.html
++
++Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
++
++You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
++
++For more on this, please refer to https://docs.gradle.org/8.11.1/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
++
++BUILD SUCCESSFUL in 8m 34s
++105 actionable tasks: 22 executed, 83 up-to-date
+diff --git a/build9.log b/build9.log
+new file mode 100644
+index 00000000..91d80621
+--- /dev/null
++++ b/build9.log
+@@ -0,0 +1,307 @@
++Picked up JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStore=/root/.ccr/java-truststore.p12 -Djavax.net.ssl.trustStorePassword=changeit -Djavax.net.ssl.trustStoreType=PKCS12 -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=36225 -Dhttp.nonProxyHosts=localhost|127.0.0.1|::1|127.*|0.*|::|169.254.*|api.anthropic.com|api-staging.anthropic.com|api-pr-preview.anthropic.com|mcp-proxy.anthropic.com|mcp-proxy-staging.anthropic.com|registry.npmjs.org|jsr.io|npm.jsr.io|pypi.org|files.pythonhosted.org|index.crates.io|proxy.golang.org|host.docker.internal|10.*|172.16.*|172.17.*|172.18.*|172.19.*|172.20.*|172.21.*|172.22.*|172.23.*|172.24.*|172.25.*|172.26.*|172.27.*|172.28.*|172.29.*|172.30.*|172.31.*|192.168.*|100.64.0.0/10|*.svc.cluster.local|*.svc.cluster.local -Djdk.http.auth.tunneling.disabledSchemes= -Djdk.http.auth.proxying.disabledSchemes=
++> Task :buildSrc:checkKotlinGradlePluginConfigurationErrors SKIPPED
++> Task :buildSrc:compileKotlin UP-TO-DATE
++> Task :buildSrc:compileJava NO-SOURCE
++> Task :buildSrc:compileGroovy NO-SOURCE
++> Task :buildSrc:pluginDescriptors UP-TO-DATE
++> Task :buildSrc:processResources UP-TO-DATE
++> Task :buildSrc:classes UP-TO-DATE
++> Task :buildSrc:jar UP-TO-DATE
++
++> Configure project :jlatexmath
++WARNING: The option setting 'android.defaults.buildfeatures.buildconfig=true' is deprecated.
++The current default is 'false'.
++It will be removed in version 10.0 of the Android Gradle plugin.
++To keep using this feature, add the following to your module-level build.gradle files:
++    android.buildFeatures.buildConfig = true
++or from Android Studio, click: `Refactor` > `Migrate BuildConfig to Gradle Build Files`.
++
++> Configure project :TMessagesProj
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++WARNING: [CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++[CXX5106] NDK was located by using ndk.dir property. This method is deprecated and will be removed in a future release. Please use android.ndkVersion or android.ndkPath in build.gradle to specify the NDK to use. https://developer.android.com/r/studio-ui/ndk-dir
++
++> Configure project :TMessagesProj_AppHuawei
++--W- Build Environment: AGConnect plugin version is: 1.9.1.301, Gradle version is: 8.11.1, Android Plugin version is: 8.6.1
++--I- Using the AGConnect-Config file: /tmp/claude-0/-home-user-TaioPlugin/59596ece-759e-529f-8f90-c807e90b950a/scratchpad/tg-src/TMessagesProj_AppHuawei/agconnect-services.json
++--W- The variant: afatDebug, Use the json file: /tmp/claude-0/-home-user-TaioPlugin/59596ece-759e-529f-8f90-c807e90b950a/scratchpad/tg-src/TMessagesProj_AppHuawei/agconnect-services.json
++--I- Using the AGConnect-Config file: /tmp/claude-0/-home-user-TaioPlugin/59596ece-759e-529f-8f90-c807e90b950a/scratchpad/tg-src/TMessagesProj_AppHuawei/agconnect-services.json
++--W- The variant: afatRelease, Use the json file: /tmp/claude-0/-home-user-TaioPlugin/59596ece-759e-529f-8f90-c807e90b950a/scratchpad/tg-src/TMessagesProj_AppHuawei/agconnect-services.json
++
++> Configure project :TMessagesProj_AppStandalone
++Warning: Python version 3.11 may have fewer packages available. If you experience problems, try switching to version 3.8.
++
++> Task :jlatexmath:preBuild UP-TO-DATE
++> Task :jlatexmath:preReleaseBuild UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:preBuild UP-TO-DATE
++> Task :TMessagesProj:checkVisibility
++> Task :TMessagesProj:preBuild
++> Task :TMessagesProj:preStandaloneBuild
++> Task :jlatexmath:prepareReleaseArtProfile UP-TO-DATE
++> Task :TMessagesProj:prepareStandaloneArtProfile UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:preAfatStandaloneBuild UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:mergeAfatStandaloneNativeDebugMetadata NO-SOURCE
++> Task :jlatexmath:generateReleaseBuildConfig UP-TO-DATE
++> Task :jlatexmath:generateReleaseResValues UP-TO-DATE
++> Task :TMessagesProj:generateStandaloneBuildConfig UP-TO-DATE
++> Task :TMessagesProj:generateStandaloneResValues UP-TO-DATE
++> Task :jlatexmath:generateReleaseResources UP-TO-DATE
++> Task :TMessagesProj:processStandaloneGoogleServices UP-TO-DATE
++> Task :jlatexmath:packageReleaseResources UP-TO-DATE
++> Task :jlatexmath:parseReleaseLocalResources UP-TO-DATE
++> Task :TMessagesProj:generateStandaloneLottieMeta UP-TO-DATE
++> Task :jlatexmath:generateReleaseRFile UP-TO-DATE
++> Task :jlatexmath:javaPreCompileRelease UP-TO-DATE
++> Task :jlatexmath:compileReleaseJavaWithJavac UP-TO-DATE
++> Task :jlatexmath:bundleLibCompileToJarRelease UP-TO-DATE
++> Task :jlatexmath:mergeReleaseGeneratedProguardFiles UP-TO-DATE
++> Task :jlatexmath:exportReleaseConsumerProguardFiles UP-TO-DATE
++> Task :jlatexmath:bundleLibRuntimeToJarRelease UP-TO-DATE
++> Task :jlatexmath:processReleaseJavaRes NO-SOURCE
++> Task :jlatexmath:compileReleaseLibraryResources UP-TO-DATE
++> Task :TMessagesProj:generateStandaloneResources UP-TO-DATE
++> Task :jlatexmath:writeReleaseAarMetadata UP-TO-DATE
++> Task :jlatexmath:extractDeepLinksRelease UP-TO-DATE
++> Task :jlatexmath:processReleaseManifest UP-TO-DATE
++> Task :jlatexmath:mergeReleaseShaders UP-TO-DATE
++> Task :jlatexmath:compileReleaseShaders NO-SOURCE
++> Task :jlatexmath:generateReleaseAssets UP-TO-DATE
++> Task :jlatexmath:mergeReleaseAssets UP-TO-DATE
++> Task :jlatexmath:mergeReleaseJniLibFolders UP-TO-DATE
++> Task :jlatexmath:mergeReleaseNativeLibs NO-SOURCE
++> Task :jlatexmath:copyReleaseJniLibsProjectOnly UP-TO-DATE
++> Task :TMessagesProj:packageStandaloneResources UP-TO-DATE
++> Task :TMessagesProj:parseStandaloneLocalResources UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:mergeAfatStandaloneArtProfile UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:expandAfatStandaloneL8ArtProfileWildcards UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:checkAfatStandaloneDuplicateClasses UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:generateAfatStandaloneBuildConfig
++> Task :TMessagesProj:generateStandaloneRFile UP-TO-DATE
++> Task :TMessagesProj:javaPreCompileStandalone UP-TO-DATE
++
++> Task :TMessagesProj_AppStandalone:extractAfatStandalonePythonBuildPackages UP-TO-DATE
++Caught exception: Already watching path: /tmp/claude-0/-home-user-TaioPlugin/59596ece-759e-529f-8f90-c807e90b950a/scratchpad/tg-src/TMessagesProj_AppStandalone/build/python/env/afatStandalone/lib64/python3.11/site-packages/_distutils_hack
++
++> Task :TMessagesProj_AppStandalone:generateAfatStandalonePythonRequirements UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:mergeAfatStandalonePythonSources UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:generateAfatStandalonePythonProxies UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:javaPreCompileAfatStandalone UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:generateAfatStandaloneResValues UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:mapAfatStandaloneSourceSetPaths UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:generateAfatStandaloneResources UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:mergeAfatStandaloneResources UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:createAfatStandaloneCompatibleScreenManifests
++> Task :TMessagesProj_AppStandalone:extractDeepLinksAfatStandalone UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:extractProguardFiles UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:processAfatStandaloneJavaRes NO-SOURCE
++> Task :TMessagesProj_AppStandalone:mergeAfatStandaloneStartupProfile UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:mergeAfatStandaloneShaders UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:compileAfatStandaloneShaders NO-SOURCE
++> Task :TMessagesProj_AppStandalone:generateAfatStandaloneAssets UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:generateAfatStandalonePythonMiscAssets UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:generateAfatStandalonePythonRequirementsAssets UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:generateAfatStandalonePythonSourceAssets UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:generateAfatStandalonePythonBuildAssets UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:extractAfatStandaloneVersionControlInfo UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:collectAfatStandaloneDependencies UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:sdkAfatStandaloneDependencyData UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:generateAfatStandalonePythonJniLibs UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:mergeAfatStandaloneJniLibFolders UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:validateSigningAfatStandalone UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:writeAfatStandaloneAppMetadata UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:writeAfatStandaloneSigningConfigVersions UP-TO-DATE
++
++> Task :TMessagesProj:compileStandaloneJavaWithJavac
++Java compiler version 21 has deprecated support for compiling with source/target version 8.
++Try one of the following options:
++    1. [Recommended] Use Java toolchain with a lower language version
++    2. Set a higher source/target version
++    3. Use a lower version of the JDK running the build (if you're not using Java toolchain)
++For more details on how to configure these settings, see https://developer.android.com/build/jdks.
++To suppress this warning, set android.javaCompile.suppressSourceTargetDeprecationWarning=true in gradle.properties.
++warning: [options] source value 8 is obsolete and will be removed in a future release
++warning: [options] target value 8 is obsolete and will be removed in a future release
++warning: [options] To suppress warnings about obsolete options, use -Xlint:-options.
++Note: Some input files use or override a deprecated API.
++Note: Recompile with -Xlint:deprecation for details.
++Note: Some input files use unchecked or unsafe operations.
++Note: Recompile with -Xlint:unchecked for details.
++3 warnings
++
++> Task :TMessagesProj:mergeStandaloneGeneratedProguardFiles UP-TO-DATE
++> Task :TMessagesProj:exportStandaloneConsumerProguardFiles UP-TO-DATE
++> Task :TMessagesProj:extractProguardFiles UP-TO-DATE
++> Task :TMessagesProj:processStandaloneManifest UP-TO-DATE
++> Task :TMessagesProj:generateStandaloneLibraryProguardRules UP-TO-DATE
++> Task :TMessagesProj:processStandaloneJavaRes NO-SOURCE
++> Task :TMessagesProj:mergeStandaloneJavaResource UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:mergeAfatStandaloneJavaResource UP-TO-DATE
++> Task :TMessagesProj:compileStandaloneLibraryResources UP-TO-DATE
++> Task :TMessagesProj:writeStandaloneAarMetadata UP-TO-DATE
++> Task :TMessagesProj:extractDeepLinksStandalone UP-TO-DATE
++> Task :TMessagesProj:mergeStandaloneShaders UP-TO-DATE
++> Task :TMessagesProj:compileStandaloneShaders NO-SOURCE
++> Task :TMessagesProj:generateStandaloneAssets UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:checkAfatStandaloneAarMetadata UP-TO-DATE
++> Task :TMessagesProj:mergeStandaloneAssets UP-TO-DATE
++> Task :TMessagesProj:configureCMakeRelWithDebInfo[arm64-v8a]
++> Task :TMessagesProj:buildCMakeRelWithDebInfo[arm64-v8a]
++
++> Task :TMessagesProj_AppStandalone:processAfatStandaloneMainManifest
++/tmp/claude-0/-home-user-TaioPlugin/59596ece-759e-529f-8f90-c807e90b950a/scratchpad/tg-src/TMessagesProj/config/release/AndroidManifest_standalone.xml Warning:
++	uses-permission#android.permission.WRITE_EXTERNAL_STORAGE was tagged at AndroidManifest_standalone.xml:0 to replace another declaration but no other declaration present
++/tmp/claude-0/-home-user-TaioPlugin/59596ece-759e-529f-8f90-c807e90b950a/scratchpad/tg-src/TMessagesProj/config/release/AndroidManifest_standalone.xml:141:9-149:20 Warning:
++	receiver#com.google.android.gms.measurement.AppMeasurementReceiver@android:enabled was tagged at AndroidManifest_standalone.xml:141 to replace other declarations but no other declaration present
++/tmp/claude-0/-home-user-TaioPlugin/59596ece-759e-529f-8f90-c807e90b950a/scratchpad/tg-src/TMessagesProj/config/release/AndroidManifest_standalone.xml:157:9-161:40 Warning:
++	service#com.google.android.gms.measurement.AppMeasurementService@android:enabled was tagged at AndroidManifest_standalone.xml:157 to replace other declarations but no other declaration present
++
++> Task :TMessagesProj_AppStandalone:processAfatStandaloneManifest
++> Task :TMessagesProj_AppStandalone:processAfatStandaloneManifestForPackage
++> Task :TMessagesProj:bundleLibCompileToJarStandalone
++> Task :TMessagesProj:mergeStandaloneJniLibFolders UP-TO-DATE
++> Task :TMessagesProj:mergeStandaloneNativeLibs UP-TO-DATE
++> Task :TMessagesProj:copyStandaloneJniLibsProjectOnly UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:mergeAfatStandaloneAssets UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:compressAfatStandaloneAssets UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:mergeAfatStandaloneNativeLibs UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:stripAfatStandaloneDebugSymbols UP-TO-DATE
++warn: removing resource cat.narezany.margelet:string/AddManyMembersAlertNamesText_few without required default value.
++warn: removing resource cat.narezany.margelet:string/AddManyMembersAlertNamesText_two without required default value.
++warn: removing resource cat.narezany.margelet:string/AddManyMembersAlertTitle_few without required default value.
++warn: removing resource cat.narezany.margelet:string/AddManyMembersAlertTitle_many without required default value.
++warn: removing resource cat.narezany.margelet:string/AddManyMembersAlertTitle_two without required default value.
++warn: removing resource cat.narezany.margelet:string/EmailPasswordConfirmText3 without required default value.
++warn: removing resource cat.narezany.margelet:string/Languages_few without required default value.
++warn: removing resource cat.narezany.margelet:string/Languages_many without required default value.
++warn: removing resource cat.narezany.margelet:string/Languages_two without required default value.
++warn: removing resource cat.narezany.margelet:string/Languages_zero without required default value.
++warn: removing resource cat.narezany.margelet:string/NoContactsYet without required default value.
++warn: removing resource cat.narezany.margelet:string/NoContactsYetLine1 without required default value.
++warn: removing resource cat.narezany.margelet:string/NoContactsYetLine2 without required default value.
++warn: removing resource cat.narezany.margelet:string/NoContactsYetLine3 without required default value.
++warn: removing resource cat.narezany.margelet:string/PleaseEnterFirstPassword without required default value.
++warn: removing resource cat.narezany.margelet:string/PleaseEnterPassword without required default value.
++warn: removing resource cat.narezany.margelet:string/ResetAccountButton without required default value.
++warn: removing resource cat.narezany.margelet:string/ResetMyAccountText without required default value.
++warn: removing resource cat.narezany.margelet:string/ShareTelegram without required default value.
++warn: removing resource cat.narezany.margelet:string/WidgetPasscodeEnable2 without required default value.
++warn: removing resource cat.narezany.margelet:string/YourEmailCode without required default value.
++warn: removing resource cat.narezany.margelet:string/YourEmailCodeInfo without required default value.
++warn: removing resource cat.narezany.margelet:string/YourPasswordSuccessText without required default value.
++warn: removing resource cat.narezany.margelet:string/formatterMonthName without required default value.
++warn: removing resource cat.narezany.margelet:string/formatterMonthYear2 without required default value.
++
++> Task :TMessagesProj_AppStandalone:processAfatStandaloneResources
++
++> Task :TMessagesProj_AppStandalone:compileAfatStandaloneJavaWithJavac
++Java compiler version 21 has deprecated support for compiling with source/target version 8.
++Try one of the following options:
++    1. [Recommended] Use Java toolchain with a lower language version
++    2. Set a higher source/target version
++    3. Use a lower version of the JDK running the build (if you're not using Java toolchain)
++For more details on how to configure these settings, see https://developer.android.com/build/jdks.
++To suppress this warning, set android.javaCompile.suppressSourceTargetDeprecationWarning=true in gradle.properties.
++warning: [options] source value 8 is obsolete and will be removed in a future release
++warning: [options] target value 8 is obsolete and will be removed in a future release
++warning: [options] To suppress warnings about obsolete options, use -Xlint:-options.
++Note: Some input files use or override a deprecated API.
++Note: Recompile with -Xlint:deprecation for details.
++Note: /tmp/claude-0/-home-user-TaioPlugin/59596ece-759e-529f-8f90-c807e90b950a/scratchpad/tg-src/TMessagesProj_AppStandalone/src/main/java/org/telegram/ui/SMSStatsActivity.java uses unchecked or unsafe operations.
++Note: Recompile with -Xlint:unchecked for details.
++3 warnings
++
++> Task :TMessagesProj_AppStandalone:mergeAfatStandaloneGeneratedProguardFiles UP-TO-DATE
++> Task :TMessagesProj_AppStandalone:optimizeAfatStandaloneResources
++> Task :TMessagesProj:minifyStandaloneWithR8
++> Task :TMessagesProj:bundleLibRuntimeToJarStandalone
++> Task :TMessagesProj_AppStandalone:expandAfatStandaloneArtProfileWildcards
++> Task :TMessagesProj_AppStandalone:minifyAfatStandaloneWithR8
++WARNING: /root/.gradle/caches/8.11.1/transforms/8e6b1b0da443fe74e3aed4ceade5be68/transformed/jetified-play-services-recaptchabase-16.1.0-runtime.jar: R8: The companion object Companion could not be found in class com.google.android.gms.internal.recaptchabase.zzm
++WARNING: /root/.gradle/caches/8.11.1/transforms/8e6b1b0da443fe74e3aed4ceade5be68/transformed/jetified-play-services-recaptchabase-16.1.0-runtime.jar: R8: The companion object Companion could not be found in class com.google.android.gms.internal.recaptchabase.zzl
++
++> Task :TMessagesProj_AppStandalone:l8DexDesugarLibAfatStandalone
++> Task :TMessagesProj_AppStandalone:compileAfatStandaloneArtProfile
++> Task :TMessagesProj_AppStandalone:packageAfatStandalone
++> Task :TMessagesProj_AppStandalone:createAfatStandaloneApkListingFileRedirect
++> Task :TMessagesProj_AppStandalone:assembleAfatStandalone
++[Incubating] Problems report is available at: file:///tmp/claude-0/-home-user-TaioPlugin/59596ece-759e-529f-8f90-c807e90b950a/scratchpad/tg-src/build/reports/problems/problems-report.html
++
++Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
++
++You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
++
++For more on this, please refer to https://docs.gradle.org/8.11.1/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
++
++BUILD SUCCESSFUL in 7m 25s
++105 actionable tasks: 21 executed, 84 up-to-date
 diff --git a/gradle.properties b/gradle.properties
-index 83408dc5..51b4e951 100644
+index 83408dc5..770c6f35 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -13,9 +13,9 @@
@@ -39040,7 +39403,7 @@ index 83408dc5..51b4e951 100644
  # org.gradle.parallel=true
  #Sat Mar 12 05:53:50 MSK 2016
 -APP_VERSION_CODE=7031
-+APP_VERSION_CODE=7060
++APP_VERSION_CODE=7061
  APP_VERSION_NAME=12.10.0
 -APP_PACKAGE=org.telegram.messenger
 +APP_PACKAGE=cat.narezany.margelet

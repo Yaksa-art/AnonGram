@@ -1,7 +1,7 @@
 {
-  "version": "0.99.24",
-  "apk": "https://github.com/narezany/margelet/raw/apk/margelet-0.99.24.apk",
-  "about": "Pre-release 1.0.24. The profile cards were not taking the gradient on any theme — the palette was only installed in a rare case, so the cards kept the theme's own colour: white on light, dark on dark. It is installed always now. The version shown in settings is computed from the real one instead of being typed in beside it, so it can no longer go stale.",
-  "about_ru": "Пререлиз 1.0.24. Карточки профиля не брали градиент ни на одной теме: палитра ставилась только в редком случае, и карточки оставались цвета темы — белые на светлой, тёмные на тёмной. Теперь ставится всегда. Версия в настройках считается из настоящей, а не вписана рядом с ней, — устареть больше не может.",
-  "about_zh": "预发布 1.0.24。资料卡片在任何主题下都没取到渐变色：调色板只在一种罕见情况下才装上，卡片仍旧用主题自己的颜色——浅色主题下是白的，深色主题下是暗的。现在总会装上。设置里显示的版本号改为从真实版本算出，而不是在旁边另写一份，不会再过时。"
+  "version": "0.99.25",
+  "apk": "https://github.com/narezany/margelet/raw/apk/margelet-0.99.25.apk",
+  "about": "Pre-release 1.0.25. The \"bio\" and name lines stayed black while everything around them followed the gradient: both are drawn with one paint shared by the whole app, and its colour is set when the theme is built, bypassing the screen's own palette. They now take their colour from the screen, as the link colour in that same paint already did.",
+  "about_ru": "Пререлиз 1.0.25. Надписи «о себе» и имя оставались чёрными, пока всё вокруг уже шло под градиент: обе рисуются одной кистью на всё приложение, а её цвет ставится при сборке темы, мимо палитры экрана. Теперь цвет берётся у экрана — как у той же кисти уже брался цвет ссылки.",
+  "about_zh": "预发布 1.0.25。「简介」和名字这两行始终是黑的，周围却都跟着渐变走了：它们用的是全局共用的一支画笔，颜色在构建主题时就定好，绕过了页面自己的调色板。现在颜色改从页面取——同一支画笔里的链接颜色本来就是这么取的。"
 }
