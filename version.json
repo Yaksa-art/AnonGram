@@ -1,7 +1,7 @@
 {
-  "version": "0.99.11",
+  "version": "0.99.12",
   "apk": "https://github.com/narezany/margelet/raw/apk/margelet.apk",
-  "about": "Pre-release 1.0.11. Fixes the crash on start that 1.0.10 shipped with. If 1.0.10 left your app unable to open, install this over it.",
-  "about_ru": "Пререлиз 1.0.11. Чинит вылет при запуске, с которым вышла 1.0.10. Если после неё приложение не открывалось — поставь эту поверх.",
-  "about_zh": "预发布 1.0.11。修复 1.0.10 带来的启动即崩溃。如果 1.0.10 让你的应用打不开，直接覆盖安装这一版。"
+  "about": "Pre-release 1.0.12. Cats now come from the repository instead of the build. Tapping a wall message inside the group opens that person's wall. New margy:// links open Margy tabs — margy://donate, margy://plugins, margy://wall/@name. Plugins can ask for a file with margelet.pick_file instead of building an Intent.",
+  "about_ru": "Пререлиз 1.0.12. Коты приезжают из репозитория, а не из сборки. Нажатие на сообщение стены в самой группе открывает стену того, о ком оно. Появились ссылки margy:// на вкладки форка — margy://donate, margy://plugins, margy://wall/@ник. Плагины теперь просят файл через margelet.pick_file, а не собирают Intent.",
+  "about_zh": "预发布 1.0.12。猫图改从仓库读取，不再打包进应用。在群组里点按墙上的消息会打开对应的人的墙。新增 margy:// 链接直达各个页面——margy://donate、margy://plugins、margy://wall/@用户名。插件可以用 margelet.pick_file 请求文件，不必自己构造 Intent。"
 }

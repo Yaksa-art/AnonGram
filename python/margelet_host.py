@@ -22,6 +22,8 @@ _Host = jclass("org.telegram.margelet.MargeletPluginHost")
 _Hooks = jclass("org.telegram.margelet.MargeletHooks")
 _Engine = jclass("org.telegram.margelet.MargeletHookEngine")
 _HookCall = jclass("org.telegram.margelet.MargeletHookCall")
+_Files = jclass("org.telegram.margelet.MargeletFiles")
+_Picked = jclass("org.telegram.margelet.MargeletFiles$Picked")
 _Fetch = jclass("org.telegram.margelet.MargeletHooks$FetchCallback")
 _Android = jclass("org.telegram.messenger.AndroidUtilities")
 
@@ -221,6 +223,41 @@ class Margelet:
                 return True
             self.error("метод не подменился:", where, method)
             return False
+        except Exception:
+            _Host.log(self.name, traceback.format_exc(), True)
+            return False
+
+    def pick_file(self, call, types=None):
+        """Спросить у человека файл и получить путь к нему.
+
+        call(путь) — позовут, когда выберут. Передумали или не вышло — путь
+        придёт None; обработчик зовут в любом случае, чтобы плагин не остался
+        ждать ответа, которого не будет.
+
+        types — что показывать в проводнике: "image/*", "text/plain". Пусто —
+        любые файлы.
+
+        Выбранное копируется в папку этого плагина, и путь — на копию.
+        Проводник отдаёт не путь, а адрес с временным правом на чтение: оно
+        живёт до перезапуска и из питона не открывается. Копия — то, чем
+        плагин сможет пользоваться дальше.
+
+        Собирать Intent руками не надо и не выйдет: мост питона выбирает
+        конструктор отражением и добирается до скрытого Intent(Parcel),
+        которого на деле нет. Эта дверь и сделана затем, чтобы туда не лезть.
+        """
+        outer = self
+
+        class Answer(dynamic_proxy(_Picked)):
+            def onPicked(self, path):
+                try:
+                    call(str(path) if path is not None else None)
+                except Exception:
+                    _Host.log(outer.name, traceback.format_exc(), True)
+
+        try:
+            _Files.pick(self.id, str(types or ""), Answer())
+            return True
         except Exception:
             _Host.log(self.name, traceback.format_exc(), True)
             return False
