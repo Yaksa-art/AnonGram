@@ -15,8 +15,8 @@
 [
   {
     "photo": "res/margelet_cat_1.jpg",
-    "name": "Murzik",
-    "name_ru": "Мурзик",
+    "name": "walnut",
+    "name_ru": "грецкий орех",
     "from": "@narezany"
   }
 ]
