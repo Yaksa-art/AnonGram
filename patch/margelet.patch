@@ -1565,7 +1565,7 @@ index 00000000..a6f9b07d
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
 new file mode 100644
-index 00000000..3af68a92
+index 00000000..5d8cc820
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletConfig.java
 @@ -0,0 +1,419 @@
@@ -1611,7 +1611,7 @@ index 00000000..3af68a92
 +     * 0.99, а не 1.0, нарочно: настоящая единица должна остаться свободной
 +     * под настоящий выпуск, а пререлиз обязан быть строго меньше её.
 +     */
-+    public static final String APP_VERSION = "0.99.17";
++    public static final String APP_VERSION = "0.99.18";
 +
 +    /** Как выпуск называется для человека: «Пререлиз 1.0», «Бета 1.1». */
 +    public static String versionLabel() {
@@ -3015,11 +3015,23 @@ index 00000000..33ff716b
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletGradient.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletGradient.java
 new file mode 100644
-index 00000000..e6ba1bef
+index 00000000..f6e69053
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletGradient.java
-@@ -0,0 +1,243 @@
+@@ -0,0 +1,343 @@
 +package org.telegram.margelet;
++
++import android.graphics.Canvas;
++import android.graphics.ColorFilter;
++import android.graphics.LinearGradient;
++import android.graphics.Paint;
++import android.graphics.PixelFormat;
++import android.graphics.Rect;
++import android.graphics.Shader;
++import android.graphics.drawable.Drawable;
++
++import androidx.annotation.NonNull;
++import androidx.annotation.Nullable;
 +
 +import org.telegram.messenger.AccountInstance;
 +import org.telegram.messenger.AndroidUtilities;
@@ -3254,6 +3266,94 @@ index 00000000..e6ba1bef
 +            forget(id);
 +            answer(done, removed > 0 ? MargeletGroup.REMOVED : MargeletGroup.NOTHING);
 +        });
++    }
++
++    // --- рисование ---------------------------------------------------------
++    //
++    // Градиент линейный: первый цвет слева, второй справа. Сперва я взял
++    // радиальный — тот самый, каким телеграм красит шапку по номеру цвета, —
++    // и это было рассуждением от кода, а не от того, что человек называет
++    // градиентом. Радиальный читается как пятно света посередине, а не как
++    // переход слева направо, и владелец сказал об этом первым же словом.
++
++    /** Общая кисть. Только для главного потока: рисование живёт только в нём. */
++    private static final Paint FILL = new Paint(Paint.ANTI_ALIAS_FLAG);
++    private static int builtFrom, builtTo;
++    private static float builtWidth;
++
++    /**
++     * Залить прямоугольник градиентом слева направо.
++     *
++     * Ширина входит в ключ пересборки наравне с цветами: растяжка у заливки
++     * своя, и пара, построенная на узкий образец, на широкой шапке дала бы
++     * переход не там, где нужно.
++     */
++    public static void paint(Canvas canvas, int[] pair,
++                             float left, float top, float right, float bottom, int alpha) {
++        if (canvas == null || pair == null || pair.length < 2
++                || right <= left || bottom <= top) {
++            return;
++        }
++        final float width = right - left;
++        if (FILL.getShader() == null || builtFrom != pair[0] || builtTo != pair[1]
++                || builtWidth != width) {
++            builtFrom = pair[0];
++            builtTo = pair[1];
++            builtWidth = width;
++            FILL.setShader(new LinearGradient(0, 0, width, 0,
++                    pair[0], pair[1], Shader.TileMode.CLAMP));
++        }
++        FILL.setAlpha(alpha);
++        canvas.save();
++        canvas.translate(left, top);
++        canvas.drawRect(0, 0, width, bottom - top, FILL);
++        canvas.restore();
++    }
++
++    /**
++     * Подложка страницы профиля: обычный фон, а поверх — градиент человека.
++     *
++     * Именно рисуемая подложка, а не заданный один раз цвет. Градиент
++     * приезжает из группы позже, чем создаётся экран, и цвет, поставленный при
++     * создании, так и остался бы серым до следующего захода. Подложка
++     * спрашивает цвета на каждой отрисовке и перерисовывает себя сама, когда
++     * они появятся.
++     */
++    public static final class Backdrop extends Drawable {
++
++        private final long userId;
++        private final Paint plain = new Paint();
++
++        public Backdrop(long userId, int base) {
++            this.userId = userId;
++            plain.setColor(base);
++        }
++
++        @Override
++        public void draw(@NonNull Canvas canvas) {
++            final Rect bounds = getBounds();
++            canvas.drawRect(bounds, plain);
++            final int[] pair = of(userId, this::invalidateSelf);
++            if (pair != null) {
++                MargeletGradient.paint(canvas, pair, bounds.left, bounds.top,
++                        bounds.right, bounds.bottom, 255);
++            }
++        }
++
++        @Override
++        public void setAlpha(int alpha) {
++            plain.setAlpha(alpha);
++        }
++
++        @Override
++        public void setColorFilter(@Nullable ColorFilter colorFilter) {
++            plain.setColorFilter(colorFilter);
++        }
++
++        @Override
++        public int getOpacity() {
++            return PixelFormat.OPAQUE;
++        }
 +    }
 +
 +    private static void answer(MargeletGroup.Removed done, int what) {
@@ -5032,10 +5132,10 @@ index 00000000..43524f9a
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/margelet/MargeletMarkup.java b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletMarkup.java
 new file mode 100644
-index 00000000..2bf0223b
+index 00000000..c6516692
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/margelet/MargeletMarkup.java
-@@ -0,0 +1,617 @@
+@@ -0,0 +1,565 @@
 +package org.telegram.margelet;
 +
 +import android.text.Spannable;
@@ -5119,12 +5219,6 @@ index 00000000..2bf0223b
 +    private static boolean hasPayload(int kind) {
 +        return kind == KIND_BUTTON || kind == KIND_EMOJI;
 +    }
-+
-+    /**
-+     * Заголовок, который форк дописывает в начало оформленного сообщения.
-+     * В самом форке он спрятан, у остальных виден — так и задумано владельцем.
-+     */
-+    public static final String HEADER = "<! Message looks better with @margeletter! >";
 +
 +    /** Размер: от 0,6 до 2,0 обычного. Границы жёсткие с обеих сторон. */
 +    /**
@@ -5447,10 +5541,6 @@ index 00000000..2bf0223b
 +                    ? open(mark[4], mark[5], payloads.get(mark[6]))
 +                    : close());
 +        }
-+        // Заголовок к отправляемому не дописывается вовсе. Настройка,
-+        // которая это включала, была выключена по умолчанию и снята: реклама
-+        // форка в чужой переписке — плата, которую платит не тот, кто её
-+        // выбрал, а тот, кому пришло сообщение.
 +        return out;
 +    }
 +
@@ -5573,40 +5663,10 @@ index 00000000..2bf0223b
 +                text.setSpan(span, run.start, run.end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
 +            }
 +        }
-+        // Заголовок прячем всегда. Настройка «показывать его» была выключена
-+        // по умолчанию и снята: внутри форка эта строка ни к чему, она для
-+        // тех, у кого форка нет. А прятать по-прежнему есть что — заголовок
-+        // приходит в сообщениях, отправленных прежними сборками.
-+        hideHeader(text);
 +    }
 +
 +    /**
-+     * Прячет заголовок с рекламой форка внутри самого форка.
-+     *
-+     * Именно прячет, а не вырезает: вырезание сдвинуло бы отсчёты жирного,
-+     * курсива и ссылок, которые пришли с сервера и посчитаны по тексту
-+     * вместе с заголовком.
-+     */
-+    private static void hideHeader(Spannable text) {
-+        final int at = indexOf(text, HEADER);
-+        if (at < 0) {
-+            return;
-+        }
-+        // Перевод строки перед заголовком прячем вместе с ним, иначе от
-+        // спрятанной строки останется пустая.
-+        int start = at;
-+        if (start > 0 && text.charAt(start - 1) == '\n') {
-+            start--;
-+        }
-+        int end = at + HEADER.length();
-+        if (end < text.length() && text.charAt(end) == '\n') {
-+            end++;
-+        }
-+        text.setSpan(new MargeletSpans.Hidden(), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-+    }
-+
-+    /**
-+     * Убирает метки и строку со ссылкой на форк.
++     * Убирает служебные метки оформления.
 +     *
 +     * Нужно при обычном копировании: человек копирует текст, а не наши
 +     * служебные знаки. Оформление уносит отдельный пункт «копировать с
@@ -5617,18 +5677,6 @@ index 00000000..2bf0223b
 +            return text;
 +        }
 +        final SpannableStringBuilder out = new SpannableStringBuilder(text);
-+        int at = indexOf(out, HEADER);
-+        if (at >= 0) {
-+            int start = at;
-+            if (start > 0 && out.charAt(start - 1) == '\n') {
-+                start--;
-+            }
-+            int end = at + HEADER.length();
-+            if (end < out.length() && out.charAt(end) == '\n') {
-+                end++;
-+            }
-+            out.delete(start, end);
-+        }
 +        // Идём с конца: удаление сдвигает всё, что правее.
 +        for (int i = out.length() - 1; i >= 0; i--) {
 +            final char c = out.charAt(i);
@@ -10379,10 +10427,10 @@ index 7804a161..fddfd674 100644
                      }
                  });
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
-index 6b8cddfe..22e684a4 100644
+index 6b8cddfe..0db4b8e2 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
-@@ -490,6 +490,18 @@ public class ChatActivity extends BaseFragment implements
+@@ -490,6 +490,29 @@ public class ChatActivity extends BaseFragment implements
      private ChatBigEmptyView bigEmptyView;
      private ArrayList<View> actionModeViews = new ArrayList<>();
      public ChatAvatarContainer avatarContainer;
@@ -10395,13 +10443,24 @@ index 6b8cddfe..22e684a4 100644
 +     * нет нарочно; я трижды пробовал сделать свой и трижды получал подделку.
 +     */
 +    private String margeletWallTag;
++    /**
++     * Самый старый номер сообщения из принесённых — до отбора по метке.
++     *
++     * Курсор постраничной загрузки нельзя брать из отобранного: там номер
++     * самого старого сообщения СТЕНЫ, а не самого старого принесённого. Попроси
++     * мы «то, что старше» по нему — сервер вернул бы тот же кусок, и стена
++     * ходила бы по кругу.
++     */
++    private int margeletWallOldest;
++    /** Сколько страниц дочитано само. Ограничение против бесконечного хода. */
++    private int margeletWallPages;
 +    /** Чья это стена и как его звать — для шапки. */
 +    private String margeletWallName;
 +    private long margeletWallPeer;
      private AnimatedTextView selectedMessagesCountTextView;
      private RecyclerListView.OnItemClickListener mentionsOnItemClickListener;
      private SuggestEmojiView suggestEmojiPanel;
-@@ -1199,6 +1211,9 @@ public class ChatActivity extends BaseFragment implements
+@@ -1199,6 +1222,9 @@ public class ChatActivity extends BaseFragment implements
      public final static int OPTION_DELETE = 1;
      public final static int OPTION_FORWARD = 2;
      public final static int OPTION_COPY = 3;
@@ -10411,7 +10470,7 @@ index 6b8cddfe..22e684a4 100644
      public final static int OPTION_SAVE_TO_GALLERY = 4;
      public final static int OPTION_APPLY_LOCALIZATION_OR_THEME = 5;
      public final static int OPTION_SHARE = 6;
-@@ -1690,6 +1705,12 @@ public class ChatActivity extends BaseFragment implements
+@@ -1690,6 +1716,12 @@ public class ChatActivity extends BaseFragment implements
  
      private final static int id_chat_compose_panel = 1000;
  
@@ -10424,23 +10483,23 @@ index 6b8cddfe..22e684a4 100644
      RecyclerListView.OnItemLongClickListenerExtended onItemLongClickListener = new RecyclerListView.OnItemLongClickListenerExtended() {
          @Override
          public boolean onItemClick(View view, int position, float x, float y) {
-@@ -1834,6 +1855,15 @@ public class ChatActivity extends BaseFragment implements
+@@ -1834,6 +1866,15 @@ public class ChatActivity extends BaseFragment implements
              if (inPreviewMode) {
                  return;
              }
-+            if (margeletWallTag != null) {
-+                // На самой стене нажатие ничего не значит: открывать оттуда
-+                // нечего, а подсветка нажатия обещала бы действие, которого
-+                // нет. Молчаливая кнопка хуже отсутствующей.
-+                return;
-+            }
-+            if (margeletOpenWall(view)) {
++            // Переход на стену — из самой группы, но не с уже открытой стены:
++            // иначе нажатие уводило бы со стены на стену. А всё остальное, что
++            // нажатие делает в обычной переписке — реакции по пустому месту,
++            // меню сообщения, — на стене работает как везде. Раньше здесь
++            // стоял возврат для всей стены целиком, и он глушил не только
++            // переход, но и это тоже.
++            if (margeletWallTag == null && margeletOpenWall(view)) {
 +                return;
 +            }
              wasManualScroll = true;
              if (view instanceof ChatActionCell && ((ChatActionCell) view).getMessageObject().isDateObject) {
                  if (isInsideContainer) {
-@@ -2666,6 +2696,9 @@ public class ChatActivity extends BaseFragment implements
+@@ -2666,6 +2707,9 @@ public class ChatActivity extends BaseFragment implements
  
      @Override
      public boolean onFragmentCreate() {
@@ -10450,7 +10509,7 @@ index 6b8cddfe..22e684a4 100644
          final long chatId = arguments.getLong("chat_id", 0);
          final long userId = arguments.getLong("user_id", 0);
          final int encId = arguments.getInt("enc_id", 0);
-@@ -3695,6 +3728,11 @@ public class ChatActivity extends BaseFragment implements
+@@ -3695,6 +3739,11 @@ public class ChatActivity extends BaseFragment implements
          actionBar.setActionBarMenuOnItemClick(new ActionBar.ActionBarMenuOnItemClick() {
              @Override
              public void onItemClick(final int id) {
@@ -10462,7 +10521,7 @@ index 6b8cddfe..22e684a4 100644
                  if (id == -1) {
                      if (isInPollAddOptionMode()) {
                          pollAddOptionModeClose();
-@@ -4514,6 +4552,16 @@ public class ChatActivity extends BaseFragment implements
+@@ -4514,6 +4563,16 @@ public class ChatActivity extends BaseFragment implements
              closeTopicItem = headerItem.lazilyAddSubItem(topic_close, R.drawable.msg_topic_close, LocaleController.getString(R.string.CloseTopic));
              closeTopicItem.setVisibility(currentChat != null && ChatObject.canManageTopic(currentAccount, currentChat, forumTopic) && forumTopic != null && !forumTopic.closed ? View.VISIBLE : View.GONE);
          }
@@ -10479,7 +10538,7 @@ index 6b8cddfe..22e684a4 100644
          menu.setVisibility(inMenuMode ? View.GONE : View.VISIBLE);
  
          updateTitle(false);
-@@ -10880,18 +10928,33 @@ public class ChatActivity extends BaseFragment implements
+@@ -10880,18 +10939,33 @@ public class ChatActivity extends BaseFragment implements
      }
  
      private void updatePagedownButtonsPosition() {
@@ -10517,7 +10576,7 @@ index 6b8cddfe..22e684a4 100644
          }
      }
  
-@@ -12018,13 +12081,23 @@ public class ChatActivity extends BaseFragment implements
+@@ -12018,13 +12092,23 @@ public class ChatActivity extends BaseFragment implements
          if (isInsideContainer && parentChatActivity == null) {
              paddingBottom = AndroidUtilities.navigationBarHeight;
          } else {
@@ -10543,7 +10602,33 @@ index 6b8cddfe..22e684a4 100644
          if (topicsTabs != null) {
              topicsTabs.setSideMenuBackgroundMarginTop(0);//Math.max(0, paddingTop - blurredViewTopOffset - dp(5)));
          }
-@@ -19376,6 +19449,45 @@ public class ChatActivity extends BaseFragment implements
+@@ -13799,7 +13883,12 @@ public class ChatActivity extends BaseFragment implements
+                     loading = true;
+                     waitingForLoad.add(lastLoadIndex);
+                     if (messagesByDays.size() != 0) {
+-                        getMessagesController().loadMessages(dialog_id, mergeDialogId, false, 50, maxMessageId[0], 0, !cacheEndReached[0], minDate[0], classGuid, 0, 0, chatMode, threadMessageId, replyMaxReadId, lastLoadIndex++, isTopic);
++                        // На стене курсор свой: maxMessageId посчитан по
++                        // отобранному, и просьба «старше него» вернула бы тот
++                        // же кусок снова.
++                        final int margeletFrom = margeletWallTag != null && margeletWallOldest > 0
++                                ? margeletWallOldest : maxMessageId[0];
++                        getMessagesController().loadMessages(dialog_id, mergeDialogId, false, 50, margeletFrom, 0, !cacheEndReached[0], margeletWallTag != null ? 0 : minDate[0], classGuid, 0, 0, chatMode, threadMessageId, replyMaxReadId, lastLoadIndex++, isTopic);
+                     } else {
+                         getMessagesController().loadMessages(dialog_id, mergeDialogId, false, 50, 0, 0, !cacheEndReached[0], minDate[0], classGuid, 0, 0, chatMode, threadMessageId, replyMaxReadId, lastLoadIndex++, isTopic);
+                     }
+@@ -15607,6 +15696,11 @@ public class ChatActivity extends BaseFragment implements
+             cacheEndReached[a] = false;
+             forwardEndReached[a] = true;
+         }
++        // Курсор стены сбрасывается вместе с остальными: он такой же курсор
++        // истории, просто свой. Оставь мы его — после перезагрузки переписки
++        // стена попросила бы «то, что старше» от места, где её уже нет.
++        margeletWallOldest = 0;
++        margeletWallPages = 0;
+         if (full) {
+             first = true;
+             firstLoading = true;
+@@ -19376,6 +19470,82 @@ public class ChatActivity extends BaseFragment implements
          }
      }
  
@@ -10558,6 +10643,43 @@ index 6b8cddfe..22e684a4 100644
 +     * Только в группе. На стене это не работает, и правильно: там все
 +     * сообщения об одном человеке, открывать нечего.
 +     */
++    /** Сколько сообщений стены считаем достаточным, чтобы перестать дочитывать. */
++    private static final int MARGELET_WALL_ENOUGH = 20;
++    /** И сколько страниц группы готовы ради этого перебрать. */
++    private static final int MARGELET_WALL_MAX_PAGES = 10;
++
++    /**
++     * Дочитать стену, если принесённого не хватило.
++     *
++     * Обычная переписка добирает историю при прокрутке. На стене прокручивать
++     * нечего: из полусотни принесённых сообщений с меткой бывает одно, список
++     * выходит короче экрана, и до его конца человек доезжает, не сдвинув
++     * пальцем, — а значит проверка «пора догружать» не срабатывает никогда.
++     * Владелец видел это так: на стене одно сообщение, а стоит пролистать саму
++     * группу — остальные появляются. Появлялись они не от стены, а оттого, что
++     * их дочитал сам чат группы.
++     *
++     * Поэтому просим следующую страницу сами и от своего курсора. Предел в
++     * десять страниц — не про правильность, а про меру: если у человека на
++     * стене пусто, перебирать ради этого всю историю группы незачем.
++     */
++    private void margeletFillWall() {
++        if (margeletWallTag == null || loading || endReached[0]) {
++            return;
++        }
++        if (messages.size() >= MARGELET_WALL_ENOUGH
++                || margeletWallPages >= MARGELET_WALL_MAX_PAGES
++                || margeletWallOldest <= 1) {
++            return;
++        }
++        margeletWallPages++;
++        loading = true;
++        waitingForLoad.add(lastLoadIndex);
++        getMessagesController().loadMessages(dialog_id, mergeDialogId, false, 50,
++                margeletWallOldest, 0, !cacheEndReached[0], 0, classGuid, 0, 0,
++                chatMode, threadMessageId, replyMaxReadId, lastLoadIndex++, isTopic);
++    }
++
 +    private boolean margeletOpenWall(View view) {
 +        if (!(view instanceof ChatMessageCell) || currentChat == null) {
 +            return false;
@@ -10589,7 +10711,7 @@ index 6b8cddfe..22e684a4 100644
      private void processRowSelect(View view, boolean outside, float touchX, float touchY) {
          MessageObject message = null;
          if (view instanceof ChatMessageCell) {
-@@ -19428,6 +19540,41 @@ public class ChatActivity extends BaseFragment implements
+@@ -19428,6 +19598,41 @@ public class ChatActivity extends BaseFragment implements
          if (avatarContainer == null) {
              return;
          }
@@ -10631,7 +10753,7 @@ index 6b8cddfe..22e684a4 100644
          if (chatMode == MODE_SUGGESTIONS && currentChat != null) {
              if (isSubscriberSuggestions) {
                  avatarContainer.setTitle(ForumUtilities.getMonoForumTitle(currentAccount, currentChat), currentChat.scam, currentChat.fake, currentChat.verified, false, null, animated);
-@@ -19520,7 +19667,7 @@ public class ChatActivity extends BaseFragment implements
+@@ -19520,7 +19725,7 @@ public class ChatActivity extends BaseFragment implements
                  avatarContainer.setTitle(LocaleController.getString(R.string.SavedMessages));
              } else if (!MessagesController.isSupportUser(currentUser) && getContactsController().contactsDict.get(currentUser.id) == null && (getContactsController().contactsDict.size() != 0 || !getContactsController().isLoadingContacts())) {
                  if (!TextUtils.isEmpty(currentUser.phone)) {
@@ -10640,7 +10762,7 @@ index 6b8cddfe..22e684a4 100644
                  } else {
                      avatarContainer.setTitle(AndroidUtilities.removeRTL(AndroidUtilities.removeDiacritics(UserObject.getUserName(currentUser))), currentUser.scam, currentUser.fake, currentUser.verified, getMessagesController().isPremiumUser(currentUser), currentUser.emoji_status, animated);
                  }
-@@ -20524,6 +20671,11 @@ public class ChatActivity extends BaseFragment implements
+@@ -20524,6 +20729,28 @@ public class ChatActivity extends BaseFragment implements
              postponedScrollToLastMessageQueryIndex = 0;
          }
          ArrayList<MessageObject> messArr = (ArrayList<MessageObject>) args[2];
@@ -10648,11 +10770,51 @@ index 6b8cddfe..22e684a4 100644
 +        // на входе, а не при показе: дальше по коду сообщения расходятся по
 +        // десятку списков, и вычесть их оттуда потом было бы куда труднее, чем
 +        // не положить сюда.
++        //
++        // Но два числа снимаем ДО отбора: сколько сообщений принесли на самом
++        // деле и какое из них самое старое. По первому телеграм решает,
++        // кончилась ли история, по второму просит следующую страницу. После
++        // отбора оба становятся про метку, а не про историю группы: из полусотни
++        // принесённых с меткой бывает одно, и стена объявляла конец истории на
++        // первой же странице. Ровно это владелец и видел — одно сообщение
++        // вместо всех.
++        final int margeletLoadedCount = messArr.size();
++        if (margeletWallTag != null) {
++            for (MessageObject margeletOne : messArr) {
++                final int margeletId = margeletOne == null ? 0 : margeletOne.getId();
++                if (margeletId > 0 && (margeletWallOldest == 0 || margeletId < margeletWallOldest)) {
++                    margeletWallOldest = margeletId;
++                }
++            }
++        }
 +        messArr = org.telegram.margelet.MargeletGroup.onlyWall(messArr, margeletWallTag);
  
          boolean universalNotify = false;
          HashMap<Integer, MessageObject> oldMessages = null;
-@@ -21950,6 +22102,7 @@ public class ChatActivity extends BaseFragment implements
+@@ -21408,7 +21635,7 @@ public class ChatActivity extends BaseFragment implements
+             }
+             loadingForward = false;
+         } else {
+-            if (messArr.size() < count && load_type != 3 && load_type != 4) {
++            if (margeletLoadedCount < count && load_type != 3 && load_type != 4) {
+                 if (isCache) {
+                     if (currentEncryptedChat != null || loadIndex == 1 && mergeDialogId != 0 && isEnd) {
+                         endReached[loadIndex] = true;
+@@ -21416,11 +21643,12 @@ public class ChatActivity extends BaseFragment implements
+                     if (load_type != 2) {
+                         cacheEndReached[loadIndex] = true;
+                     }
+-                } else if (load_type != 2 || messArr.size() == 0 && messages.isEmpty()) {
++                } else if (load_type != 2 || margeletLoadedCount == 0 && messages.isEmpty()) {
+                     endReached[loadIndex] = true;
+                 }
+             }
+             loading = false;
++            margeletFillWall();
+             if (onChatMessagesLoaded != null) {
+                 onChatMessagesLoaded.run();
+                 onChatMessagesLoaded = null;
+@@ -21950,6 +22178,7 @@ public class ChatActivity extends BaseFragment implements
              FileLog.d("ChatActivity didReceiveNewMessages start");
              long did = (Long) args[0];
              ArrayList<MessageObject> arr = (ArrayList<MessageObject>) args[1];
@@ -10660,7 +10822,7 @@ index 6b8cddfe..22e684a4 100644
              if (isInsideContainer) return;
              if (did == dialog_id) {
                  boolean scheduled = (Boolean) args[2];
-@@ -27588,6 +27741,18 @@ public class ChatActivity extends BaseFragment implements
+@@ -27588,6 +27817,18 @@ public class ChatActivity extends BaseFragment implements
          if (includeSpoilers) {
              menu.add(R.id.menu_groupbolditalic, R.id.menu_spoiler, order++, LocaleController.getString(R.string.Spoiler));
          }
@@ -10679,7 +10841,7 @@ index 6b8cddfe..22e684a4 100644
  
          SpannableStringBuilder stringBuilder = new SpannableStringBuilder(LocaleController.getString(R.string.Bold));
          stringBuilder.setSpan(new TypefaceSpan(AndroidUtilities.bold()), 0, stringBuilder.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-@@ -28295,6 +28460,15 @@ public class ChatActivity extends BaseFragment implements
+@@ -28295,6 +28536,15 @@ public class ChatActivity extends BaseFragment implements
          if (currentEncryptedChat != null || chatMode != 0) {
              return;
          }
@@ -10695,7 +10857,7 @@ index 6b8cddfe..22e684a4 100644
          int pinned_msg_id;
          boolean changed = false;
          MessageObject pinnedMessageObject;
-@@ -29727,6 +29901,10 @@ public class ChatActivity extends BaseFragment implements
+@@ -29727,6 +29977,10 @@ public class ChatActivity extends BaseFragment implements
      @Override
      public void onResume() {
          super.onResume();
@@ -10706,7 +10868,7 @@ index 6b8cddfe..22e684a4 100644
          checkShowBlur(false);
          activityResumeTime = System.currentTimeMillis();
          if (openImport && getSendMessagesHelper().getImportingHistory(dialog_id) != null) {
-@@ -33379,6 +33557,19 @@ public class ChatActivity extends BaseFragment implements
+@@ -33379,6 +33633,19 @@ public class ChatActivity extends BaseFragment implements
                  undoView.showWithAction(0, UndoView.ACTION_MESSAGE_COPIED, null);
                  break;
              }
@@ -10726,7 +10888,7 @@ index 6b8cddfe..22e684a4 100644
              case OPTION_SAVE_TO_GALLERY: {
                  if (Build.VERSION.SDK_INT >= 23 && (Build.VERSION.SDK_INT <= 28 || BuildVars.NO_SCOPED_STORAGE) && getParentActivity().checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
                      getParentActivity().requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 4);
-@@ -41614,7 +41805,7 @@ public class ChatActivity extends BaseFragment implements
+@@ -41614,7 +41881,7 @@ public class ChatActivity extends BaseFragment implements
              } else if (BuildVars.isHuaweiStoreApp()) {
                  Browser.openUrl(getContext(), BuildVars.HUAWEI_STORE_URL);
              } else {
@@ -10735,7 +10897,7 @@ index 6b8cddfe..22e684a4 100644
              }
          }
  
-@@ -46097,6 +46288,33 @@ public class ChatActivity extends BaseFragment implements
+@@ -46097,6 +46364,33 @@ public class ChatActivity extends BaseFragment implements
                      }
                  }
  
@@ -13546,10 +13708,10 @@ index 00000000..32a66d5f
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/MargeletProfileActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/MargeletProfileActivity.java
 new file mode 100644
-index 00000000..764c0a08
+index 00000000..cdb71685
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/MargeletProfileActivity.java
-@@ -0,0 +1,307 @@
+@@ -0,0 +1,289 @@
 +package org.telegram.ui;
 +
 +import android.content.Context;
@@ -13558,9 +13720,6 @@ index 00000000..764c0a08
 +import android.view.View;
 +
 +import android.graphics.Canvas;
-+import android.graphics.Paint;
-+import android.graphics.RadialGradient;
-+import android.graphics.Shader;
 +import android.widget.LinearLayout;
 +
 +import org.telegram.margelet.MargeletBanner;
@@ -13713,17 +13872,16 @@ index 00000000..764c0a08
 +    }
 +
 +    /**
-+     * Образец: тот же радиальный градиент, каким телеграм красит шапку профиля.
++     * Образец: ровно та же заливка, какой красится профиль.
 +     *
-+     * Считается по тем же правилам, что и там: второй цвет в середине, первый
-+     * по краю. Иначе человек выбирал бы вслепую и получал не то, что видел —
-+     * а это худший род сюрприза, потому что винить он будет себя.
++     * Рисуется одной и той же функцией, а не «похоже» — иначе образец и профиль
++     * разъезжаются молча. Сперва здесь был радиальный градиент, скопированный
++     * из телеграмовской шапки: он читается как пятно света посередине, а не как
++     * переход слева направо, и градиентом его никто не называет.
 +     */
 +    private static final class GradientPreview extends View {
 +
-+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
 +        private int color1, color2;
-+        private int builtFor1, builtFor2, builtWidth, builtHeight;
 +
 +        GradientPreview(Context context, int color1, int color2) {
 +            super(context);
@@ -13739,22 +13897,8 @@ index 00000000..764c0a08
 +
 +        @Override
 +        protected void onDraw(Canvas canvas) {
-+            final int width = getWidth();
-+            final int height = getHeight();
-+            if (width == 0 || height == 0) {
-+                return;
-+            }
-+            if (paint.getShader() == null || builtFor1 != color1 || builtFor2 != color2
-+                    || builtWidth != width || builtHeight != height) {
-+                builtFor1 = color1;
-+                builtFor2 = color2;
-+                builtWidth = width;
-+                builtHeight = height;
-+                paint.setShader(new RadialGradient(width / 2f, height * 0.1f,
-+                        Math.max(width, height) * 0.9f,
-+                        new int[]{color2, color1}, new float[]{0, 1}, Shader.TileMode.CLAMP));
-+            }
-+            canvas.drawRect(0, 0, width, height, paint);
++            MargeletGradient.paint(canvas, new int[]{color1, color2},
++                    0, 0, getWidth(), getHeight(), 255);
 +        }
 +    }
 +
@@ -15276,7 +15420,7 @@ index 00000000..b142afca
 +    }
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java
-index 40634647..4785e6c6 100644
+index 40634647..2a251d77 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java
 @@ -626,6 +626,30 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
@@ -15348,10 +15492,34 @@ index 40634647..4785e6c6 100644
              final int color1 = color1Animated.set(this.color1);
              final int color2 = color2Animated.set(this.color2);
              if (actionsView != null) {
-@@ -1347,6 +1401,46 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -1347,6 +1401,70 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
              }
          }
  
++        /**
++         * Градиент человека во всю шапку — линейный, слева направо.
++         *
++         * Рисуем сами, а не полагаемся на телеграмовскую заливку по паре
++         * цветов. Подмена пары красила у него только полосу сверху и три
++         * кнопки под аватаркой — владелец это и увидел: «применяется только на
++         * 3 кнопки у аватарки». Своя заливка кладётся туда же, куда баннер, и
++         * покрывает всю шапку целиком.
++         *
++         * Под баннером, а не поверх: баннер — картинка, выбранная человеком
++         * нарочно, и перекрывать её цветом было бы странно.
++         */
++        private void drawMargeletGradient(Canvas canvas, int y1) {
++            if (y1 <= 0 || userId == 0) {
++                return;
++            }
++            final int[] pair = org.telegram.margelet.MargeletGradient.of(userId, this::invalidate);
++            if (pair == null) {
++                return;
++            }
++            org.telegram.margelet.MargeletGradient.paint(canvas, pair,
++                    0, 0, getMeasuredWidth(), y1, 255);
++        }
++
 +        private android.graphics.Paint margeletScrim;
 +
 +        /**
@@ -15395,15 +15563,31 @@ index 40634647..4785e6c6 100644
          @Override
          protected void onDraw(Canvas canvas) {
              final int height = ActionBar.getCurrentActionBarHeight() + (actionBar.getOccupyStatusBar() ? AndroidUtilities.statusBarHeight : 0);
-@@ -1365,6 +1459,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -1365,6 +1483,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                      backgroundPaint.setAlpha((int) (0xFF * progressToGradient));
                      canvas.drawRect(0, 0, getMeasuredWidth(), y1, backgroundPaint);
                  }
++                drawMargeletGradient(canvas, y1);
 +                drawMargeletBanner(canvas, y1);
                  if (hasEmoji) {
                      final float loadedScale = emojiLoadedT.set(isEmojiLoaded());
                      boolean shoudIgnore = openAnimationInProgress && playProfileAnimation == 2;
-@@ -4536,6 +4631,25 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -4220,7 +4340,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+         };
+         listView.setSections();
+         listView.applyPaddingToSections = false;
+-        listView.setBackgroundColor(getThemedColor(Theme.key_windowBackgroundGray));
++        // Страница профиля под градиентом человека, а не просто серая: он
++        // просил покрасить весь профиль, а не одну шапку. Подложка спрашивает
++        // цвета сама на каждой отрисовке — градиент приезжает из группы позже,
++        // чем создаётся экран, и заданный здесь один раз цвет так и остался бы
++        // серым до следующего захода.
++        listView.setBackground(new org.telegram.margelet.MargeletGradient.Backdrop(
++                userId, getThemedColor(Theme.key_windowBackgroundGray)));
+         listView.setVerticalScrollBarEnabled(false);
+         final IBlur3Capture listViewCapture = new ViewGroupPartRenderer(listView, (ViewGroup) fragmentView, (canvas, child, drawingTime) -> {
+             if (child == sharedMediaLayout) {
+@@ -4536,6 +4662,25 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                  presentFragment(new PrivacySettingsActivity().setCurrentPassword(currentPassword));
              } else if (position == dataRow) {
                  presentFragment(new DataSettingsActivity());
@@ -15429,7 +15613,7 @@ index 40634647..4785e6c6 100644
              } else if (position == chatRow) {
                  presentFragment(new ThemeActivity(ThemeActivity.THEME_TYPE_BASIC));
              } else if (position == filtersRow) {
-@@ -10469,6 +10583,12 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -10469,6 +10614,12 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
          settingsSectionRow2 = -1;
          notificationRow = -1;
          languageRow = -1;
@@ -15442,7 +15626,7 @@ index 40634647..4785e6c6 100644
          premiumRow = -1;
          starsRow = -1;
          tonRow = -1;
-@@ -10638,6 +10758,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -10638,6 +10789,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                  }
  
                  settingsSectionRow2 = rowCount++;
@@ -15450,7 +15634,7 @@ index 40634647..4785e6c6 100644
                  chatRow = rowCount++;
                  privacyRow = rowCount++;
                  notificationRow = rowCount++;
-@@ -10733,9 +10854,27 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -10733,9 +10885,27 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                  if (isBot && user != null && user.bot_has_main_app) {
                      botAppRow = rowCount++;
                  }
@@ -15478,7 +15662,7 @@ index 40634647..4785e6c6 100644
                  if (user != null && user.linked_community_id != 0) {
                      linkedCommunityRow = rowCount++;
                      linkedCommunityDividerRow = rowCount++;
-@@ -10885,9 +11024,22 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -10885,9 +11055,22 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                  }
                  notificationsRow = rowCount++;
              }
@@ -15501,7 +15685,7 @@ index 40634647..4785e6c6 100644
  
              if (currentChat != null && currentChat.linked_community_id != 0) {
                  linkedCommunityRow = rowCount++;
-@@ -11420,7 +11572,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -11420,7 +11603,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                      nameTextView[a].setRightDrawable2(titleTextView.getRightDrawable2());
                  } else if (a == 0 && user.id != getUserConfig().getClientUserId() && !MessagesController.isSupportUser(user) && user.phone != null && user.phone.length() != 0 && getContactsController().contactsDict.get(user.id) == null &&
                          (getContactsController().contactsDict.size() != 0 || !getContactsController().isLoadingContacts())) {
@@ -15510,7 +15694,7 @@ index 40634647..4785e6c6 100644
                  } else {
                      nameTextView[a].setText(newString);
                  }
-@@ -11459,9 +11611,23 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -11459,9 +11642,23 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                      } else if (getMessagesController().isDialogMuted(dialogId != 0 ? dialogId : userId, topicId)) {
                          nameTextView[a].setRightDrawable2(getThemedDrawable(Theme.key_drawable_muteIconDrawable));
                          nameTextViewRightDrawable2ContentDescription = LocaleController.getString(R.string.NotificationsMuted);
@@ -15534,7 +15718,7 @@ index 40634647..4785e6c6 100644
                      }
                      if (user != null/* && !getMessagesController().premiumFeaturesBlocked()*/ && !MessagesController.isSupportUser(user) && DialogObject.getEmojiStatusDocumentId(user.emoji_status) != 0) {
                          rightIconIsStatus = true;
-@@ -11482,8 +11648,18 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -11482,8 +11679,18 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                          nameTextView[a].setRightDrawable2(getScamDrawable(user.scam ? 0 : 1));
                      } else if (user.verified) {
                          nameTextView[a].setRightDrawable2(getVerifiedCrossfadeDrawable(a));
@@ -15553,7 +15737,7 @@ index 40634647..4785e6c6 100644
                      }
                      if (/*!getMessagesController().premiumFeaturesBlocked() && */user != null && !MessagesController.isSupportUser(user) && DialogObject.getEmojiStatusDocumentId(user.emoji_status) != 0) {
                          rightIconIsStatus = true;
-@@ -11775,6 +11951,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -11775,6 +11982,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                      } else if (chat.verified) {
                          nameTextView[a].setRightDrawable2(getVerifiedCrossfadeDrawable(a));
                          nameTextViewRightDrawableContentDescription = LocaleController.getString(R.string.AccDescrVerified);
@@ -15567,7 +15751,7 @@ index 40634647..4785e6c6 100644
                      } else {
                          nameTextView[a].setRightDrawable2(null);
                          nameTextViewRightDrawableContentDescription = null;
-@@ -11805,6 +11988,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -11805,6 +12019,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                          nameTextView[a].setRightDrawable2(getVerifiedCrossfadeDrawable(a));
                      } else if (getMessagesController().isDialogMuted(-chatId, topicId)) {
                          nameTextView[a].setRightDrawable2(getThemedDrawable(Theme.key_drawable_muteIconDrawable));
@@ -15578,7 +15762,7 @@ index 40634647..4785e6c6 100644
                      } else {
                          nameTextView[a].setRightDrawable2(null);
                      }
-@@ -13456,7 +13643,28 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -13456,7 +13674,28 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                      TextDetailCell detailCell = (TextDetailCell) holder.itemView;
                      boolean containsQr = false;
                      boolean containsGift = false;
@@ -15608,7 +15792,7 @@ index 40634647..4785e6c6 100644
                          TLRPC.UserFull userFull = getMessagesController().getUserFull(userId);
                          if (userFull != null && userFull.birthday != null) {
                              final boolean today = BirthdayController.isToday(userFull);
-@@ -13491,7 +13699,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -13491,7 +13730,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                              text = PhoneFormat.getInstance().format("+" + vcardPhone);
                              phoneNumber = vcardPhone;
                          } else if (user != null && !TextUtils.isEmpty(user.phone)) {
@@ -15617,7 +15801,7 @@ index 40634647..4785e6c6 100644
                              phoneNumber = user.phone;
                          } else {
                              text = LocaleController.getString(R.string.PhoneHidden);
-@@ -13585,7 +13793,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -13585,7 +13824,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                          TLRPC.User user = UserConfig.getInstance(currentAccount).getCurrentUser();
                          String value;
                          if (user != null && user.phone != null && user.phone.length() != 0) {
@@ -15626,7 +15810,7 @@ index 40634647..4785e6c6 100644
                          } else {
                              value = LocaleController.getString(R.string.NumberUnknown);
                          }
-@@ -13610,13 +13818,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -13610,13 +13849,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                              if (username == null || TextUtils.isEmpty(username)) {
                                  text = LocaleController.getString(R.string.UsernameEmpty);
                              } else {
@@ -15642,7 +15826,7 @@ index 40634647..4785e6c6 100644
                              } else {
                                  text = LocaleController.getString(R.string.UsernameEmpty);
                              }
-@@ -13624,7 +13832,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -13624,7 +13863,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                          detailCell.setTextAndValue(text, value, true);
                          detailCell.setContentDescriptionValueFirst(true);
                      }
@@ -15657,7 +15841,7 @@ index 40634647..4785e6c6 100644
                          Drawable drawable = ContextCompat.getDrawable(detailCell.getContext(), R.drawable.msg_input_gift);
                          drawable.setColorFilter(new PorterDuffColorFilter(dontApplyPeerColor(getThemedColor(Theme.key_switch2TrackChecked), false), PorterDuff.Mode.MULTIPLY));
                          if (UserObject.areGiftsDisabled(userInfo)) {
-@@ -13839,6 +14053,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -13839,6 +14084,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                          textCell.setTextAndIcon(LocaleController.getString(R.string.PrivacySettings), R.drawable.msg2_secret, true);
                      } else if (position == dataRow) {
                          textCell.setTextAndIcon(LocaleController.getString(R.string.DataSettings), R.drawable.msg2_data, true);
@@ -15666,7 +15850,7 @@ index 40634647..4785e6c6 100644
                      } else if (position == chatRow) {
                          textCell.setTextAndIcon(LocaleController.getString(R.string.ChatSettings), R.drawable.msg2_discussion, true);
                      } else if (position == filtersRow) {
-@@ -14286,7 +14502,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -14286,7 +14533,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                          position == clearLogsRow || position == switchBackendRow || position == setAvatarRow ||
                          position == addToGroupButtonRow || position == premiumRow || position == premiumGiftingRow ||
                          position == businessRow || position == liteModeRow || position == birthdayRow || position == channelRow ||
@@ -15677,7 +15861,7 @@ index 40634647..4785e6c6 100644
              }
              if (holder.itemView instanceof UserCell) {
                  UserCell userCell = (UserCell) holder.itemView;
-@@ -14314,7 +14532,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -14314,7 +14563,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
              if (position == infoHeaderRow || position == membersHeaderRow || position == settingsSectionRow2 ||
                      position == numberSectionRow || position == helpHeaderRow || position == debugHeaderRow || position == botPermissionsHeader) {
                  return VIEW_TYPE_HEADER;
@@ -15687,7 +15871,7 @@ index 40634647..4785e6c6 100644
                  return VIEW_TYPE_TEXT_DETAIL;
              } else if (position == usernameRow || position == setUsernameRow) {
                  return VIEW_TYPE_TEXT_DETAIL_MULTILINE;
-@@ -14332,7 +14551,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -14332,7 +14582,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                      position == clearLogsRow || position == switchBackendRow || position == setAvatarRow || position == addToGroupButtonRow ||
                      position == addToContactsRow || position == liteModeRow || position == premiumGiftingRow || position == businessRow ||
                      position == botStarsBalanceRow || position == botTonBalanceRow || position == channelBalanceRow || position == botPermissionLocation ||
@@ -15697,7 +15881,7 @@ index 40634647..4785e6c6 100644
              ) {
                  return VIEW_TYPE_TEXT;
              } else if (position == notificationsDividerRow) {
-@@ -14346,7 +14566,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+@@ -14346,7 +14597,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                      position == helpSectionCell || position == setAvatarSectionRow || position == passwordSuggestionSectionRow ||
                      position == phoneSuggestionSectionRow || position == premiumSectionsRow || position == reportDividerRow ||
                      position == channelDividerRow || position == graceSuggestionSectionRow || position == balanceDividerRow ||
@@ -36123,7 +36307,7 @@ index 528fd746..8b64b0f8 100644
  }
  repositories {
 diff --git a/gradle.properties b/gradle.properties
-index 83408dc5..526b8ccf 100644
+index 83408dc5..f86fe307 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -13,9 +13,9 @@
@@ -36131,7 +36315,7 @@ index 83408dc5..526b8ccf 100644
  # org.gradle.parallel=true
  #Sat Mar 12 05:53:50 MSK 2016
 -APP_VERSION_CODE=7031
-+APP_VERSION_CODE=7053
++APP_VERSION_CODE=7054
  APP_VERSION_NAME=12.10.0
 -APP_PACKAGE=org.telegram.messenger
 +APP_PACKAGE=cat.narezany.margelet

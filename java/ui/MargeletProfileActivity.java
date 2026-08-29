@@ -6,9 +6,6 @@ import android.net.Uri;
 import android.view.View;
 
 import android.graphics.Canvas;
-import android.graphics.Paint;
-import android.graphics.RadialGradient;
-import android.graphics.Shader;
 import android.widget.LinearLayout;
 
 import org.telegram.margelet.MargeletBanner;
@@ -161,17 +158,16 @@ public class MargeletProfileActivity extends UniversalFragment {
     }
 
     /**
-     * Образец: тот же радиальный градиент, каким телеграм красит шапку профиля.
+     * Образец: ровно та же заливка, какой красится профиль.
      *
-     * Считается по тем же правилам, что и там: второй цвет в середине, первый
-     * по краю. Иначе человек выбирал бы вслепую и получал не то, что видел —
-     * а это худший род сюрприза, потому что винить он будет себя.
+     * Рисуется одной и той же функцией, а не «похоже» — иначе образец и профиль
+     * разъезжаются молча. Сперва здесь был радиальный градиент, скопированный
+     * из телеграмовской шапки: он читается как пятно света посередине, а не как
+     * переход слева направо, и градиентом его никто не называет.
      */
     private static final class GradientPreview extends View {
 
-        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private int color1, color2;
-        private int builtFor1, builtFor2, builtWidth, builtHeight;
 
         GradientPreview(Context context, int color1, int color2) {
             super(context);
@@ -187,22 +183,8 @@ public class MargeletProfileActivity extends UniversalFragment {
 
         @Override
         protected void onDraw(Canvas canvas) {
-            final int width = getWidth();
-            final int height = getHeight();
-            if (width == 0 || height == 0) {
-                return;
-            }
-            if (paint.getShader() == null || builtFor1 != color1 || builtFor2 != color2
-                    || builtWidth != width || builtHeight != height) {
-                builtFor1 = color1;
-                builtFor2 = color2;
-                builtWidth = width;
-                builtHeight = height;
-                paint.setShader(new RadialGradient(width / 2f, height * 0.1f,
-                        Math.max(width, height) * 0.9f,
-                        new int[]{color2, color1}, new float[]{0, 1}, Shader.TileMode.CLAMP));
-            }
-            canvas.drawRect(0, 0, width, height, paint);
+            MargeletGradient.paint(canvas, new int[]{color1, color2},
+                    0, 0, getWidth(), getHeight(), 255);
         }
     }
 

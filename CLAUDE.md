@@ -41,6 +41,32 @@
 `version.json`. Он и есть объявление: подняв его раньше, покажешь всем
 обновление, которого ещё нет.
 
+## Восстановить рабочую копию с нуля
+
+Контейнер иногда перезапускается, и тогда `/home/user/margelet` и клон
+телеграма исчезают целиком. Всё запушенное цело, незакоммиченное — нет.
+Отсюда правило: закончил кусок — коммить, не жди конца всей задачи.
+
+Порядок восстановления:
+
+1. `git clone https://github.com/narezany/margelet.git /home/user/margelet`
+2. Клон телеграма на закреплённый коммит:
+   `git clone --filter=blob:none --no-checkout https://github.com/DrKLO/Telegram.git tg-src`,
+   затем `git checkout 3f03bfc73f1d176e349765c2990e52f490409813`.
+3. **`git submodule update --init --recursive`** — без этого `assemble`
+   падает на `No matching variant of project :jlatexmath`, а быстрая проверка
+   компиляции при этом проходит. То есть подмодули забываются молча и
+   вспоминаются только на полной сборке.
+4. `git apply patch/margelet.patch`.
+5. Вернуть секреты локально: `APP_ID`/`APP_HASH` в `BuildVars.java` и
+   `local.properties` с `sdk.dir=/opt/android-sdk`,
+   `ndk.dir=/opt/android-ndk-r27c`. В коммиты это не попадает никогда.
+6. Токен бота — в `scratchpad/.tgenv`, `chmod 600`, вне любого репозитория.
+
+`init-mirror.gradle` восстанавливать не нужно: без него сборка идёт через
+сеть. `--offline` при этом работает не всегда — `buildSrc` может не найти
+`kotlin-dsl` в кэше; тогда просто собирать без `--offline`.
+
 ## Сборка
 
 Полная сборка apk — минут пять-семнадцать. Быстрая проверка компиляции

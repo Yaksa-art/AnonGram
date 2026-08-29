@@ -1,5 +1,17 @@
 package org.telegram.margelet;
 
+import android.graphics.Canvas;
+import android.graphics.ColorFilter;
+import android.graphics.LinearGradient;
+import android.graphics.Paint;
+import android.graphics.PixelFormat;
+import android.graphics.Rect;
+import android.graphics.Shader;
+import android.graphics.drawable.Drawable;
+
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+
 import org.telegram.messenger.AccountInstance;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.MessageObject;
@@ -233,6 +245,94 @@ public class MargeletGradient {
             forget(id);
             answer(done, removed > 0 ? MargeletGroup.REMOVED : MargeletGroup.NOTHING);
         });
+    }
+
+    // --- рисование ---------------------------------------------------------
+    //
+    // Градиент линейный: первый цвет слева, второй справа. Сперва я взял
+    // радиальный — тот самый, каким телеграм красит шапку по номеру цвета, —
+    // и это было рассуждением от кода, а не от того, что человек называет
+    // градиентом. Радиальный читается как пятно света посередине, а не как
+    // переход слева направо, и владелец сказал об этом первым же словом.
+
+    /** Общая кисть. Только для главного потока: рисование живёт только в нём. */
+    private static final Paint FILL = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private static int builtFrom, builtTo;
+    private static float builtWidth;
+
+    /**
+     * Залить прямоугольник градиентом слева направо.
+     *
+     * Ширина входит в ключ пересборки наравне с цветами: растяжка у заливки
+     * своя, и пара, построенная на узкий образец, на широкой шапке дала бы
+     * переход не там, где нужно.
+     */
+    public static void paint(Canvas canvas, int[] pair,
+                             float left, float top, float right, float bottom, int alpha) {
+        if (canvas == null || pair == null || pair.length < 2
+                || right <= left || bottom <= top) {
+            return;
+        }
+        final float width = right - left;
+        if (FILL.getShader() == null || builtFrom != pair[0] || builtTo != pair[1]
+                || builtWidth != width) {
+            builtFrom = pair[0];
+            builtTo = pair[1];
+            builtWidth = width;
+            FILL.setShader(new LinearGradient(0, 0, width, 0,
+                    pair[0], pair[1], Shader.TileMode.CLAMP));
+        }
+        FILL.setAlpha(alpha);
+        canvas.save();
+        canvas.translate(left, top);
+        canvas.drawRect(0, 0, width, bottom - top, FILL);
+        canvas.restore();
+    }
+
+    /**
+     * Подложка страницы профиля: обычный фон, а поверх — градиент человека.
+     *
+     * Именно рисуемая подложка, а не заданный один раз цвет. Градиент
+     * приезжает из группы позже, чем создаётся экран, и цвет, поставленный при
+     * создании, так и остался бы серым до следующего захода. Подложка
+     * спрашивает цвета на каждой отрисовке и перерисовывает себя сама, когда
+     * они появятся.
+     */
+    public static final class Backdrop extends Drawable {
+
+        private final long userId;
+        private final Paint plain = new Paint();
+
+        public Backdrop(long userId, int base) {
+            this.userId = userId;
+            plain.setColor(base);
+        }
+
+        @Override
+        public void draw(@NonNull Canvas canvas) {
+            final Rect bounds = getBounds();
+            canvas.drawRect(bounds, plain);
+            final int[] pair = of(userId, this::invalidateSelf);
+            if (pair != null) {
+                MargeletGradient.paint(canvas, pair, bounds.left, bounds.top,
+                        bounds.right, bounds.bottom, 255);
+            }
+        }
+
+        @Override
+        public void setAlpha(int alpha) {
+            plain.setAlpha(alpha);
+        }
+
+        @Override
+        public void setColorFilter(@Nullable ColorFilter colorFilter) {
+            plain.setColorFilter(colorFilter);
+        }
+
+        @Override
+        public int getOpacity() {
+            return PixelFormat.OPAQUE;
+        }
     }
 
     private static void answer(MargeletGroup.Removed done, int what) {

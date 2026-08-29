@@ -82,12 +82,6 @@ public class MargeletMarkup {
         return kind == KIND_BUTTON || kind == KIND_EMOJI;
     }
 
-    /**
-     * Заголовок, который форк дописывает в начало оформленного сообщения.
-     * В самом форке он спрятан, у остальных виден — так и задумано владельцем.
-     */
-    public static final String HEADER = "<! Message looks better with @margeletter! >";
-
     /** Размер: от 0,6 до 2,0 обычного. Границы жёсткие с обеих сторон. */
     /**
      * Потолок размера букв при показе, в точках экрана.
@@ -409,10 +403,6 @@ public class MargeletMarkup {
                     ? open(mark[4], mark[5], payloads.get(mark[6]))
                     : close());
         }
-        // Заголовок к отправляемому не дописывается вовсе. Настройка,
-        // которая это включала, была выключена по умолчанию и снята: реклама
-        // форка в чужой переписке — плата, которую платит не тот, кто её
-        // выбрал, а тот, кому пришло сообщение.
         return out;
     }
 
@@ -535,40 +525,10 @@ public class MargeletMarkup {
                 text.setSpan(span, run.start, run.end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
             }
         }
-        // Заголовок прячем всегда. Настройка «показывать его» была выключена
-        // по умолчанию и снята: внутри форка эта строка ни к чему, она для
-        // тех, у кого форка нет. А прятать по-прежнему есть что — заголовок
-        // приходит в сообщениях, отправленных прежними сборками.
-        hideHeader(text);
     }
 
     /**
-     * Прячет заголовок с рекламой форка внутри самого форка.
-     *
-     * Именно прячет, а не вырезает: вырезание сдвинуло бы отсчёты жирного,
-     * курсива и ссылок, которые пришли с сервера и посчитаны по тексту
-     * вместе с заголовком.
-     */
-    private static void hideHeader(Spannable text) {
-        final int at = indexOf(text, HEADER);
-        if (at < 0) {
-            return;
-        }
-        // Перевод строки перед заголовком прячем вместе с ним, иначе от
-        // спрятанной строки останется пустая.
-        int start = at;
-        if (start > 0 && text.charAt(start - 1) == '\n') {
-            start--;
-        }
-        int end = at + HEADER.length();
-        if (end < text.length() && text.charAt(end) == '\n') {
-            end++;
-        }
-        text.setSpan(new MargeletSpans.Hidden(), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-    }
-
-    /**
-     * Убирает метки и строку со ссылкой на форк.
+     * Убирает служебные метки оформления.
      *
      * Нужно при обычном копировании: человек копирует текст, а не наши
      * служебные знаки. Оформление уносит отдельный пункт «копировать с
@@ -579,18 +539,6 @@ public class MargeletMarkup {
             return text;
         }
         final SpannableStringBuilder out = new SpannableStringBuilder(text);
-        int at = indexOf(out, HEADER);
-        if (at >= 0) {
-            int start = at;
-            if (start > 0 && out.charAt(start - 1) == '\n') {
-                start--;
-            }
-            int end = at + HEADER.length();
-            if (end < out.length() && out.charAt(end) == '\n') {
-                end++;
-            }
-            out.delete(start, end);
-        }
         // Идём с конца: удаление сдвигает всё, что правее.
         for (int i = out.length() - 1; i >= 0; i--) {
             final char c = out.charAt(i);
