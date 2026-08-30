@@ -411,7 +411,7 @@ def forget():
 这份声明和插件的记忆存在一起，而不是留在内存里，所以关着的插件也能打开设置
 界面：有时正是要先把设置改好，再打开插件。
 
-## 与安卓交界处的三个坑
+## 与安卓交界处的坑
 
 这些都不是理论：三个坑都是写游戏插件时踩出来的，每个都花了一轮。
 
@@ -445,6 +445,46 @@ titles = jarray(CharSequence)(["第一", "第二"])
 
 **碰屏幕只能在主线程上。** `on_send` 事件本来就在主线程；设置界面上的按钮
 不是。从那里打开任何窗口都要经过 `margelet.ui`，否则什么也打不开。
+
+**从 Python 里不能在 Canvas 上画东西。** 完全不能。`Canvas.drawText` 的一部分
+形式声明在非公开的 `android.graphics.BaseCanvas` 里，应用拿不到：
+
+```
+NoSuchMethodError: no non-static method
+"Landroid/graphics/BaseCanvas;.drawText(Ljava/lang/CharSequence;IIFFLandroid/graphics/Paint;)V"
+```
+
+`drawCircle`、`drawRect` 以及几乎所有绘制都来自那里。而且它是在别人的
+`onDraw` 里抛出的，倒下的是整个应用，不是插件。让安卓去画，插件只说画什么：
+文字上的颜色 span（`ForegroundColorSpan`）、控件浮层里的图形
+（`View.getOverlay`）、现成的 `GradientDrawable`。
+
+**一个被封的形式会毒掉整个名字。** 桥会一次性解析同名方法的所有形式，所以
+会绊在你根本没调用的那个上。一个只传一个参数的调用就是这么崩的：
+
+```
+NoSuchMethodError: no non-static method "Landroid/text/Layout;.getLineForOffset(IZ)I"
+```
+
+`(int, boolean)` 这个形式在 `android.jar` 和 AOSP 源码里都没有——是手机的
+固件加的。`Spannable.removeSpan` 也一样。两个结论。第一，替代办法通常有：
+用 `getLineCount` 和 `getLineEnd` 找行，行底就是下一行的顶，span 可以不删除，
+用同一个 `setSpan` 把它挪到空区间上停着。第二，更重要：**没法事先照着手册
+核对名字。** 一有机会就把要用的调用空跑一遍——空区间上的 span、零尺寸的
+图形——通过了才启用。否则你会在半个效果已经留在屏幕上之后，才知道某个名字
+被封了。
+
+**浮层用的是已经滚动过的坐标。** `View.draw` 是在
+`canvas.translate(-mScrollX, -mScrollY)` 之后调用的，所以不要自己再减一次
+滚动量。文字装得下时看不出差别——长文本上就露馅了。
+
+**在绘制里调用 `invalidate()` 不会带来新的一帧。** 只要还有别人在送帧，动画
+就在动；人一停下来，它就僵住。要向 choreographer 要：
+`postInvalidateOnAnimation()`。
+
+**每一部分各自看护。** 整个插件只包一个 `try`，第一个错误就把全部关掉，
+用户看到的不是「效果少了一半」，而是「什么都不工作」。自己的错误绝不该
+让别人赔上一段对话，所以看护必须有——但它该关掉的是一部分，不是整个插件。
 
 这类错误只在控制台里看得见：设置 → Margy → 插件 → 控制台。那里有出错的
 行，也有原因。

@@ -451,7 +451,7 @@ The declaration is kept together with the plugin's memory rather than in RAM,
 so the settings screen opens for a disabled plugin too: you may want to fix a
 setting before turning it on.
 
-## Three traps at the Android boundary
+## Traps at the Android boundary
 
 None of this is theory: all three came up while writing the games plugin, and
 each cost a separate round.
@@ -489,6 +489,55 @@ titles = jarray(CharSequence)(["First", "Second"])
 **Touch the screen only from the main thread.** The `on_send` event is already
 on it; a button on the settings screen is not. From there any window has to be
 opened through `margelet.ui`, or nothing opens.
+
+**You cannot draw on a Canvas from Python.** Not at all. Some forms of
+`Canvas.drawText` are declared in the non-public
+`android.graphics.BaseCanvas`, and an app is not given them:
+
+```
+NoSuchMethodError: no non-static method
+"Landroid/graphics/BaseCanvas;.drawText(Ljava/lang/CharSequence;IIFFLandroid/graphics/Paint;)V"
+```
+
+`drawCircle`, `drawRect` and nearly all the rest of drawing come from there
+too. And it throws inside somebody else's `onDraw`, so it takes down the whole
+app, not the plugin. Let Android draw, and tell it what: a colour span on the
+text (`ForegroundColorSpan`), a drawable in the view's overlay
+(`View.getOverlay`), a ready-made `GradientDrawable`.
+
+**One blocked form poisons the whole name.** The bridge resolves every form of
+a method name at once, so it trips over one you never call. This is how a
+one-argument call failed:
+
+```
+NoSuchMethodError: no non-static method "Landroid/text/Layout;.getLineForOffset(IZ)I"
+```
+
+The `(int, boolean)` form is in neither `android.jar` nor the AOSP sources —
+the phone's firmware added it. The same happened to `Spannable.removeSpan`.
+Two conclusions. First, replacements usually exist: find the line through
+`getLineCount` and `getLineEnd`, a line's bottom is the next line's top, and a
+span need not be removed — park it on an empty range with the same `setSpan`.
+Second, and more important: **you cannot check the names against a reference
+up front.** Try the calls you need for real but harmlessly at the first
+opportunity — a span on an empty range, a zero-sized drawable — and enable only
+what got through. Otherwise you learn about a blocked name after half the
+effect is already on screen.
+
+**The overlay lives in scrolled coordinates.** `View.draw` is called after
+`canvas.translate(-mScrollX, -mScrollY)`, so do not subtract the scroll
+yourself. While the text fits, there is no difference — it shows up on a long
+one.
+
+**`invalidate()` from inside drawing gives you no new frame.** The animation
+runs while somebody else brings frames and freezes the moment the person stops
+typing. Ask the choreographer instead: `postInvalidateOnAnimation()`.
+
+**Guard each part separately.** One `try` around the whole plugin switches
+everything off at the first error, and the person sees not "half the effect"
+but "nothing works". Your own error must never cost somebody their
+conversation, so a guard is a must — but let it silence one part, not the
+plugin.
 
 Errors like these are visible only in the console: Settings → Margy →
 Plugins → Console. It has both the line and the reason.
