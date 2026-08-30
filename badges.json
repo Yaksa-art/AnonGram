@@ -124,5 +124,15 @@
     "about_zh": "为 Margy 编写插件。",
     "color": "E08A8A",
     "url": "https://t.me/margelet_marps"
+  },
+  {
+    "peer": 8226402690,
+    "title": "Cat in Margy",
+    "title_ru": "Кот в Margy",
+    "title_zh": "Margy 里的猫",
+    "about": "Their cat lives inside the app.",
+    "about_ru": "Его кот живёт внутри приложения.",
+    "about_zh": "他的猫住在这个应用里。",
+    "color": "EBC85C"
   }
 ]
