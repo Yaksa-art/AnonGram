@@ -408,6 +408,12 @@ public class MargeletGradient {
      * Это обёртка над обычным поставщиком цветов телеграма, а не подмена темы:
      * ключи, которых здесь нет, спрашиваются у него как раньше. И работает она
      * только там, куда её передали, — на странице профиля.
+     *
+     * Цвета окон (ключи dialog*) накрыты нарочно, хотя окно — не страница.
+     * Содержимое профиля умеет открывать окна само (карточка подарка — из
+     * карусели подарков), и палитра туда попадает вместе с ним. Накрыв только
+     * текст, мы уже получили белое по белому; поэтому накрыт и фон — пусть
+     * лучше окно выйдет одного цвета со страницей, чем невидимым.
      */
     public static final class Palette implements org.telegram.ui.ActionBar.Theme.ResourcesProvider {
 
@@ -432,18 +438,22 @@ public class MargeletGradient {
             }
             final org.telegram.ui.ActionBar.Theme.ResourcesProvider none = null;
             final int текст = ink(pair);
-            if (key == org.telegram.ui.ActionBar.Theme.key_windowBackgroundWhite) {
+            if (key == org.telegram.ui.ActionBar.Theme.key_windowBackgroundWhite
+                    || key == org.telegram.ui.ActionBar.Theme.key_dialogBackground) {
                 return card(pair);
             }
-            if (key == org.telegram.ui.ActionBar.Theme.key_windowBackgroundGray) {
+            if (key == org.telegram.ui.ActionBar.Theme.key_windowBackgroundGray
+                    || key == org.telegram.ui.ActionBar.Theme.key_dialogBackgroundGray) {
                 return mix(pair[0], pair[1], 0.5f);
             }
-            if (key == org.telegram.ui.ActionBar.Theme.key_windowBackgroundWhiteBlackText) {
+            if (key == org.telegram.ui.ActionBar.Theme.key_windowBackgroundWhiteBlackText
+                    || key == org.telegram.ui.ActionBar.Theme.key_dialogTextBlack) {
                 return текст;
             }
             if (key == org.telegram.ui.ActionBar.Theme.key_windowBackgroundWhiteValueText
                     || key == org.telegram.ui.ActionBar.Theme.key_windowBackgroundWhiteBlueText
-                    || key == org.telegram.ui.ActionBar.Theme.key_windowBackgroundWhiteLinkText) {
+                    || key == org.telegram.ui.ActionBar.Theme.key_windowBackgroundWhiteLinkText
+                    || key == org.telegram.ui.ActionBar.Theme.key_dialogTextLink) {
                 // Ссылки и значения — тем же цветом, но заметно ярче обычного
                 // текста, иначе их не отличить от подписей.
                 return alpha(текст, 0.92f);
@@ -456,11 +466,17 @@ public class MargeletGradient {
                     || key == org.telegram.ui.ActionBar.Theme.key_windowBackgroundWhiteGrayText6
                     || key == org.telegram.ui.ActionBar.Theme.key_windowBackgroundWhiteGrayText7
                     || key == org.telegram.ui.ActionBar.Theme.key_windowBackgroundWhiteGrayText8
-                    || key == org.telegram.ui.ActionBar.Theme.key_windowBackgroundWhiteHintText) {
+                    || key == org.telegram.ui.ActionBar.Theme.key_windowBackgroundWhiteHintText
+                    || key == org.telegram.ui.ActionBar.Theme.key_dialogTextGray2
+                    || key == org.telegram.ui.ActionBar.Theme.key_dialogTextGray3) {
                 return alpha(текст, 0.60f);
             }
-            if (key == org.telegram.ui.ActionBar.Theme.key_divider) {
+            if (key == org.telegram.ui.ActionBar.Theme.key_divider
+                    || key == org.telegram.ui.ActionBar.Theme.key_dialogGrayLine) {
                 return alpha(текст, 0.15f);
+            }
+            if (key == org.telegram.ui.ActionBar.Theme.key_sheet_scrollUp) {
+                return alpha(текст, 0.35f);
             }
             if (key == org.telegram.ui.ActionBar.Theme.key_listSelector
                     || key == org.telegram.ui.ActionBar.Theme.key_settings_listSelector) {

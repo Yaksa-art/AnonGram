@@ -1,7 +1,7 @@
 {
-  "version": "0.99.26",
-  "apk": "https://github.com/narezany/margelet/raw/apk/margelet-0.99.26.apk",
-  "about": "Pre-release 1.0.26. A gift card opened from a profile came out white on white: the profile palette was set on the screen's shared field and leaked into sheets, colouring their text but not their background. The palette now goes only to what draws the page itself. New switch in Formatting: paint your own message bubbles with your profile gradient — only you see it, nothing is added to the messages.",
-  "about_ru": "Пререлиз 1.0.26. Карточка подарка, открытая с профиля, выходила белым по белому: палитра профиля стояла в общем поле экрана и утекала в окна, где красила текст, но не фон. Теперь палитра достаётся только тому, что рисует саму страницу. Новый выключатель в «Оформлении»: красить свои сообщения градиентом профиля — видите только вы, в сами сообщения ничего не дописывается.",
-  "about_zh": "预发布 1.0.26。从资料页打开的礼物卡片会白底白字：资料页调色板放在了整个页面共用的字段上，泄漏进了弹窗，把文字染了色、背景却没有。现在调色板只交给真正绘制该页面的部分。「格式」里新增开关：用资料渐变给你自己的消息气泡上色——只有你看得到，消息本身不会被加任何东西。"
+  "version": "0.99.27",
+  "apk": "https://github.com/narezany/margelet/raw/apk/margelet-0.99.27.apk",
+  "about": "Pre-release 1.0.27. Your own message bubbles now follow the gradient down the chat instead of being one flat colour: the top point of the bubble gradient is asked for through a path that reads the theme directly, and our substitution was not standing there. The song strip, gift badges, the collections carousel and the gift button now take the profile palette too.",
+  "about_ru": "Пререлиз 1.0.27. Свои сообщения идут переливом по переписке, а не одним плоским цветом: верхнюю точку перелива спрашивают путём, который читает тему напрямую, и моей подмены там не стояло. Песня, значки подарков, карусель папок и кнопка подарка тоже взяли палитру профиля.",
+  "about_zh": "预发布 1.0.27。你自己的消息气泡现在会沿聊天从上到下走渐变，而不再是一块平色：气泡渐变的上端是通过一条直接读主题的路径取的，而我的替换没有放在那里。歌曲条、礼物徽标、合集轮播和礼物按钮现在也用上了资料页调色板。"
 }
