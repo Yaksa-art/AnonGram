@@ -5,10 +5,20 @@
 как идёт время и куда летят искры. Вид этим не проверить, и я на это не
 претендую; но разбор изменений — та часть, где ошибка тихая.
 """
-import io, math, os, sys, types
+import io, math, os, sys, types, zipfile
 
-путь = os.path.join(os.path.dirname(os.path.abspath(__file__)), "main.py")
-исходник = io.open(путь, encoding="utf-8").read()
+# Читаем не копию, а тот самый main.py, который лежит в собранном плагине:
+# копия рядом с проверкой однажды разошлась бы с тем, что уезжает человеку,
+# и проверка стала бы хвалить файл, которого никто не ставит.
+рядом = os.path.dirname(os.path.abspath(__file__))
+плагин_файл = os.path.join(рядом, "..", "docs", "margelet.typing.marp")
+если_рядом = os.path.join(рядом, "main.py")
+if os.path.exists(плагин_файл):
+    путь = os.path.normpath(плагин_файл) + "!main.py"
+    исходник = zipfile.ZipFile(плагин_файл).read("main.py").decode("utf-8")
+else:
+    путь = если_рядом
+    исходник = io.open(путь, encoding="utf-8").read()
 чистая = исходник.split("# --- всё, что ниже, разговаривает с андроидом")[0]
 плагин = types.ModuleType("плагин")
 exec(compile(чистая, путь, "exec"), плагин.__dict__)
@@ -56,6 +66,124 @@ _, _, видно_в_конце = плагин.полёт(1.0, 0.0, 1.0, 10)
 _, вниз, _ = плагин.полёт(1.0, math.pi / 2, 1.0, 10)
 _, вверх, _ = плагин.полёт(1.0, -math.pi / 2, 1.0, 10)
 равно(abs(вниз) > abs(вверх), True, "вниз тянет сильнее, чем вверх")
+
+# Единицы: питон считает буквами, андроид — половинками UTF-16.
+В = плагин.в_андроиде
+И = плагин.из_андроида
+равно(В("абв", 2), 2, "без эмодзи номера совпадают")
+равно(В("а🙂б", 2), 3, "после эмодзи андроид ушёл вперёд")
+равно(В("🙂", 1), 2, "эмодзи занимает две половинки")
+равно(В("", 0), 0, "пустая строка")
+равно(И("а🙂б", 3), 2, "обратно: третья половинка — наша вторая буква")
+равно(И("а🙂б", 1), 1, "обратно: без эмодзи как есть")
+равно(all(И(с, В(с, н)) == н for с in ["абв", "а🙂б", "🙂🙂", "a🙂"] for н in range(len(с) + 1)),
+      True, "туда и обратно — то же самое")
+
+
+# --- какие методы андроида зовём ---------------------------------------------
+#
+# Ради этой проверки всё и переписывалось. Плагин уронил приложение вызовом
+# layout.getLineForOffset(где): у метода есть вторая форма с добавочным
+# доводом, мост из питона позвал именно её, а на устройстве её нет —
+# NoSuchMethodError посреди отрисовки.
+#
+# Поэтому правило: каждый вызов должен однозначно попадать в один-единственный
+# метод по числу доводов. Список форм берём не из головы, а из настоящего
+# android.jar; если его рядом нет — честно говорим, что не проверили, и не
+# делаем вид, будто всё хорошо.
+
+ЗОВЁМ = {
+    "android.text.Layout": [
+        ("getLineCount", 0), ("getLineEnd", 1), ("getLineStart", 1),
+        ("getLineTop", 1), ("getLineLeft", 1), ("getLineDescent", 1),
+    ],
+    "android.graphics.Paint": [
+        ("measureText", 1), ("getAlpha", 0), ("setAlpha", 1),
+    ],
+    "android.graphics.Canvas": [
+        ("save", 0), ("restore", 0),
+        ("drawText", 4), ("drawCircle", 4),
+    ],
+    # У каждого метода — тот класс, где он объявлен: javap показывает только
+    # свои, не унаследованные.
+    "org.telegram.ui.Components.EditTextBoldCursor": [],
+    "android.widget.EditText": [("getText", 0)],
+    "android.widget.TextView": [
+        ("getLayout", 0), ("getPaint", 0),
+        ("getTotalPaddingLeft", 0), ("getTotalPaddingTop", 0),
+    ],
+    "android.view.View": [
+        ("getScrollX", 0), ("getScrollY", 0), ("invalidate", 0),
+    ],
+}
+
+#: Не андроид: питон, наш же плагин, java.lang.Object.toString.
+#: hashCode и toString — из java.lang.Object, их форма одна везде.
+СВОИ = set("cos sin time get log hook hooks_work hooks_why toString hashCode".split())
+
+import re, subprocess
+
+исходник_без_слов = re.sub(r'#.*', '', re.sub(r'""".*?"""', '', исходник, flags=re.S))
+зовём_в_коде = set(re.findall(r'\.([A-Za-z][A-Za-z0-9_]*)\s*\(', исходник_без_слов)) - СВОИ
+объявлено = set(имя for пары in ЗОВЁМ.values() for имя, _ in пары)
+# clipOutRect числом доводов не разбирается — у него отдельная проверка ниже.
+объявлено.add("clipOutRect")
+равно(sorted(зовём_в_коде - объявлено), [], "все вызовы андроида перечислены")
+
+#: Методы, которых на устройстве оказалось больше, чем в android.jar.
+#: getLineForOffset уронил приложение: в консоли нареза —
+#: NoSuchMethodError ...getLineForOffset(IZ)I, то есть позвана форма с
+#: добавочным доводом, а в открытом android.jar её нет вовсе. Значит одной
+#: сверкой с jar не обойтись: список ниже — по следам падения, а не по
+#: справочнику. Остальные три в этом же ряду: у них у всех в андроиде рядом
+#: лежит скрытая форма с булевым доводом.
+ЗАПРЕЩЕНО = ["getLineForOffset", "getPrimaryHorizontal",
+             "getSecondaryHorizontal", "getLineBottom"]
+равно([и for и in ЗАПРЕЩЕНО if (". " + и) in исходник_без_слов
+       or ("." + и + "(") in исходник_без_слов], [],
+      "методов со скрытой второй формой нет")
+
+JAR = "/opt/android-sdk/platforms/android-35/android.jar"
+if not os.path.exists(JAR):
+    print("%-46s %s" % ("формы методов", "НЕ ПРОВЕРЕНО: нет android.jar"))
+else:
+    for класс, вызовы in sorted(ЗОВЁМ.items()):
+        вывод = subprocess.run(["javap", "-cp", JAR, класс],
+                               capture_output=True, text=True).stdout
+        формы = {}
+        for строка in вывод.splitlines():
+            м = re.search(r'\b([A-Za-z][A-Za-z0-9_]*)\((.*?)\);', строка)
+            if not м:
+                continue
+            доводы = м.group(2).strip()
+            формы.setdefault(м.group(1), set()).add(доводы)
+        for имя, сколько in вызовы:
+            # Считаем разные наборы доводов, а не строки: у getText их две,
+            # но обе без доводов — это мостик под другой возвращаемый тип,
+            # для вызова он один и тот же.
+            подходят = [д for д in формы.get(имя, ())
+                        if (0 if not д else len(д.split(","))) == сколько]
+            равно(len(подходят), 1, "%s.%s на %d довод(а)" % (класс.split(".")[-1], имя, сколько))
+
+    # clipOutRect — единственное место, где форм на четыре довода две:
+    # целые и дробные. Различить их числом доводов нельзя, поэтому условие
+    # другое: дробная форма ровно одна, и в коде все четыре довода приведены
+    # к дробным явно. Проверяем и то, и другое.
+    вывод = subprocess.run(["javap", "-cp", JAR, "android.graphics.Canvas"],
+                           capture_output=True, text=True).stdout
+    дробные = [с for с in вывод.splitlines()
+               if re.search(r'\bclipOutRect\(float, float, float, float\);', с)]
+    равно(len(дробные), 1, "clipOutRect: дробная форма одна")
+    где = исходник.find("clipOutRect(")
+    равно(где >= 0, True, "clipOutRect в коде есть")
+    глубина, конец = 0, где + len("clipOutRect")
+    for и in range(конец, len(исходник)):
+        глубина += (исходник[и] == "(") - (исходник[и] == ")")
+        if глубина == 0:
+            конец = и
+            break
+    равно(исходник[где:конец].count("float("), 4, "clipOutRect: все доводы дробные")
+
 
 print("\nплохих: %d" % плохих)
 sys.exit(1 if плохих else 0)
