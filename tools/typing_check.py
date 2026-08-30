@@ -80,6 +80,17 @@ _, вверх, _ = плагин.полёт(1.0, -math.pi / 2, 1.0, 10)
       True, "туда и обратно — то же самое")
 
 
+# Цвет: в java он знаковый, и 0xFF... в int не лезет. На этом уже падали игры.
+Ц = плагин.со_прозрачностью
+равно(Ц(-1, 1.0), -1, "белый непрозрачный остаётся собой")
+равно(Ц(-1, 0.0), 0x00FFFFFF, "совсем прозрачный — только цвет")
+равно(Ц(0x00112233, 1.0) & 0xFFFFFF, 0x112233, "цвет не портится")
+равно((Ц(0x00112233, 1.0) >> 24) & 0xFF, 255, "непрозрачность на месте")
+равно(round(255 * 0.5) == ((Ц(0, 0.5) >> 24) & 0xFF), True, "половина — это половина")
+равно(all(-(1 << 31) <= Ц(ц, д) < (1 << 31)
+          for ц in [-1, 0, 0x00112233, -16777216] for д in [0.0, 0.3, 1.0]),
+      True, "всегда влезает в java-int")
+
 # --- какие методы андроида зовём ---------------------------------------------
 #
 # Ради этой проверки всё и переписывалось. Плагин уронил приложение вызовом
@@ -95,39 +106,39 @@ _, вверх, _ = плагин.полёт(1.0, -math.pi / 2, 1.0, 10)
 ЗОВЁМ = {
     "android.text.Layout": [
         ("getLineCount", 0), ("getLineEnd", 1), ("getLineStart", 1),
-        ("getLineTop", 1), ("getLineLeft", 1), ("getLineDescent", 1),
+        ("getLineTop", 1), ("getLineLeft", 1),
     ],
-    "android.graphics.Paint": [
-        ("measureText", 1), ("getAlpha", 0), ("setAlpha", 1),
-    ],
-    "android.graphics.Canvas": [
-        ("save", 0), ("restore", 0),
-        ("drawText", 4), ("drawCircle", 4),
-    ],
+    "android.graphics.Paint": [("measureText", 1)],
     # У каждого метода — тот класс, где он объявлен: javap показывает только
     # свои, не унаследованные.
-    "org.telegram.ui.Components.EditTextBoldCursor": [],
+    "android.text.SpannableStringBuilder": [("setSpan", 4), ("removeSpan", 1)],
     "android.widget.EditText": [("getText", 0)],
     "android.widget.TextView": [
-        ("getLayout", 0), ("getPaint", 0),
+        ("getLayout", 0), ("getPaint", 0), ("getCurrentTextColor", 0),
         ("getTotalPaddingLeft", 0), ("getTotalPaddingTop", 0),
     ],
     "android.view.View": [
         ("getScrollX", 0), ("getScrollY", 0), ("invalidate", 0),
+        ("getOverlay", 0),
     ],
+    "android.view.ViewOverlay": [("add", 1), ("remove", 1)],
+    "android.graphics.drawable.GradientDrawable": [
+        ("setShape", 1),
+    ],
+    "android.graphics.drawable.Drawable": [("setAlpha", 1), ("setBounds", 4)],
 }
 
-#: Не андроид: питон, наш же плагин, java.lang.Object.toString.
 #: hashCode и toString — из java.lang.Object, их форма одна везде.
-СВОИ = set("cos sin time get log hook hooks_work hooks_why toString hashCode".split())
+СВОИ = set("cos sin time get log hook hooks_work hooks_why toString hashCode "
+           "класс знание часть append".split())
 
 import re, subprocess
 
 исходник_без_слов = re.sub(r'#.*', '', re.sub(r'""".*?"""', '', исходник, flags=re.S))
 зовём_в_коде = set(re.findall(r'\.([A-Za-z][A-Za-z0-9_]*)\s*\(', исходник_без_слов)) - СВОИ
 объявлено = set(имя for пары in ЗОВЁМ.values() for имя, _ in пары)
-# clipOutRect числом доводов не разбирается — у него отдельная проверка ниже.
-объявлено.add("clipOutRect")
+# setColor числом доводов не разбирается — у него отдельная проверка ниже.
+объявлено.add("setColor")
 равно(sorted(зовём_в_коде - объявлено), [], "все вызовы андроида перечислены")
 
 #: Методы, которых на устройстве оказалось больше, чем в android.jar.
@@ -165,25 +176,29 @@ else:
                         if (0 if not д else len(д.split(","))) == сколько]
             равно(len(подходят), 1, "%s.%s на %d довод(а)" % (класс.split(".")[-1], имя, сколько))
 
-    # clipOutRect — единственное место, где форм на четыре довода две:
-    # целые и дробные. Различить их числом доводов нельзя, поэтому условие
-    # другое: дробная форма ровно одна, и в коде все четыре довода приведены
-    # к дробным явно. Проверяем и то, и другое.
-    вывод = subprocess.run(["javap", "-cp", JAR, "android.graphics.Canvas"],
+    # setColor — единственное место, где форм на один довод две: число и
+    # ColorStateList. Различить их числом доводов нельзя, поэтому условие
+    # другое: форма с обычным числом ровно одна, а мы всегда передаём число.
+    вывод = subprocess.run(["javap", "-cp", JAR,
+                            "android.graphics.drawable.GradientDrawable"],
                            capture_output=True, text=True).stdout
-    дробные = [с for с in вывод.splitlines()
-               if re.search(r'\bclipOutRect\(float, float, float, float\);', с)]
-    равно(len(дробные), 1, "clipOutRect: дробная форма одна")
-    где = исходник.find("clipOutRect(")
-    равно(где >= 0, True, "clipOutRect в коде есть")
-    глубина, конец = 0, где + len("clipOutRect")
-    for и in range(конец, len(исходник)):
-        глубина += (исходник[и] == "(") - (исходник[и] == ")")
-        if глубина == 0:
-            конец = и
-            break
-    равно(исходник[где:конец].count("float("), 4, "clipOutRect: все доводы дробные")
+    числом = [с for с in вывод.splitlines()
+              if re.search(r'\bsetColor\(int\);', с)]
+    равно(len(числом), 1, "setColor: форма с числом одна")
 
+
+# --- на холсте не рисуем вовсе -----------------------------------------------
+#
+# Тот же мост, та же беда: Canvas.drawText одной из форм объявлена в
+# непубличном BaseCanvas, и приложению её не дают — NoSuchMethodError прямо
+# посреди отрисовки, падает всё приложение. Поэтому холст плагину только
+# передаётся, но не трогается: буква красится меткой на тексте, искры —
+# рисунками в наложении поля, а рисует и то и другое сам андроид.
+ХОЛСТ = ["drawText", "drawCircle", "drawRect", "drawPath", "drawOval",
+         "drawTextRun", "clipOutRect", "clipRect", "save", "restore",
+         "saveLayer", "translate", "drawBitmap"]
+равно([и for и in ХОЛСТ if ("." + и + "(") in исходник_без_слов], [],
+      "холст не трогаем ни одним вызовом")
 
 print("\nплохих: %d" % плохих)
 sys.exit(1 if плохих else 0)
