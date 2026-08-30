@@ -1,7 +1,7 @@
 {
-  "version": "0.99.27",
-  "apk": "https://github.com/narezany/margelet/raw/apk/margelet-0.99.27.apk",
-  "about": "Pre-release 1.0.27. Your own message bubbles now follow the gradient down the chat instead of being one flat colour: the top point of the bubble gradient is asked for through a path that reads the theme directly, and our substitution was not standing there. The song strip, gift badges, the collections carousel and the gift button now take the profile palette too.",
-  "about_ru": "Пререлиз 1.0.27. Свои сообщения идут переливом по переписке, а не одним плоским цветом: верхнюю точку перелива спрашивают путём, который читает тему напрямую, и моей подмены там не стояло. Песня, значки подарков, карусель папок и кнопка подарка тоже взяли палитру профиля.",
-  "about_zh": "预发布 1.0.27。你自己的消息气泡现在会沿聊天从上到下走渐变，而不再是一块平色：气泡渐变的上端是通过一条直接读主题的路径取的，而我的替换没有放在那里。歌曲条、礼物徽标、合集轮播和礼物按钮现在也用上了资料页调色板。"
+  "version": "0.99.28",
+  "apk": "https://github.com/narezany/margelet/raw/apk/margelet-0.99.28.apk",
+  "about": "Pre-release 1.0.28. A font of your own now reaches the messages themselves. A paint that was never given a typeface takes it from the native level, not from the Typeface.DEFAULT field, and the message paint is created without a single setTypeface — that is why names changed and messages did not. Settings descriptions are about half as long: what happens stayed, why it works that way is gone. And the fork's own Chinese was compiled and then dropped at packaging — the locale filter had no zh in it.",
+  "about_ru": "Пререлиз 1.0.28. Свой шрифт наконец доходит до самих сообщений. Кисть, которой не назначили шрифт, берёт его с родного уровня, а не из поля Typeface.DEFAULT, — а кисть сообщений заводят без единого setTypeface, оттого имена шрифт меняли, а сообщения нет. Описания в настройках вдвое короче: осталось что будет, ушло почему так устроено. И китайский перевод форка компилировался, а потом отбрасывался при упаковке — в фильтре языков не было zh.",
+  "about_zh": "预发布 1.0.28。你自己的字体终于用到消息本身上了。没有被显式指定字体的画笔，是从原生层取字体的，而不是从 Typeface.DEFAULT 字段；而消息用的画笔创建时一次 setTypeface 都没有——所以名字换了字体，消息却没换。设置里的说明短了一半：留下会发生什么，去掉为什么这么做。另外，分支自己的中文一直在被编译，然后在打包时被丢掉——语言过滤器里没有 zh。"
 }
