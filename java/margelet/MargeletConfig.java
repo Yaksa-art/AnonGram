@@ -40,7 +40,7 @@ public class MargeletConfig {
      * 0.99, а не 1.0, нарочно: настоящая единица должна остаться свободной
      * под настоящий выпуск, а пререлиз обязан быть строго меньше её.
      */
-    public static final String APP_VERSION = "0.99.25";
+    public static final String APP_VERSION = "0.99.26";
 
     /**
      * Как выпуск называется для человека: «Пререлиз 1.0.23».
@@ -234,6 +234,20 @@ public class MargeletConfig {
 
     public static void setHideAllChatsTab(boolean on) {
         prefs().edit().putBoolean("hide_all_chats_tab", on).apply();
+    }
+
+    /**
+     * Красить ли свои сообщения цветом своего градиента профиля.
+     *
+     * Только у себя: цвет подменяется при показе, в сообщения ничего не
+     * дописывается. По умолчанию выключено — это вкус, а не улучшение.
+     */
+    public static boolean ownBubblesGradient() {
+        return prefs().getBoolean("own_bubbles_gradient", false);
+    }
+
+    public static void setOwnBubblesGradient(boolean on) {
+        prefs().edit().putBoolean("own_bubbles_gradient", on).apply();
     }
 
     /** Показывать баннеры за аватарками. */

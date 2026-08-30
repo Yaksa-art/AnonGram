@@ -28,6 +28,7 @@ public class MargeletMarkupActivity extends UniversalFragment {
     private static final int ID_BUTTON = 6;
     private static final int ID_EMOJI = 7;
     private static final int ID_MARKDOWN = 8;
+    private static final int ID_OWN_BUBBLES = 10;
 
     @Override
     protected CharSequence getTitle() {
@@ -60,6 +61,9 @@ public class MargeletMarkupActivity extends UniversalFragment {
         items.add(UItem.asButton(ID_MARKDOWN, LocaleController.getString(R.string.MargeletMarkdown),
                 LocaleController.getString(R.string.MargeletMarkdownInfo)));
         items.add(UItem.asShadow(null));
+        items.add(UItem.asCheck(ID_OWN_BUBBLES, LocaleController.getString(R.string.MargeletOwnBubbles))
+                .setChecked(MargeletConfig.ownBubblesGradient()));
+        items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletOwnBubblesAbout)));
         items.add(UItem.asCheck(ID_COPY, LocaleController.getString(R.string.MargeletCopyFormatted))
                 .setChecked(MargeletConfig.copyFormatting()));
         items.add(UItem.asShadow(LocaleController.getString(R.string.MargeletCopyFormattedAbout)));
@@ -67,7 +71,10 @@ public class MargeletMarkupActivity extends UniversalFragment {
 
     @Override
     protected void onClick(UItem item, View view, int position, float x, float y) {
-        if (item.id == ID_COPY) {
+        if (item.id == ID_OWN_BUBBLES) {
+            MargeletConfig.setOwnBubblesGradient(!MargeletConfig.ownBubblesGradient());
+            listView.adapter.update(true);
+        } else if (item.id == ID_COPY) {
             MargeletConfig.setCopyFormatting(!MargeletConfig.copyFormatting());
         } else if (item.id == ID_MARKDOWN) {
             presentFragment(new MargeletMarkdownActivity());
