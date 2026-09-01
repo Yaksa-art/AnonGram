@@ -12,7 +12,7 @@ permissions:
 jobs:
   build:
     name: Build AnonGram APK
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout patch repo
