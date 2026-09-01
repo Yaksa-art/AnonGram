@@ -1,0 +1,109 @@
+name: Build AnonGram (Margelet)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build AnonGram APK
+    runs-on: ubuntu-24.04-arm
+
+    steps:
+      - name: Checkout patch repo
+        uses: actions/checkout@v4
+        with:
+          path: AnonGram
+
+      - name: Read upstream commit
+        run: echo "UPSTREAM=$(cat AnonGram/patch/UPSTREAM)" >> $GITHUB_ENV
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq cmake ninja-build yasm
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install NDK
+        run: |
+          echo "y" | sdkmanager --install "ndk;27.2.12479018" --sdk_root=${ANDROID_SDK_ROOT} &> /dev/null
+          echo "sdk.dir=${ANDROID_HOME}" > /tmp/local.properties
+          echo "ndk.dir=${ANDROID_HOME}/ndk/27.2.12479018" >> /tmp/local.properties
+
+      - name: Cache Telegram sources
+        id: cache-telegram
+        uses: actions/cache@v4
+        with:
+          path: /tmp/Telegram
+          key: telegram-src-${{ env.UPSTREAM }}
+
+      - name: Clone Telegram sources (if not cached)
+        if: steps.cache-telegram.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth=1 https://github.com/DrKLO/Telegram /tmp/Telegram
+          cd /tmp/Telegram
+          git fetch --depth=1 origin $UPSTREAM
+          git checkout $UPSTREAM
+          git submodule update --init --recursive --depth=1 2>&1 | tail -5
+
+      - name: Apply Margelet patch
+        working-directory: /tmp/Telegram
+        run: |
+          cp /tmp/local.properties .
+          git apply $GITHUB_WORKSPACE/AnonGram/patch/margelet.patch
+
+      - name: Inject API keys
+        working-directory: /tmp/Telegram
+        run: |
+          sed -i 's/public static int APP_ID = 4;/public static int APP_ID = ${{ secrets.API_ID }};/' TMessagesProj/src/main/java/org/telegram/messenger/BuildVars.java
+          sed -i 's|public static String APP_HASH = "014b35b6184100b085b0d0572f9b5103";|public static String APP_HASH = "${{ secrets.API_HASH }}";|' TMessagesProj/src/main/java/org/telegram/messenger/BuildVars.java
+          sed -i 's/public static boolean SUPPORTS_PASSKEYS = true;/public static boolean SUPPORTS_PASSKEYS = false;/' TMessagesProj/src/main/java/org/telegram/messenger/BuildVars.java
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Build APK
+        working-directory: /tmp/Telegram
+        run: |
+          chmod +x gradlew
+          ./gradlew :TMessagesProj_AppStandalone:assembleAfatStandalone \
+            --build-cache --no-configuration-cache -x lint
+
+      - name: Find APK
+        working-directory: /tmp/Telegram
+        run: |
+          APK=$(find TMessagesProj_AppStandalone/build/outputs -name "*.apk" | head -3)
+          echo "APK_PATH=$APK" >> $GITHUB_ENV
+          echo "Found: $APK ($(du -h $APK | cut -f1))"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: AnonGram-APK
+          path: ${{ env.APK_PATH }}
+
+      - name: Set version
+        run: echo "VERSION=$(grep 'APP_VERSION_NAME=' /tmp/Telegram/gradle.properties | cut -d= -f2)" >> $GITHUB_ENV
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.APK_PATH }}
+          tag_name: v${{ env.VERSION }}
+          name: AnonGram v${{ env.VERSION }}
+          generate_release_notes: true
